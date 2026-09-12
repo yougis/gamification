@@ -1,0 +1,110 @@
+schema: spec-driven
+
+context: |
+  Projet : GeoPlay — framework de jeux geolocalises offline, natif iOS et Android.
+
+  Principe premier : ce n'est pas "un jeu" mais une plateforme de production de jeux.
+  Tout ce qui est specifie doit rester generique (valable pour n'importe quel jeu
+  cree par n'importe quel createur), jamais cable pour un cas particulier.
+
+  couches :
+  - Studio (auteur) : compose un Jeu, configure le branding, edite les donnees par module.
+    MCP hyperstructure qui produit le meme JSON que le runtime consomme, valide AJV des
+    deux cotes. Provenance providers/licence obligatoire par step/asset. Statuts
+    draft|reviewed|published + reviewedBy. Un graphe de reference neutre sert de fixture de test.
+  - Jeu : graphe oriente de Noeuds + branding + donnees globales. Un Noeud = instance
+    d'un Module (ex. "POI Chateau — Quiz Louis XIV"), porte ses donnees si besoin.
+    Activation portee par chaque Noeud : objet unique {requires[], operator}.
+  - Moteur / runtime natif package : engine de rendu par registre, orchestrateur
+    d'activation, capteurs (GPS, boussole, camera AR), theme, modes systeme.
+
+  Graphe et orchestrateur (socle v0) :
+  - Conditions : GEOFENCE (rayon + predicat in|out|dwell|through + dwell + hysteresis),
+    NODE_COMPLETED, TIMER (delai minimum ancre GAME_START|NODE_COMPLETION + anchorNodeId),
+    POOL_DRAWN. RANDOM_POOL = noeud structurel LOCKED -> COMPLETED sans ACTIVE.
+    CONDITIONAL (gamebook) + WINDOW (fenetre horaire absolue) reserves dans l'enum,
+    non outilles par le Studio au socle.
+  - Fan-in : operator AND|OR obligatoire des que requires a >=2 conditions (if/then
+    Draft-07), interdit si <=1. Fan-out : UNLOCKED (eligible) vs ACTIVE (presente),
+    1 modale ACTIVE max, file d'attente, auto (GEOFENCE/TIMER) vs choix (graphe/POOL).
+  - Etats : LOCKED -> UNLOCKED -> ACTIVE -> COMPLETED. latch par noeud : true = reste
+    UNLOCKED une fois debloque, false = retour LOCKED si conditions revocables retombent
+    (ex. sortie geofence). ACTIVE latche une fois la modale ouverte (ne se ferme pas
+    a la sortie de zone). Seules GEOFENCE/WINDOW sont revocables.
+  - Cycles : allowCycle=false par defaut sur toute condition a nodeId. Validateur ignore
+    les aretes allowCycle:true et rejette tout cycle residuel. onReentry: ignore par
+    defaut ; replay exige maxReentries + scoreOnReplay (defaut false, seule la 1ere
+    completion score). allowCycle = topologie logique, onReentry = execution terrain.
+  - Terminaison : au moins un noeud isEnding:true obligatoire. Termine quand un isEnding
+    passe COMPLETED. Validateur verifie atteignabilite structurelle sous hypothese
+    explicite d'environnement favorable (GEOFENCE/TIMER supposes pouvoir devenir vrais).
+    RANDOM_POOL et OR = chemins alternatifs. Chaque candidat de pool doit atteindre un
+    isEnding. Detection AND-sur-branches-exclusives limitee au cas direct (pas de
+    fermeture transitive).
+  - POOL : {candidates, drawCount, drawTiming ON_POOL_ACTIVATION|ON_GAME_START}.
+    Sans remise au socle (withReplacement supprime). drawCount<=len et unicite des
+    candidats inter-pools en validateur applicatif. Ordre topo des pools ON_GAME_START,
+    cycle inter-pools rejete. ON_GAME_START ne peut dependre d'un candidat de pool
+    ON_POOL_ACTIVATION. Persistance immediate randomDraws[sessionId][poolNodeId], jamais
+    recalcule. Reprendre = meme sessionId relit, Nouvelle partie = nouveau sessionId.
+    forceDraw pour triche/preview (avec flag triche pour le scoring).
+  - Registre de modules extensible : chaque type (QUIZ, DIFFERENCE_GAME/7-erreurs,
+    PUZZLE, AR_MARKER, BOUSSOLE, futurs types) s'enregistre avec
+    sous-schema versionne, besoins capteurs/carte, rendu. Ajouter un module ne touche
+    jamais au schema Noeuds/Liens. Moteur ignore un type inconnu gracieusement.
+  - Donnees jamais en dur : rayon GPS et overrides, seuils capteurs, URLs, bbox/zooms,
+    tout lu depuis le JSON. Trace GPX = base auteur pour poser les POI + polyline
+    display globale optionnelle ; trace par module differee. Boussole = aide service
+    moteur non-validante (fleche vers POI + distance texte + haptique), reutilisable
+    comme entree capteur dans un module enigme (validation interne au module, jamais
+    par l'orchestrateur). La position est qualifiee par accuracy + dwell.
+    7-erreurs : source + derivee + masque Alpha auteur -> polygones % au build (MCP)
+    + dilatation tactile parametree.
+  - Offline-first natif : fichiers app + SQLite. Manifest {path, version, size, sha256} par fichier, archive
+    pre-tuilee dezippee en worker, verif SHA-256, diff (ne retelecharge que version
+    changee), resume, background download, progression non lancable si partiel.
+    Fond imagerie configurable {provider, bbox, minZoom, maxZoom, attribution} + fallback
+    image statique. Difficulte (enfant|famille|expert) + modes
+    (normal|animateur|soiree|hardcore) en variantes/overrides, i18n par cles + glossaire
+    acronymes lockes. Sync scoring multi-session MASTER P2P natif + resync serveur
+    tardive hors socle 000 (lien socle : events + scoreOnReplay + flag triche).
+    Branding global + surcharge par Noeud en objet donnees. Modes systeme socle :
+    triche/test + preview Studio (meme bypass, deux entrees) ; rejouabilite/a11y en roadmap.
+
+rules:
+  proposal:
+    - Identifier explicitement si le change modifie le schema graphe
+      (Noeuds/activation/registre/branding/manifest) ; si oui, lister tous les
+      consommateurs impactes (Studio MCP, runtime natif, orchestrateur, modules
+      concernes, packaging offline).
+    - Preciser si le change touche aux valeurs reservees CONDITIONAL/WINDOW ou ajoute
+      un module au registre ; decrire la politique de compat (ignore gracieux vs rejet).
+    - Preciser si le change necessite une connexion reseau a un moment quelconque du
+      parcours joueur ; si oui, justifier l'exception a l'offline-first.
+    - Indiquer la dependance a un change precedent non encore archive
+      (ex. depend de 000-framework-architecture).
+  specs:
+    - Toute spec touchant aux mini-jeux doit referencer les types via le registre
+      (jamais de liste fermee en dur) et nommer Nœud vs Module vs condition.
+    - Utiliser le format Given/When/Then pour les scenarios d'activation
+      (GEOFENCE, NODE_COMPLETED, TIMER, POOL_DRAWN, latch/desactivation, file ACTIVE,
+      cycles/reentry, terminaison).
+    - Toute valeur de configuration (rayon GPS et overrides, predicats in|out|dwell|
+      through, seuils capteurs, URLs, bbox/zooms) doit etre decrite comme lue depuis
+      le JSON du jeu, jamais comme une constante du code.
+    - Distinguer les regles exprimables en JSON Schema Draft-07 pur des regles du
+      validateur applicatif separe (cycles, atteignabilite, topo pools ON_GAME_START,
+      drawCount<=len, unicite candidats, AND-sur-branches-exclusives direct).
+  operations:
+    apply:
+      guidance:
+        - Verifier que tout fichier JSON produit ou modifie reste valide au regard de
+          `openspec/specs/game-schema/spec.md` (ou du schema Draft-07 archive) ET du
+          validateur applicatif (cycles, atteignabilite, pools, reentry, terminaison).
+        - Ne pas introduire de dependance reseau bloquante dans le parcours joueur
+          post-telechargement ; stockage natif fichiers+SQLite, manifest SHA-256 verifie.
+    archive:
+      guidance:
+        - Resumer dans le changelog l'impact sur le schema graphe/registre s'il a ete
+          modifie, pour que les changes suivants (Studio, moteur, orchestrateur,
+          modules, packaging offline) sachent s'ils doivent etre mis a jour.

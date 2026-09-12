@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://geoplay.example/schemas/modules/puzzle.json",
+  "title": "PUZZLE module data (squelette 100, detail au change 500)",
+  "type": "object",
+  "required": ["schemaVersion", "image"],
+  "properties": {
+    "schemaVersion": {"const": "1.0.0"},
+    "image": {"type": "string", "minLength": 1}
+  }
+}

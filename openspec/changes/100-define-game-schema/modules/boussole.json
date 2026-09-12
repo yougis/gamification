@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://geoplay.example/schemas/modules/boussole.json",
+  "title": "BOUSSOLE module data (squelette 100, detail au change 500)",
+  "type": "object",
+  "required": ["schemaVersion", "toleranceDeg"],
+  "properties": {
+    "schemaVersion": {"const": "1.0.0"},
+    "toleranceDeg": {"type": "number", "exclusiveMinimum": 0},
+    "onTimeout": {"type": "string"}
+  }
+}

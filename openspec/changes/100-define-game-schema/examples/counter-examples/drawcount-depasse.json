@@ -1,0 +1,26 @@
+{
+  "gameId": "contre-exemple-drawcount-depasse",
+  "schemaVersion": "1.0.0",
+  "minEngineVersion": "1.0.0",
+  "nodes": [
+    {
+      "id": "pool",
+      "module": {"type": "RANDOM_POOL", "data": {}},
+      "activation": {"requires": [
+        {"type": "TIMER", "anchor": "GAME_START", "delaySeconds": 0}
+      ]},
+      "randomPool": {"candidates": ["a", "b"], "drawCount": 6, "drawTiming": "ON_POOL_ACTIVATION"}
+    },
+    {
+      "id": "a",
+      "module": {"type": "QUIZ", "data": {"schemaVersion": "1.0.0", "questions": [{"q": "Exemple ?"}]}},
+      "activation": {"requires": [{"type": "POOL_DRAWN", "poolNodeId": "pool"}]}
+    },
+    {
+      "id": "b",
+      "isEnding": true,
+      "module": {"type": "QUIZ", "data": {"schemaVersion": "1.0.0", "questions": [{"q": "Exemple ?"}]}},
+      "activation": {"requires": [{"type": "POOL_DRAWN", "poolNodeId": "pool"}]}
+    }
+  ]
+}

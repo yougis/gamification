@@ -1,0 +1,20 @@
+{
+  "gameId": "contre-exemple-timer-contamine",
+  "schemaVersion": "1.0.0",
+  "minEngineVersion": "1.0.0",
+  "nodes": [
+    {
+      "id": "x",
+      "module": {"type": "QUIZ", "data": {"schemaVersion": "1.0.0", "questions": [{"q": "Exemple ?"}]}},
+      "activation": {"requires": [
+        {"type": "TIMER", "anchor": "GAME_START", "delaySeconds": 60, "radiusMeters": 30}
+      ]}
+    },
+    {
+      "id": "fin",
+      "isEnding": true,
+      "module": {"type": "QUIZ", "data": {"schemaVersion": "1.0.0", "questions": [{"q": "Exemple ?"}]}},
+      "activation": {"requires": [{"type": "NODE_COMPLETED", "nodeId": "x"}]}
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "gameId": "contre-exemple-replay-sans-borne",
+  "schemaVersion": "1.0.0",
+  "minEngineVersion": "1.0.0",
+  "nodes": [
+    {
+      "id": "x",
+      "module": {"type": "QUIZ", "data": {"schemaVersion": "1.0.0", "questions": [{"q": "Exemple ?"}]}},
+      "onReentry": "replay",
+      "activation": {"requires": [
+        {"type": "GEOFENCE", "lat": 48.0, "lng": 2.0, "radiusMeters": 10, "predicate": "enter"}
+      ]}
+    },
+    {
+      "id": "fin",
+      "isEnding": true,
+      "module": {"type": "QUIZ", "data": {"schemaVersion": "1.0.0", "questions": [{"q": "Exemple ?"}]}},
+      "activation": {"requires": [{"type": "NODE_COMPLETED", "nodeId": "x"}]}
+    }
+  ]
+}
