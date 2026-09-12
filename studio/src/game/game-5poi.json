@@ -1,0 +1,80 @@
+{
+  "gameId": "reference-5poi",
+  "schemaVersion": "1.0.0",
+  "minEngineVersion": "1.0.0",
+  "branding": {},
+  "global": {"gpsRadiusMeters": 30},
+  "nodes": [
+    {
+      "id": "start",
+      "module": {"type": "INFO", "data": {}},
+      "activation": {"requires": [
+        {"type": "TIMER", "anchor": "GAME_START", "delaySeconds": 0}
+      ]}
+    },
+    {
+      "id": "pool",
+      "module": {"type": "RANDOM_POOL", "data": {}},
+      "activation": {"requires": [
+        {"type": "NODE_COMPLETED", "nodeId": "start"}
+      ]},
+      "randomPool": {
+        "candidates": ["a", "b", "c", "d", "e"],
+        "drawCount": 1,
+        "drawTiming": "ON_POOL_ACTIVATION"
+      }
+    },
+    {
+      "id": "a",
+      "module": {"type": "QUIZ", "data": {"schemaVersion": "1.0.0", "questions": [{"q": "Exemple ?"}]}},
+      "activation": {"requires": [
+        {"type": "POOL_DRAWN", "poolNodeId": "pool"},
+        {"type": "GEOFENCE", "lat": 48.01, "lng": 2.01, "radiusMeters": 30, "predicate": "dwell", "dwellMs": 8000}
+      ], "operator": "AND", "latch": true}
+    },
+    {
+      "id": "b",
+      "module": {"type": "BOUSSOLE", "data": {"schemaVersion": "1.0.0", "toleranceDeg": 10}},
+      "activation": {"requires": [
+        {"type": "POOL_DRAWN", "poolNodeId": "pool"},
+        {"type": "GEOFENCE", "lat": 48.02, "lng": 2.02, "radiusMeters": 25, "predicate": "enter"}
+      ], "operator": "AND", "latch": true}
+    },
+    {
+      "id": "c",
+      "module": {"type": "PUZZLE", "data": {"schemaVersion": "1.0.0", "image": "assets/c.png"}},
+      "activation": {"requires": [
+        {"type": "POOL_DRAWN", "poolNodeId": "pool"},
+        {"type": "GEOFENCE", "lat": 48.03, "lng": 2.03, "radiusMeters": 20, "predicate": "dwell", "dwellMs": 5000}
+      ], "operator": "AND", "latch": true}
+    },
+    {
+      "id": "d",
+      "module": {"type": "DIFFERENCE_GAME", "data": {"schemaVersion": "1.0.0", "polygons": [{"x": 10, "y": 10, "w": 5, "h": 5}]}},
+      "activation": {"requires": [
+        {"type": "POOL_DRAWN", "poolNodeId": "pool"},
+        {"type": "GEOFENCE", "lat": 48.04, "lng": 2.04, "radiusMeters": 20, "predicate": "enter"}
+      ], "operator": "AND", "latch": true}
+    },
+    {
+      "id": "e",
+      "module": {"type": "AR_MARKER", "data": {"schemaVersion": "1.0.0", "marker": "assets/e.mind", "fallback2D": {}}},
+      "activation": {"requires": [
+        {"type": "POOL_DRAWN", "poolNodeId": "pool"},
+        {"type": "GEOFENCE", "lat": 48.05, "lng": 2.05, "radiusMeters": 25, "predicate": "enter"}
+      ], "operator": "AND", "latch": true}
+    },
+    {
+      "id": "fin",
+      "isEnding": true,
+      "module": {"type": "QUIZ", "data": {"schemaVersion": "1.0.0", "questions": [{"q": "Final ?"}]}},
+      "activation": {"requires": [
+        {"type": "NODE_COMPLETED", "nodeId": "a"},
+        {"type": "NODE_COMPLETED", "nodeId": "b"},
+        {"type": "NODE_COMPLETED", "nodeId": "c"},
+        {"type": "NODE_COMPLETED", "nodeId": "d"},
+        {"type": "NODE_COMPLETED", "nodeId": "e"}
+      ], "operator": "OR"}
+    }
+  ]
+}

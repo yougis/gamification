@@ -1,0 +1,160 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://geoplay.example/schemas/game-schema-1.0.0.json",
+  "title": "GeoPlay Game",
+  "description": "Socle 100 : structure opposable d'un Jeu. Les regles de graphe non exprimables ici (cycles, atteignabilite, topo pools, drawCount<=len, unicite) vivent dans le validateur applicatif.",
+  "type": "object",
+  "required": ["gameId", "schemaVersion", "minEngineVersion", "nodes"],
+  "additionalProperties": false,
+  "properties": {
+    "gameId": {"type": "string", "minLength": 1},
+    "schemaVersion": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "minEngineVersion": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "branding": {"type": "object"},
+    "global": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "gpsRadiusMeters": {"type": "number", "exclusiveMinimum": 0},
+        "map": {"type": "object"},
+        "gpxTrace": {"type": "object"}
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "contains": {
+        "type": "object",
+        "required": ["isEnding"],
+        "properties": {"isEnding": {"const": true}}
+      },
+      "items": {"$ref": "#/definitions/node"}
+    }
+  },
+  "definitions": {
+    "node": {
+      "type": "object",
+      "required": ["id", "module", "activation"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "module": {
+          "type": "object",
+          "required": ["type", "data"],
+          "additionalProperties": false,
+          "properties": {
+            "type": {"type": "string", "minLength": 1},
+            "data": {"type": "object"}
+          },
+          "allOf": [
+            {"if": {"properties": {"type": {"const": "QUIZ"}}}, "then": {"properties": {"data": {"$ref": "modules/quiz.json"}}}},
+            {"if": {"properties": {"type": {"const": "DIFFERENCE_GAME"}}}, "then": {"properties": {"data": {"$ref": "modules/difference-game.json"}}}},
+            {"if": {"properties": {"type": {"const": "PUZZLE"}}}, "then": {"properties": {"data": {"$ref": "modules/puzzle.json"}}}},
+            {"if": {"properties": {"type": {"const": "AR_MARKER"}}}, "then": {"properties": {"data": {"$ref": "modules/ar-marker.json"}}}},
+            {"if": {"properties": {"type": {"const": "BOUSSOLE"}}}, "then": {"properties": {"data": {"$ref": "modules/boussole.json"}}}}
+          ]
+        },
+        "activation": {
+          "type": "object",
+          "required": ["requires"],
+          "additionalProperties": false,
+          "properties": {
+            "requires": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/condition"}},
+            "operator": {"enum": ["AND", "OR"]},
+            "latch": {"type": "boolean", "default": true}
+          },
+          "allOf": [
+            {"if": {"properties": {"requires": {"minItems": 2}}}, "then": {"required": ["operator"]}},
+            {"if": {"properties": {"requires": {"maxItems": 1}}}, "then": {"not": {"required": ["operator"]}}}
+          ]
+        },
+        "onReentry": {"enum": ["ignore", "replay"], "default": "ignore"},
+        "maxReentries": {"type": "integer", "minimum": 1},
+        "scoreOnReplay": {"type": "boolean", "default": false},
+        "isEnding": {"type": "boolean", "default": false},
+        "randomPool": {
+          "type": "object",
+          "required": ["candidates", "drawCount", "drawTiming"],
+          "additionalProperties": false,
+          "properties": {
+            "candidates": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+            "drawCount": {"type": "integer", "minimum": 1},
+            "drawTiming": {"enum": ["ON_POOL_ACTIVATION", "ON_GAME_START"]}
+          }
+        }
+      },
+      "allOf": [
+        {"if": {"required": ["onReentry"], "properties": {"onReentry": {"const": "replay"}}}, "then": {"required": ["maxReentries"]}}
+      ]
+    },
+    "condition": {
+      "type": "object",
+      "required": ["type"],
+      "oneOf": [
+        {
+          "required": ["type", "lat", "lng", "radiusMeters", "predicate"],
+          "additionalProperties": false,
+          "properties": {
+            "type": {"const": "GEOFENCE"},
+            "lat": {"type": "number", "minimum": -90, "maximum": 90},
+            "lng": {"type": "number", "minimum": -180, "maximum": 180},
+            "radiusMeters": {"type": "number", "exclusiveMinimum": 0},
+            "predicate": {"enum": ["enter", "exit", "dwell", "through"]},
+            "dwellMs": {"type": "integer", "minimum": 0},
+            "hysteresisMeters": {"type": "number", "minimum": 0},
+            "maxAccuracyM": {"type": "number", "exclusiveMinimum": 0}
+          }
+        },
+        {
+          "required": ["type", "nodeId"],
+          "additionalProperties": false,
+          "properties": {
+            "type": {"const": "NODE_COMPLETED"},
+            "nodeId": {"type": "string", "minLength": 1},
+            "allowCycle": {"type": "boolean", "default": false}
+          }
+        },
+        {
+          "required": ["type", "anchor", "delaySeconds"],
+          "additionalProperties": false,
+          "properties": {
+            "type": {"const": "TIMER"},
+            "anchor": {"enum": ["GAME_START", "NODE_COMPLETION"]},
+            "anchorNodeId": {"type": "string", "minLength": 1},
+            "delaySeconds": {"type": "number", "minimum": 0}
+          },
+          "allOf": [
+            {"if": {"properties": {"anchor": {"const": "NODE_COMPLETION"}}}, "then": {"required": ["anchorNodeId"]}}
+          ]
+        },
+        {
+          "required": ["type", "poolNodeId"],
+          "additionalProperties": false,
+          "properties": {
+            "type": {"const": "POOL_DRAWN"},
+            "poolNodeId": {"type": "string", "minLength": 1}
+          }
+        },
+        {
+          "required": ["type", "masterId", "transport"],
+          "additionalProperties": false,
+          "properties": {
+            "type": {"const": "PROXIMITY_MASTER"},
+            "masterId": {"type": "string", "minLength": 1},
+            "transport": {"enum": ["ble", "wifi"]},
+            "minRssiDbm": {"type": "number"},
+            "dwellMs": {"type": "integer", "minimum": 0}
+          }
+        },
+        {
+          "required": ["type"],
+          "properties": {"type": {"const": "CONDITIONAL"}}
+        },
+        {
+          "required": ["type"],
+          "properties": {"type": {"const": "WINDOW"}}
+        }
+      ]
+    }
+  }
+}

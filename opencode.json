@@ -9,8 +9,8 @@
 
   "permission": {
     "edit": "allow",
-    "bash": "ask",
-    "webfetch": "ask"
+    "bash": "allow",
+    "webfetch": "allow"
   },
 
   "share": "manual"
