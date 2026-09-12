@@ -20,6 +20,9 @@ import {
   MODULES_FR, CONDITIONS_FR, FAMILLES, PRESETS_RAYON, MILIEUX, ETATS_FR,
   OPERATEURS_FR, erreurFR, type Milieu,
 } from "./game/i18n-ui";
+import registre from "./game/schema/registry.json";
+
+const TYPES_MODULE = ["INFO", ...Object.keys(registre), "RANDOM_POOL"];
 import { Icon } from "./components/icons";
 import { WorkflowStepper, type EtapeWorkflow } from "./components/WorkflowStepper";
 import { NodeList } from "./components/NodeList";
@@ -730,7 +733,7 @@ function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauT
       <fieldset disabled={lectureSeule} style={{ display: "contents" }}>
       <Famille titre={FAMILLES[0].titre} aide={FAMILLES[0].aide}>
         <label>Mini-jeu <select className="champ" value={node.module.type} onChange={(e) => upd({ module: { ...node.module, type: e.target.value } })}>
-          {Object.entries(MODULES_FR).map(([k, v]) => <option key={k} value={k} title={v.aide}>{v.nom}</option>)}
+          {TYPES_MODULE.map((k) => <option key={k} value={k} title={MODULES_FR[k]?.aide}>{MODULES_FR[k]?.nom ?? k}</option>)}
         </select></label>
         {node.module.type === "QUIZ" && (
           <div>

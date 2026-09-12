@@ -1,0 +1,8 @@
+{
+  "$comment": "Registre des modules (change 500) : ajouter un type = une entree ici + son sous-schema, jamais de retouche Nœuds/Liens ni racine.",
+  "QUIZ": {"schema": "quiz.json", "version": "1.0.0"},
+  "DIFFERENCE_GAME": {"schema": "difference-game.json", "version": "1.0.0"},
+  "PUZZLE": {"schema": "puzzle.json", "version": "1.0.0"},
+  "AR_MARKER": {"schema": "ar-marker.json", "version": "1.0.0"},
+  "BOUSSOLE": {"schema": "boussole.json", "version": "1.0.0"}
+}

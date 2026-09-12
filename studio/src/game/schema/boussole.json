@@ -1,12 +1,17 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://geoplay.example/schemas/modules/boussole.json",
-  "title": "BOUSSOLE module data (squelette 100, detail au change 500)",
+  "title": "BOUSSOLE module data (change 500)",
   "type": "object",
   "required": ["schemaVersion", "toleranceDeg"],
+  "additionalProperties": false,
   "properties": {
     "schemaVersion": {"const": "1.0.0"},
     "toleranceDeg": {"type": "number", "exclusiveMinimum": 0},
-    "onTimeout": {"type": "string"}
-  }
+    "stabilizationMs": {"type": "integer", "minimum": 0},
+    "onTimeout": {"type": "string"},
+    "fallback": {"type": "object"}
+  },
+  "x-needs": {"gps": false, "compass": true, "camera": false, "map": true},
+  "x-fallback": "code animateur si capteur absent ou instable (metal)"
 }

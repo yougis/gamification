@@ -8,7 +8,10 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "dev:smoke": "tsx smoke.ts"
+    "dev:smoke": "tsx smoke.ts",
+    "test:runtime": "tsx runtime.smoke.ts",
+    "test:modules": "tsx modules.smoke.ts",
+    "test:pack": "tsx pack.smoke.ts"
   },
   "dependencies": {
     "@xyflow/react": "^12.11.6",

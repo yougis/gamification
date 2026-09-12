@@ -1,18 +1,10 @@
 // Outils MCP du Studio (spike) : meme schema des deux cotes, rien ne sort sans validation.
 import { validateGame } from "./validate";
+import { sha256Hex, type ManifestFile } from "./pack";
 import type { Game, GameNode, ReviewStatus, StudioMeta } from "./types";
 
-export interface ManifestFile {
-  path: string;
-  version: string;
-  size: number;
-  sha256: string;
-}
-
-const sha256hex = async (s: string): Promise<string> => {
-  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
-  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
-};
+export type { ManifestFile };
+const sha256hex = sha256Hex;
 
 export function composeNodes(game: Game, nodes: GameNode[]): Game {
   return { ...game, nodes: [...game.nodes, ...nodes] };

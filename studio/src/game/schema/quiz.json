@@ -1,13 +1,31 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://geoplay.example/schemas/modules/quiz.json",
-  "title": "QUIZ module data (squelette 100, detail au change 500)",
+  "title": "QUIZ module data (change 500)",
   "type": "object",
   "required": ["schemaVersion", "questions"],
+  "additionalProperties": false,
   "properties": {
     "schemaVersion": {"const": "1.0.0"},
-    "questions": {"type": "array", "minItems": 1},
+    "questions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["q"],
+        "additionalProperties": false,
+        "properties": {
+          "q": {"type": "string", "minLength": 1},
+          "options": {"type": "array", "minItems": 2, "items": {"type": "string"}},
+          "correctIndex": {"type": "integer", "minimum": 0},
+          "explanation": {"type": "string"},
+          "points": {"type": "integer", "minimum": 0}
+        }
+      }
+    },
     "timeLimitSeconds": {"type": "integer", "minimum": 0},
     "onTimeout": {"type": "string"}
-  }
+  },
+  "x-needs": {"gps": false, "compass": false, "camera": false, "map": false},
+  "x-fallback": "aucun requis (jouable partout)"
 }
