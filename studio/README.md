@@ -22,6 +22,12 @@ npm run dev
   simulation retraduction, preview scriptée (bypass, `forceDraw`, `sessionId`,
   flag triche), test 5 branches en 1 clic, export `game.json` + `manifest.json` +
   `studio-meta.json`.
+- UX créateurs (français, Tailwind v4) : barre haute (Valider, Exemple, Exporter,
+  animateur), palette de blocs (Étape, Lieu GPS, Tirage, Fin), inspecteur en
+  5 familles, barre d'état (validité, étapes, fin, impasses), impasses en rouge
+  (lignes animées), préréglages de rayon (Piéton 15 m, Parc 30 m, Vélo 50 m,
+  Forêt 60 m), simulateur de signal GPS (vert 5 m / orange 15 m / rouge 40 m)
+  branché sur le gating `maxAccuracyM`. Glossaire centralisé `src/game/i18n-ui.ts`.
 - Stubs assumés : formulaires modules hors QUIZ en JSON brut, manifest assets
   saisis à la main (SHA-256 vérifié au format), pas de lib canvas imposée
   au-delà de ce spike.

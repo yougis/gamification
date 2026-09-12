@@ -1,0 +1,27 @@
+/* Thème Studio : clair à fort contraste (lisible en plein soleil, comme le
+   mode joueur). Cibles tactiles >= 44px sur les actions principales. */
+:root {
+  --couleur-accent: #1a7f37;
+  --couleur-alerte: #cf222e;
+  --couleur-tirage: #8250df;
+  --couleur-fin: #9a6700;
+}
+
+body {
+  font-family: var(--font-studio);
+  background: #ffffff;
+  color: #111111;
+}
+
+button {
+  min-height: 44px;
+  padding: 0 14px;
+}
+
+.btn-primaire {
+  background: var(--couleur-accent);
+  color: #fff;
+  font-weight: 600;
+  border: none;
+  border-radius: 8px;
+}

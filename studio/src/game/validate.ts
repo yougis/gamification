@@ -31,7 +31,6 @@ export function validateLayer1(game: unknown): LayerReport {
     : (validateFn.errors ?? []).map((e) => `C1 ${e.instancePath || "/"} : ${e.message ?? "invalide"}`);
   return { layer: 1, errors };
 }
-
 function nodeRefs(n: GameNode): string[] {
   const out: string[] = [];
   for (const c of n.activation.requires) {
@@ -41,6 +40,55 @@ function nodeRefs(n: GameNode): string[] {
     if (c.type === "TIMER" && c.anchor === "NODE_COMPLETION" && c.anchorNodeId) out.push(c.anchorNodeId);
   }
   return out;
+}
+
+// Atteignabilite partagee (validateur + surlignage d'impasses dans le Studio).
+export function estActivable(
+  byId: Map<string, GameNode>,
+  poolOf: Map<string, GameNode>,
+  n: GameNode,
+  done: Set<string>,
+  visiting: Set<string>,
+): boolean {
+  const evalReq = (c: GameNode["activation"]["requires"][number]): boolean => {
+    if (c.type === "NODE_COMPLETED" && c.nodeId) {
+      if (done.has(c.nodeId)) return true;
+      if (visiting.has(c.nodeId)) return false;
+      const d = byId.get(c.nodeId);
+      if (!d) return false;
+      visiting.add(c.nodeId);
+      const r = estActivable(byId, poolOf, d, done, visiting);
+      visiting.delete(c.nodeId);
+      return r;
+    }
+    if (c.type === "POOL_DRAWN" && c.poolNodeId) {
+      const p = poolOf.get(c.poolNodeId);
+      if (!p) return false;
+      if (visiting.has(p.id)) return false;
+      visiting.add(p.id);
+      const r = estActivable(byId, poolOf, p, done, visiting);
+      visiting.delete(p.id);
+      return r;
+    }
+    return true; // GEOFENCE/TIMER/PROXIMITY/CONDITIONAL/WINDOW : supposes vrais
+  };
+  const reqs = n.activation.requires;
+  if (reqs.length > 1) {
+    return n.activation.operator === "OR" ? reqs.some(evalReq) : reqs.every(evalReq);
+  }
+  return reqs.every(evalReq);
+}
+
+// Impasses : noeuds non structurels, non finaux, sans chemin vers une fin.
+export function deadEnds(game: Game): string[] {
+  const byId = new Map(game.nodes.map((n) => [n.id, n]));
+  const poolOf = new Map(game.nodes.filter((n) => n.randomPool).map((n) => [n.id, n]));
+  const endings = game.nodes.filter((n) => n.isEnding);
+  if (!endings.length) return [];
+  return game.nodes
+    .filter((n) => !n.isEnding && !n.randomPool)
+    .filter((n) => !endings.some((e) => estActivable(byId, poolOf, e, new Set([n.id]), new Set())))
+    .map((n) => n.id);
 }
 
 export function validateLayer2(game: Game): LayerReport {
@@ -112,35 +160,8 @@ export function validateLayer2(game: Game): LayerReport {
   // Atteignabilite : env suppose favorable (GEOFENCE/TIMER/PROXIMITY vrais) ;
   // POOL et OR = alternatifs ; chaque candidat individuellement vers un isEnding.
   // Un NODE_COMPLETED est satisfait si son noeud est suppose complete ou activable.
-  const activable = (n: GameNode, done: Set<string>, visiting: Set<string>): boolean => {
-    const evalReq = (c: (typeof n.activation.requires)[number]): boolean => {
-      if (c.type === "NODE_COMPLETED" && c.nodeId) {
-        if (done.has(c.nodeId)) return true;
-        if (visiting.has(c.nodeId)) return false;
-        const d = byId.get(c.nodeId);
-        if (!d) return false;
-        visiting.add(c.nodeId);
-        const r = activable(d, done, visiting);
-        visiting.delete(c.nodeId);
-        return r;
-      }
-      if (c.type === "POOL_DRAWN" && c.poolNodeId) {
-        const p = poolOf.get(c.poolNodeId);
-        if (!p) return false;
-        if (visiting.has(p.id)) return false;
-        visiting.add(p.id);
-        const r = activable(p, done, visiting);
-        visiting.delete(p.id);
-        return r;
-      }
-      return true; // GEOFENCE/TIMER/PROXIMITY/CONDITIONAL/WINDOW : supposes vrais
-    };
-    const reqs = n.activation.requires;
-    if (reqs.length > 1) {
-      return n.activation.operator === "OR" ? reqs.some(evalReq) : reqs.every(evalReq);
-    }
-    return reqs.every(evalReq);
-  };
+  const activable = (n: GameNode, done: Set<string>, visiting: Set<string>): boolean =>
+    estActivable(byId, poolOf, n, done, visiting);
   const endings = game.nodes.filter((n) => n.isEnding);
   if (endings.length === 0) errors.push("C2 : aucun noeud isEnding");
   else {

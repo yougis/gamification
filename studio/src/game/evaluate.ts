@@ -8,6 +8,7 @@ export interface Sim {
   throughOk: Set<string>; // nodeIds dont la traversee simulee est faite
   nowMs: number; // horloge session, GAME_START = 0
   completedAt: Map<string, number>; // nodeId -> timestamp
+  accuracyM?: number; // precision GPS simulee (defaut : bonne, 5 m)
 }
 
 export interface PreviewEvent {
@@ -59,7 +60,14 @@ export function condTrue(
   void game;
   void completedCount;
   switch (c.type) {
-    case "GEOFENCE":
+    case "GEOFENCE": {
+      if (c.maxAccuracyM != null && (sim.accuracyM ?? 5) > c.maxAccuracyM) return false;
+      const p = sim.present.has(nodeId);
+      if (c.predicate === "exit") return !p;
+      if (c.predicate === "dwell") return p && sim.dwellOk.has(nodeId);
+      if (c.predicate === "through") return sim.throughOk.has(nodeId);
+      return p;
+    }
     case "PROXIMITY_MASTER": {
       const p = sim.present.has(nodeId);
       if (c.predicate === "exit") return !p;
