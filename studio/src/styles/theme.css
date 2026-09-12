@@ -1,27 +1,233 @@
-/* Thème Studio : clair à fort contraste (lisible en plein soleil, comme le
-   mode joueur). Cibles tactiles >= 44px sur les actions principales. */
+/* Thème Studio — sobre, clair, lisible en plein soleil.
+   Sobre = neutres + un seul accent vert ; jamais de couleur seule
+   (toujours icône + libellé + texte). Cibles >= 44px, focus visible. */
 :root {
   --couleur-accent: #1a7f37;
-  --couleur-alerte: #cf222e;
-  --couleur-tirage: #8250df;
-  --couleur-fin: #9a6700;
+  --couleur-accent-fonce: #116329;
+  --couleur-accent-douce: #dff3e5;
+  --couleur-alerte: #b42318;
+  --couleur-alerte-douce: #fdecea;
+  --couleur-tirage: #5f3dc4;
+  --couleur-tirage-douce: #ede9fe;
+  --couleur-fin: #8a5a00;
+  --couleur-fin-douce: #fff4d6;
+
+  --surface: #ffffff;
+  --surface-2: #f2f4f6;
+  --surface-3: #e8ebee;
+  --ink: #13171c;
+  --ink-2: #4b5563;
+  --ink-3: #6b7280;
+  --line: #d7dce1;
+  --line-forte: #b9c1ca;
+  --focus: #0b5fff;
+
+  --rayon-s: 6px;
+  --rayon-m: 10px;
+  --rayon-l: 14px;
+  --ombre: 0 1px 2px rgb(19 23 28 / 0.08), 0 4px 14px rgb(19 23 28 / 0.08);
+  --ombre-forte: 0 2px 4px rgb(19 23 28 / 0.12), 0 10px 28px rgb(19 23 28 / 0.14);
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
   font-family: var(--font-studio);
-  background: #ffffff;
-  color: #111111;
+  background: var(--surface-2);
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+::selection {
+  background: var(--couleur-accent-douce);
+  color: var(--ink);
 }
 
 button {
   min-height: 44px;
   padding: 0 14px;
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Boutons sobres : une seule forme, un seul vocabulaire. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--line-forte);
+  border-radius: var(--rayon-m);
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn:hover {
+  background: var(--surface-2);
+  border-color: var(--ink-3);
+}
+.btn:active {
+  background: var(--surface-3);
+}
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .btn-primaire {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 16px;
   background: var(--couleur-accent);
   color: #fff;
+  font-weight: 700;
+  border: 1px solid var(--couleur-accent-fonce);
+  border-radius: var(--rayon-m);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn-primaire:hover {
+  background: var(--couleur-accent-fonce);
+}
+.btn-primaire:disabled {
+  background: #8aa895;
+  border-color: #8aa895;
+  cursor: not-allowed;
+}
+
+.btn-danger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: var(--rayon-m);
+  border: 1px solid var(--couleur-alerte);
+  background: var(--surface);
+  color: var(--couleur-alerte);
   font-weight: 600;
-  border: none;
+  cursor: pointer;
+}
+
+.champ {
+  min-height: 44px;
+  border: 1px solid var(--line-forte);
   border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  padding: 8px 10px;
+  font: inherit;
+}
+.champ::placeholder {
+  color: var(--ink-2);
+  opacity: 1;
+}
+select.champ {
+  padding-right: 28px;
+}
+
+/* Pastilles sobres : couleur + texte, jamais couleur seule. */
+.puce {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+.puce .point {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: currentcolor;
+  flex: none;
+}
+.puce-ok {
+  background: var(--couleur-accent-douce);
+  border-color: var(--couleur-accent);
+  color: var(--couleur-accent-fonce);
+}
+.puce-erreur {
+  background: var(--couleur-alerte-douce);
+  border-color: var(--couleur-alerte);
+  color: var(--couleur-alerte);
+}
+.puce-tirage {
+  background: var(--couleur-tirage-douce);
+  border-color: var(--couleur-tirage);
+  color: var(--couleur-tirage);
+}
+.puce-fin {
+  background: var(--couleur-fin-douce);
+  border-color: var(--couleur-fin);
+  color: var(--couleur-fin);
+}
+
+/* Cartes sobres : un seul niveau, pas de cartes imbriquées. */
+.carte {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--rayon-l);
+  box-shadow: var(--ombre);
+}
+
+/* Scrollbars discrètes, caret et sélection thématisés. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-forte) transparent;
+}
+input,
+textarea,
+select {
+  caret-color: var(--couleur-accent-fonce);
+}
+
+/* ReactFlow sobre : nœuds lisibles, arêtes fines, focus clavier. */
+.studio-flow .react-flow__node {
+  border-radius: 12px;
+  font-size: 13px;
+}
+.studio-flow .react-flow__edge-text {
+  font-size: 11px;
+  font-weight: 600;
+}
+.studio-flow .react-flow__controls {
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: var(--ombre);
+}
+
+/* Étapes du workflow : l'étape courante se lit au texte + anneau, pas à la couleur. */
+.etape-courante {
+  box-shadow: 0 0 0 3px var(--surface), 0 0 0 5px var(--focus);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
