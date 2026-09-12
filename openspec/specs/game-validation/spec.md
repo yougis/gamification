@@ -10,11 +10,14 @@ Definit la double couche de validation GeoPlay garantissant qu'un Jeu invalide n
 
 Tout Jeu SHALL passer successivement la validation JSON Schema Draft-07
 (forme locale : types, requis, `operator` obligatoire si >=2 conditions via
-`if/then`, `isEnding` present, `activation` bien formee) puis le validateur
-applicatif (CLI/Studio) pour tout le reste. Un JSON valide Draft-07 SHALL
-pouvoir rester invalide tant que la seconde couche n'est pas passee, et les
-deux etapes SHALL etre documentees comme distinctes dans le change
-`100-define-game-schema`.
+`if/then` et interdit si <=1, `isEnding` present, `activation` bien formee,
+`onReentry:replay` exigeant `maxReentries`, enum des conditions fermée
+incluant `PROXIMITY_MASTER`, `withReplacement` exclu, `additionalProperties:
+false`) puis le validateur applicatif (CLI/Studio) pour tout le reste :
+cycles, atteignabilite, topo pools, `drawCount<=len`, unicite, AND-exclusif
+direct. Un JSON valide Draft-07 SHALL pouvoir rester invalide tant que la
+seconde couche n'est pas passee, et les deux etapes SHALL etre documentees
+comme distinctes, chacune avec le verdict de sa couche.
 
 #### Scenario: Forme OK mais graphe casse
 
