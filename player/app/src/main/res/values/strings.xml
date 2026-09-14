@@ -1,0 +1,22 @@
+<resources>
+    <string name="app_name">GeoPlay</string>
+    <string name="menu_home">Accueil</string>
+    <string name="menu_game">Jouer</string>
+    <string name="menu_import">Importer pack</string>
+    <string name="menu_settings">Paramètres</string>
+    <string name="module_detail">Détail module</string>
+    <string name="review_title">Relecture</string>
+    <string name="preview_title">Aperçu</string>
+    <string name="navigation_drawer_open">Ouvrir le menu</string>
+    <string name="navigation_drawer_close">Fermer le menu</string>
+    <string name="welcome_title">Bienvenue dans GeoPlay</string>
+    <string name="welcome_subtitle">Créez ou importez des jeux géolocalisés</string>
+    <string name="btn_new_game">Nouvelle enquête</string>
+    <string name="btn_import">Importer un pack</string>
+    <string name="btn_settings">Paramètres</string>
+    <string name="title_activity_main">GeoPlay</string>
+    <string name="title_activity_game">Partie en cours</string>
+    <string name="title_activity_import">Importer un pack</string>
+    <string name="action_settings">Paramètres</string>
+    <string name="nav_header_desc">En-tête de navigation</string>
+</resources>

@@ -1,8 +1,74 @@
 // Runtime joueur (logique pure) : init topo, file FIFO a modale unique,
-// hotes isoles, politiques GPS/boussole/camera. Liaisons natives (CoreLocation,
-// capteurs, MapLibre) en differe plateforme ; tout le decidable est ici et teste.
+// hotes isoles, politiques GPS/boussole/camera, meta-etat HOLD kiosque.
+// Liaisons natives (CoreLocation, capteurs, MapLibre) en differe plateforme ;
+// tout le deducible est ici et teste.
 import { drawPool } from "./evaluate";
-import type { Game, GameNode } from "./types";
+import type { Game, GameNode, HoldMode, HoldExit } from "./types";
+
+// --- Hold kiosque meta-etat ---
+export interface HoldState {
+  active: boolean;
+  mode: HoldMode;
+  lockedAt: number;
+  exitMethod?: HoldExit["method"];
+  attempts: number;
+  journal: HoldEvent[];
+}
+
+export interface HoldEvent {
+  type: "holdLock" | "holdUnlock" | "holdBlock" | "holdExit" | "holdExitAttempt" | "holdForceExit";
+  timestamp: number;
+  method?: HoldExit["method"];
+  success: boolean;
+  sessionId: string;
+}
+
+export function createHoldState(mode: HoldMode): HoldState {
+  return { active: mode !== "none", mode, lockedAt: Date.now(), attempts: 0, journal: [] };
+}
+
+export function holdLock(state: HoldState, sessionId: string): HoldEvent {
+  const evt: HoldEvent = { type: "holdLock", timestamp: Date.now(), success: true, sessionId };
+  state.journal.push(evt);
+  return evt;
+}
+
+export function holdUnlock(state: HoldState, method: HoldExit["method"], sessionId: string): HoldEvent {
+  state.attempts++;
+  const evt: HoldEvent = { type: "holdUnlock", timestamp: Date.now(), method, success: true, sessionId };
+  state.journal.push(evt);
+  return evt;
+}
+
+export function holdExitAttempt(state: HoldState, sessionId: string): HoldEvent {
+  state.attempts++;
+  const evt: HoldEvent = { type: "holdExitAttempt", timestamp: Date.now(), success: false, sessionId };
+  state.journal.push(evt);
+  return evt;
+}
+
+export function holdForceExit(state: HoldState, sessionId: string): HoldEvent {
+  const evt: HoldEvent = { type: "holdForceExit", timestamp: Date.now(), success: true, sessionId };
+  state.journal.push(evt);
+  state.active = false;
+  return evt;
+}
+
+export function isHoldActive(state: HoldState): boolean {
+  return state.active;
+}
+
+// --- Journalisation systématique des entrees/sorties ---
+export type SessionEvent =
+  | { type: "sessionStart"; timestamp: number; sessionId: string }
+  | { type: "sessionPause"; timestamp: number; sessionId: string }
+  | { type: "sessionResume"; timestamp: number; sessionId: string }
+  | { type: "sessionEnd"; timestamp: number; sessionId: string }
+  | HoldEvent;
+
+export function createSessionEvent(type: SessionEvent["type"], sessionId: string): SessionEvent {
+  return { type, timestamp: Date.now(), sessionId };
+}
 
 // --- 1.1 Resolution ON_GAME_START en ordre topo + persistance immediate ---
 export function resolveGameStartPools(

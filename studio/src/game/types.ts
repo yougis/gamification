@@ -49,12 +49,21 @@ export interface GameNode {
   randomPool?: { candidates: string[]; drawCount: number; drawTiming: "ON_POOL_ACTIVATION" | "ON_GAME_START" };
 }
 
+export type HoldMode = "none" | "guidedAccess" | "screenPinning" | "lockTask";
+export type HoldExitMethod = "adminPin" | "adminGesture" | "adminQR" | "animateurCode";
+
+export interface HoldExit {
+  method: HoldExitMethod;
+  pin?: string;
+  adminPanel?: { enabled: boolean };
+}
+
 export interface Game {
   gameId: string;
   schemaVersion: string;
   minEngineVersion: string;
   branding?: Record<string, unknown>;
-  global?: Record<string, unknown>;
+  global?: Record<string, unknown> & { holdMode?: HoldMode; holdExit?: HoldExit };
   nodes: GameNode[];
 }
 

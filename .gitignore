@@ -1,0 +1,36 @@
+# macOS
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
+
+# Cross-project build artifacts
+**/node_modules/
+**/dist/
+**/build/
+**/dist-ssr/
+
+# Vite temp
+**/.vite-temp/
+**/.tmp/
+
+# Gradle (player)
+**/.gradle/
+**/gradle-*/
+
+# Kotlin
+**/.kotlin/
+
+# IDE
+**/.idea/
+**/.vscode/*
+!**/.vscode/extensions.json
+
+# Local config
+**/local.properties
+**/*.local
+
+# Environment
+.env
+.env.local

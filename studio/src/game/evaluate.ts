@@ -9,6 +9,8 @@ export interface Sim {
   nowMs: number; // horloge session, GAME_START = 0
   completedAt: Map<string, number>; // nodeId -> timestamp
   accuracyM?: number; // precision GPS simulee (defaut : bonne, 5 m)
+  holdMode?: string; // mode kiosque HOLD actif
+  holdExit?: { method: string }; // exit animateur en cours
 }
 
 export interface PreviewEvent {

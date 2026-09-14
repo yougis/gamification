@@ -1,7 +1,8 @@
 // Validation couches 1 (AJV Draft-07) + 2 (applicative, sous-ensemble POC).
 // C1 exhaustive. C2 : cycles, atteignabilite isEnding (+ chaque candidat),
 // AND-exclusif direct, topo pools ON_GAME_START + regle boot, drawCount<=len,
-// unicite candidats. Verdicts separes par couche, comme exige.
+// unicite candidats, cohérence holdMode/holdExit/needsLock. Verdicts separes
+// par couche, comme exige.
 import Ajv from "ajv";
 import schema from "./schema/game-schema.json";
 import quiz from "./schema/quiz.json";
@@ -94,6 +95,22 @@ export function deadEnds(game: Game): string[] {
 export function validateLayer2(game: Game): LayerReport {
   const errors: string[] = [];
   const byId = new Map(game.nodes.map((n) => [n.id, n]));
+
+  // HOLD validation: coherence holdMode/holdExit/needsLock.
+  const holdMode = (game.global as Record<string, unknown>)?.holdMode as string | undefined;
+  const holdExit = (game.global as Record<string, unknown>)?.holdExit as Record<string, unknown> | undefined;
+  if (holdMode && holdMode !== "none") {
+    if (!holdExit || !holdExit.method) {
+      errors.push(`C2 holdExit requis quand holdMode=${holdMode}`);
+    }
+    // Check modules with needsLock require holdMode != none.
+    for (const n of game.nodes) {
+      const needsLock = (n.module.data as Record<string, unknown>)?.needsLock === true;
+      if (needsLock && holdMode === "none") {
+        errors.push(`C2 Module ${n.id} (needsLock) nécessite holdMode != none`);
+      }
+    }
+  }
 
   // Cycles (aretes allowCycle:true ignorees).
   const WHITE = 0, GRAY = 1, BLACK = 2;

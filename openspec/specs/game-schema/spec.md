@@ -10,15 +10,33 @@ Donne au framework son document JSON opposable : structure, champs, enums et exe
 
 Le schéma SHALL définir la racine : `gameId` (string non vide), `schemaVersion`
 (semver du schéma), `nodes[]` (>=1), `branding` (objet), `global` (carte, trace
-GPX display, rayon GPS global). `additionalProperties:false` à chaque niveau.
+GPX display, rayon GPS global, `holdMode` enum `"none"|"guidedAccess"|"screenPinning"|"lockTask"`,
+`holdExit` objet avec `method`). `additionalProperties:false` à chaque niveau.
 Le `schemaVersion` du Jeu SHALL être vérifié contre le `minEngineVersion` à
 l'ouverture : moteur trop vieux = refus explicite, jamais lecture partielle.
+`holdMode` et `holdExit` ne sont jamais une condition de graphe : ce sont des
+meta-états du runtime. Si `holdMode` vaut `"none"` ou est absent, `holdExit` est
+optionnel. Si `holdMode` vaut `"guidedAccess"`, `"screenPinning"` ou `"lockTask"`,
+`holdExit` est requis avec `method` (Draft-07 `if/then`).
 
 #### Scenario: Vieux moteur refuse nouveau Jeu
 
 - **GIVEN** un Jeu `schemaVersion:1.2.0` ouvert par un moteur `max:1.0.0`
 - **WHEN** le runtime charge le pack
 - **THEN** il refuse avec message de mise à jour au lieu de jouer partiellement
+
+#### Scenario: Ancien moteur accepte jeu sans holdMode
+
+- **GIVEN** un Jeu `schemaVersion:1.0.0` sans `global.holdMode`
+- **WHEN** le runtime charge le pack
+- **THEN** il accepte (holdMode absent = `"none"`, pas de verrouillage)
+
+#### Scenario: Jeu HOLD valide accepte
+
+- **GIVEN** un Jeu `schemaVersion:1.1.0` avec `global.holdMode: "guidedAccess"`
+  et `global.holdExit.method: "adminPin"`
+- **WHEN** le runtime charge le pack
+- **THEN** il accepte et active le verrouillage kiosque
 
 ### Requirement: Objet Noeud complet
 

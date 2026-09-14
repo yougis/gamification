@@ -1,0 +1,116 @@
+package com.geoplay.player.data
+
+import android.content.Context
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import com.geoplay.player.model.GameProgressEntity
+import com.geoplay.player.model.NodeCompletionEntity
+import com.geoplay.player.model.RandomDrawEntity
+import com.geoplay.player.model.ScoreEntity
+import com.geoplay.player.model.SessionEntity
+
+class GameRepository(
+    private val dao: GameDao,
+    private val context: Context
+) {
+    companion object {
+        @Volatile
+        private var INSTANCE: GameRepository? = null
+
+        fun getInstance(context: Context): GameRepository {
+            return INSTANCE ?: synchronized(this) {
+                val instance = GameRepository(
+                    GameDatabase.getInstance(context).gameDao(),
+                    context.applicationContext
+                )
+                INSTANCE = instance
+                instance
+            }
+        }
+    }
+
+    suspend fun createSession(gameId: String, sessionId: String): SessionEntity {
+        val session = SessionEntity(
+            sessionId = sessionId,
+            gameId = gameId,
+            startedAt = System.currentTimeMillis()
+        )
+        dao.insertSessionWithTransaction(session)
+        return session
+    }
+
+    suspend fun getSession(sessionId: String): SessionEntity? = dao.getSession(sessionId)
+
+    suspend fun completeSession(sessionId: String) {
+        dao.completeSession(sessionId, System.currentTimeMillis())
+    }
+
+    suspend fun getProgress(sessionId: String) = dao.getProgress(sessionId)
+
+    suspend fun saveProgress(progress: GameProgressEntity) {
+        dao.upsertProgress(progress)
+    }
+
+    suspend fun getNodeCompletion(sessionId: String, nodeId: String): NodeCompletionEntity? =
+        dao.getNodeCompletion(sessionId, nodeId)
+
+    suspend fun getCompletions(sessionId: String): List<NodeCompletionEntity> =
+        dao.getAllCompletionsForSession(sessionId)
+
+    suspend fun completeNode(
+        sessionId: String,
+        nodeId: String,
+        score: Int = 0,
+        isReplay: Boolean = false,
+        isCheat: Boolean = false
+    ): Long {
+        val completion = NodeCompletionEntity(
+            sessionId = sessionId,
+            nodeId = nodeId,
+            completedAt = System.currentTimeMillis(),
+            score = score,
+            isReplay = isReplay,
+            isCheat = isCheat
+        )
+        return withContext(Dispatchers.IO) {
+            dao.insertNodeCompletion(completion)
+        }
+    }
+
+    suspend fun getCompletionCount(sessionId: String, nodeId: String): Int =
+        dao.getCompletionCount(sessionId, nodeId)
+
+    suspend fun getReplayCount(sessionId: String, nodeId: String): Int =
+        dao.getReplayCount(sessionId, nodeId)
+
+    suspend fun getRandomDraw(sessionId: String, poolNodeId: String): RandomDrawEntity? =
+        dao.getRandomDraw(sessionId, poolNodeId)
+
+    suspend fun saveRandomDraw(draw: RandomDrawEntity) {
+        dao.insertRandomDrawWithTransaction(draw)
+    }
+
+    suspend fun getRandomDrawsForSession(sessionId: String): List<RandomDrawEntity> =
+        dao.getAllRandomDrawsForSession(sessionId)
+
+    suspend fun recordScore(sessionId: String, nodeId: String, score: Int, isCheat: Boolean) {
+        val scoreEntity = ScoreEntity(
+            sessionId = sessionId,
+            nodeId = nodeId,
+            score = score,
+            isCheat = isCheat,
+            completedAt = System.currentTimeMillis()
+        )
+        dao.insertScore(scoreEntity)
+    }
+
+    suspend fun getScores(sessionId: String): List<ScoreEntity> = dao.getScoresForSession(sessionId)
+
+    suspend fun getTotalScore(sessionId: String): Int = dao.getTotalScore(sessionId) ?: 0
+
+    suspend fun getLastScoreForNode(sessionId: String, nodeId: String): ScoreEntity? =
+        dao.getLastScoreForNode(sessionId, nodeId)
+
+    suspend fun getSessionsForGame(gameId: String): List<SessionEntity> =
+        dao.getSessionsForGame(gameId)
+}

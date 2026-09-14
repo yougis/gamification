@@ -1,13 +1,11 @@
-// Logique pure des modules socle (testable) : hit-test dilate, choix AR/fallback.
-export interface Poly {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
+export interface ModuleRegistryEntry {
+  type: string;
+  render?: (data: Record<string, unknown>) => unknown;
+  needsLock?: boolean;
 }
 
 // Tap valide si dans un polygone dilate (unites % : meme espace que les polygones).
-export function hitTest(polygons: Poly[], px: number, py: number, dilatation: number): boolean {
+export function hitTest(polygons: { x: number; y: number; w: number; h: number }[], px: number, py: number, dilatation: number): boolean {
   return polygons.some(
     (p) => px >= p.x - dilatation && px <= p.x + p.w + dilatation && py >= p.y - dilatation && py <= p.y + p.h + dilatation,
   );

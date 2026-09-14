@@ -17,8 +17,25 @@
       "properties": {
         "gpsRadiusMeters": {"type": "number", "exclusiveMinimum": 0},
         "map": {"type": "object"},
-        "gpxTrace": {"type": "object"}
-      }
+        "gpxTrace": {"type": "object"},
+        "holdMode": {
+          "type": "string",
+          "enum": ["none", "guidedAccess", "screenPinning", "lockTask"],
+          "default": "none"
+        },
+        "holdExit": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "method": {"type": "string", "enum": ["adminPin", "adminGesture", "adminQR", "animateurCode"]},
+            "pin": {"type": "string", "minLength": 4},
+            "adminPanel": {"type": "object", "properties": {"enabled": {"type": "boolean"}}}
+          }
+        }
+      },
+      "allOf": [
+        {"if": {"required": ["holdMode"], "properties": {"holdMode": {"enum": ["guidedAccess", "screenPinning", "lockTask"]}}}, "then": {"required": ["holdExit"]}}
+      ]
     },
     "nodes": {
       "type": "array",

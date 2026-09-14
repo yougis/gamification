@@ -1,10 +1,28 @@
 // Outils MCP du Studio (spike) : meme schema des deux cotes, rien ne sort sans validation.
 import { validateGame } from "./validate";
 import { sha256Hex, type ManifestFile } from "./pack";
-import type { Game, GameNode, ReviewStatus, StudioMeta } from "./types";
+import type { Game, GameNode, ReviewStatus, StudioMeta, HoldMode, HoldExit } from "./types";
 
 export type { ManifestFile };
 const sha256hex = sha256Hex;
+
+export function setHoldMode(game: Game, mode: HoldMode): Game {
+  const global = { ...(game.global ?? {}), holdMode: mode };
+  return { ...game, global };
+}
+
+export function setHoldExit(game: Game, exitConfig: HoldExit): Game {
+  const global = { ...(game.global ?? {}), holdExit: exitConfig };
+  return { ...game, global };
+}
+
+export function getHoldConfig(game: Game): { holdMode: HoldMode; holdExit?: HoldExit } {
+  const g = game.global as Record<string, unknown> | undefined;
+  return {
+    holdMode: (g?.holdMode as HoldMode) ?? "none",
+    holdExit: g?.holdExit as HoldExit | undefined,
+  };
+}
 
 export function composeNodes(game: Game, nodes: GameNode[]): Game {
   return { ...game, nodes: [...game.nodes, ...nodes] };

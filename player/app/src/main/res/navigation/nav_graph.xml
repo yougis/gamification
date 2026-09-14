@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/nav_graph"
+    app:startDestination="@id/homeFragment">
+
+    <fragment
+        android:id="@+id/homeFragment"
+        android:name="com.geoplay.player.ui.HomeFragment"
+        android:label="@string/menu_home"
+        tools:layout="@layout/fragment_home">
+        <action
+            android:id="@+id/action_homeFragment_to_gameFragment"
+            app:destination="@id/gameFragment" />
+        <action
+            android:id="@+id/action_homeFragment_to_importFragment"
+            app:destination="@id/importFragment" />
+        <action
+            android:id="@+id/action_homeFragment_to_settingsFragment"
+            app:destination="@id/settingsFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/gameFragment"
+        android:name="com.geoplay.player.ui.GameFragment"
+        android:label="@string/menu_game"
+        tools:layout="@layout/fragment_game">
+        <argument
+            android:name="sessionId"
+            app:argType="string"
+            app:nullable="true" />
+        <argument
+            android:name="forceDraw"
+            app:argType="string[]"
+            app:nullable="true" />
+        <action
+            android:id="@+id/action_gameFragment_to_moduleFragment"
+            app:destination="@id/moduleFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/importFragment"
+        android:name="com.geoplay.player.ui.ImportFragment"
+        android:label="@string/menu_import"
+        tools:layout="@layout/fragment_import">
+        <action
+            android:id="@+id/action_importFragment_to_gameFragment"
+            app:destination="@id/gameFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/moduleFragment"
+        android:name="com.geoplay.player.ui.ModuleFragment"
+        android:label="@string/module_detail"
+        tools:layout="@layout/fragment_module">
+        <argument
+            android:name="nodeId"
+            app:argType="string" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/settingsFragment"
+        android:name="com.geoplay.player.ui.SettingsFragment"
+        android:label="@string/menu_settings"
+        tools:layout="@layout/fragment_settings" />
+
+    <fragment
+        android:id="@+id/reviewFragment"
+        android:name="com.geoplay.player.ui.ReviewFragment"
+        android:label="@string/review_title"
+        tools:layout="@layout/fragment_review">
+        <argument
+            android:name="nodeId"
+            app:argType="string" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/previewFragment"
+        android:name="com.geoplay.player.ui.PreviewFragment"
+        android:label="@string/preview_title"
+        tools:layout="@layout/fragment_preview">
+        <argument
+            android:name="sessionId"
+            app:argType="string" />
+    </fragment>
+</navigation>
