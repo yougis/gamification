@@ -126,7 +126,9 @@ chiffrée **avant** téléchargement. Stockage : fichiers app + SQLite.
 
 ## 8. Validation double couche
 
-1. **Draft-07** (forme locale : types, requis, `operator`, `isEnding`, `activation`).
+**Draft-07** est une norme de validation de documents JSON qui impose une structure strictement typée (types, champs requis, enum, `if/then` conditionnel) via le format JSON Schema. C'est la base de la validation formelle des fichiers de jeu GeoPlay.
+
+1. **Norme JSON** (forme locale : types, requis, `operator`, `isEnding`, `activation`).
 2. **Applicative** (cycles, atteignabilité, topo pools, `drawCount`, unicité,
    AND-exclusif direct). Un JSON valide en couche 1 peut rester invalide.
    La garantie est structurelle, jamais une preuve d'exécution terrain.
@@ -151,7 +153,7 @@ Rejouabilité, a11y, batterie/SOS, `WINDOW onMiss`, gamebook : roadmap.
 
 ## 11. Roadmap et lots
 
-`000` socle (ce cahier) → `100` schéma Draft-07 → `200` Studio → `300` moteur
+`000` socle (ce cahier) → `100` schéma de validation JSON → `200` Studio → `300` moteur
 offline → `400` viewer/orchestrateur → `500` modules. Différés `600` sync scoring,
 `610` branding/modes, `620` i18n/difficultés, `630` WINDOW/gamebook, `640` a11y/batterie.
 
@@ -222,5 +224,6 @@ atteignent FIN au validateur ; `forceDraw` couvre les 5 ; 1 modale max constaté
 
 ## 14. Glossaire
 
-Framework, Studio, Jeu, Module, Nœud, activation, `latch`, `allowCycle`/`onReentry`,
-`isEnding`, `RANDOM_POOL`/`POOL_DRAWN`, `forceDraw`, manifest, fixture.
+Voir le **glossaire complet** pour débutants : [`docs/glossary.md`](../glossary.md)
+
+Définitions rapides : Framework, Studio, Jeu, Module, Nœud, activation, `latch`, `allowCycle`/`onReentry`, `isEnding`, `RANDOM_POOL`/`POOL_DRAWN`, `forceDraw`, manifest, fixture, GEOFENCE, TIMEOUT, PROXIMITY_MASTER, HOLD, triche, sessionId.
