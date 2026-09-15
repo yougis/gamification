@@ -84,8 +84,10 @@ Les préfixes de référence SHALL être :
 
 L'auteur sélectionne un préfixe puis modifie individuellement chaque mécanisme. Le préfixe est un point de départ, pas une contrainte. Les jeux hybrides sont supportés en surchargeant les mécanismes du préfixe.
 
+Les préfixes de référence sont configurés par `global.experienceStyle.preset` (remplace l'ancien `global.preset` supprimé). Le tableau de préfixes reste identique mais est maintenant lu depuis `experienceStyle.preset`.
+
 #### Scenario: Auteur sélectionne ESCAPE_GAME puis modifie la progression
-- **GIVEN** un auteur sélectionne le preset ESCAPE_GAME
+- **GIVEN** un auteur sélectionne le preset ESCAPE_GAME via `experienceStyle.preset`
 - **WHEN** il modifie la dimension progression de GRAPH à SEQUENTIAL
 - **THEN** le jeu utilise la progression SEQUENTIAL avec les mécanismes ESCAPE_GAME pour les autres dimensions
 
@@ -96,22 +98,30 @@ L'auteur sélectionne un préfixe puis modifie individuellement chaque mécanism
 
 ### Requirement: Configuration du modèle de navigation
 
-Le jeu SHALL définir `global.navigationModel` et `global.presentation` dans son JSON. Le jeu PEUT également définir `global.preset` pour référencer le préfixe de référence sélectionné.
+Le jeu SHALL définir `global.navigationModel` et `global.presentation` dans son JSON. Le préfixe de référence fonctionnel est désormais sélectionné via `global.experienceStyle.preset`. Le champ `global.preset` est **supprimé**.
 
 - `global.navigationModel` : le modèle de navigation (`"BASIC"`, `"GUIDED"`, `"TREASURE_HUNT"`, `"ESCAPE_GAME"`, `"OPEN_EXPLORATION"`)
 - `global.presentation` : tableau des modes de présentation (`["MAP"]`, `["STORY"]`, `["CLUE", "MAP"]`, etc.)
+- **REMOVED:** `global.preset` — supprimé car redondant avec `navigationModel`. Le préfixe est désormais dans `experienceStyle.preset`.
 
 Si `global.navigationModel` est absent, la valeur par défaut SHALL être `"BASIC"`.
+
+Les jeux existants avec `global.preset` SHALL migrer vers `global.experienceStyle.preset` : un jeu contenant encore `global.preset` est rejeté avec l'erreur `global.preset` obsolète, utilisez `global.experienceStyle.preset`.
 
 #### Scenario: Jeu BASIC sans configuration navigation
 - **GIVEN** un jeu sans `global.navigationModel`
 - **WHEN** le moteur charge le jeu
 - **THEN** le modèle par défaut `"BASIC"` est appliqué
 
-#### Scenario: Jeu ESCAPE_GAME avec configuration
-- **GIVEN** un jeu avec `global.navigationModel: "ESCAPE_GAME"` et `global.presentation: ["TOOLBOX", "CLUE"]`
+#### Scenario: Jeu ESCAPE_GAME avec configuration (post-migration)
+- **GIVEN** un jeu avec `global.navigationModel: "ESCAPE_GAME"`, `global.presentation: ["TOOLBOX", "CLUE"]`, et `global.experienceStyle.preset: "ESCAPE_GAME"`
 - **WHEN** le moteur charge le jeu
-- **THEN** le player affiche la boîte à outils et les indices
+- **THEN** le player affiche la boîte à outils et les indices avec le style ESCAPE_GAME
+
+#### Scenario: Jeu avec ancien preset (migration)
+- **GIVEN** un jeu avec `global.preset: "ESCAPE_GAME"` (ancien format)
+- **WHEN** le validateur controle le jeu
+- **THEN** le jeu est rejeté avec erreur : `global.preset` est obsolète, utilisez `global.experienceStyle.preset`
 
 ### Requirement: Navigation dans le Player
 

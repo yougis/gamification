@@ -89,17 +89,53 @@ export interface HoldExit {
   adminPanel?: { enabled: boolean };
 }
 
+export interface Branding {
+  name: string;
+  primaryColor: string;
+  secondaryColor: string;
+  fontFamily: string;
+  logo?: string;
+}
+
+export interface ExperienceStyleIdentity {
+  name: string;
+  publisher: string;
+  logo?: string;
+  theme: string;
+}
+
+export interface ExperienceStyleVisual {
+  primaryColor: string;
+  secondaryColor: string;
+  fontFamily: string;
+  borderRadius?: number;
+  cardStyle?: string;
+}
+
+export interface ExperienceStyle {
+  preset?: "BASIC" | "GUIDED" | "TREASURE_HUNT" | "ESCAPE_GAME" | "OPEN_EXPLORATION";
+  identity?: ExperienceStyleIdentity;
+  visual?: ExperienceStyleVisual;
+  components?: Record<string, unknown>;
+  media?: Record<string, unknown>;
+  motion?: Record<string, unknown>;
+  map?: Record<string, unknown>;
+  voice?: Record<string, unknown>;
+}
+
 export interface Game {
   gameId: string;
   schemaVersion: string;
   minEngineVersion: string;
-  branding?: Record<string, unknown>;
+  branding?: Branding;
   global?: Record<string, unknown> & {
     holdMode?: HoldMode;
     holdExit?: HoldExit;
     navigationModel?: "BASIC" | "GUIDED" | "TREASURE_HUNT" | "ESCAPE_GAME" | "OPEN_EXPLORATION";
     presentation?: string[];
-    preset?: string;
+    experienceStyle?: ExperienceStyle;
+    gameMode?: "NORMAL" | "ANIMATEUR" | "SOIREE" | "HARDCORE";
+    difficulty?: "ENFANT" | "FAMILLE" | "EXPERT";
   };
   nodes: GameNode[];
   objects?: { id: string; name: string; icon?: string; description?: string; consumable?: boolean; stackable?: boolean }[];

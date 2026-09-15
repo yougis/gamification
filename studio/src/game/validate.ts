@@ -10,7 +10,10 @@ import differenceGame from "./schema/difference-game.json";
 import puzzle from "./schema/puzzle.json";
 import arMarker from "./schema/ar-marker.json";
 import boussole from "./schema/boussole.json";
-import type { Game, GameNode, Condition } from "./types";
+import type { Game, GameNode, Condition, ExperienceStyle, Branding, GameMode, Difficulty } from "./types";
+import { MODULE_REGISTRY } from "./modules";
+
+type LayerReport = { layer: number; errors: string[] };
 
 // Collect all item IDs and clue IDs from the game
 function collectItems(game: Game): Set<string> {
@@ -37,9 +40,9 @@ function nodeRefs(n: GameNode): string[] {
       if (c.allowCycle !== true) out.push(String(c.nodeId ?? c.poolNodeId));
     }
     if (c.type === "TIMER" && c.anchor === "NODE_COMPLETION" && c.anchorNodeId) out.push(c.anchorNodeId);
-    if (c.type === "ITEM_REQUIRED" && c.itemId) out.push(c.itemId);
-    if (c.type === "ITEM_USED" && c.itemId) out.push(c.itemId);
-    if (c.type === "CLUE_RESOLVED" && c.clueId) out.push(c.clueId);
+    // Note : les refs d'inventaire (ITEM_REQUIRED/ITEM_USED/CLUE_RESOLVED)
+    // ne sont PAS des arêtes de graphe : leur existence est vérifiée
+    // séparément, elles ne participent ni aux cycles ni à l'atteignabilité.
   }
   return out;
 }
@@ -96,6 +99,33 @@ export function deadEnds(game: Game): string[] {
 export function validateLayer2(game: Game): LayerReport {
   const errors: string[] = [];
   const byId = new Map(game.nodes.map((n) => [n.id, n]));
+
+  // ExperienceStyle validation.
+  const exStyle = game.experienceStyle;
+  if (exStyle?.preset && !["BASIC", "GUIDED", "TREASURE_HUNT", "ESCAPE_GAME", "OPEN_EXPLORATION"].includes(exStyle.preset)) {
+    errors.push(`C2 experienceStyle.preset invalide: ${exStyle.preset}`);
+  }
+  if (exStyle?.identity?.name && exStyle.identity.name.length === 0) {
+    errors.push(`C2 experienceStyle.identity.name ne peut pas etre vide`);
+  }
+
+  // GameMode et Difficulty validation.
+  if (game.gameMode && !["NORMAL", "ANIMATEUR", "SOIREE", "HARDCORE"].includes(game.gameMode)) {
+    errors.push(`C2 gameMode invalide: ${game.gameMode}`);
+  }
+  if (game.difficulty && !["ENFANT", "FAMILLE", "EXPERT"].includes(game.difficulty)) {
+    errors.push(`C2 difficulty invalide: ${game.difficulty}`);
+  }
+
+  // Branding validation.
+  if (game.branding) {
+    if (game.branding.primaryColor && !/^#[0-9a-fA-F]{6}$/.test(game.branding.primaryColor)) {
+      errors.push(`C2 branding.primaryColor invalide: ${game.branding.primaryColor}`);
+    }
+    if (game.branding.secondaryColor && !/^#[0-9a-fA-F]{6}$/.test(game.branding.secondaryColor)) {
+      errors.push(`C2 branding.secondaryColor invalide: ${game.branding.secondaryColor}`);
+    }
+  }
 
   // HOLD validation: coherence holdMode/holdExit/needsLock.
   const holdMode = (game.global as Record<string, unknown>)?.holdMode as string | undefined;
@@ -271,6 +301,27 @@ export function validateLayer2(game: Game): LayerReport {
   }
 
   return { layer: 2, errors };
+}
+
+const ajv = new Ajv({allErrors: true, strict: false});
+ajv.addSchema(quiz, "modules/quiz.json");
+ajv.addSchema(differenceGame, "modules/difference-game.json");
+ajv.addSchema(puzzle, "modules/puzzle.json");
+ajv.addSchema(arMarker, "modules/ar-marker.json");
+ajv.addSchema(boussole, "modules/boussole.json");
+const validateSchema = ajv.compile(schema);
+
+function validateLayer1(game: unknown): LayerReport {
+  const errors: string[] = [];
+  const valid = validateSchema(game);
+  if (!valid && validateSchema.errors) {
+    for (const e of validateSchema.errors) {
+      const loc = e.instancePath ? e.instancePath.replace(/^\//, "") : "";
+      const msg = e.message ?? "erreur de validation";
+      errors.push(`C1 ${loc ? loc + " : " : ""}${msg}`);
+    }
+  }
+  return { layer: 1, errors };
 }
 
 export function validateGame(game: unknown): { ok: boolean; layers: LayerReport[] } {

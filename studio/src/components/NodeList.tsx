@@ -28,6 +28,7 @@ export function NodeList({
   onChoisir,
   erreursParNoeud,
   lectureSeule,
+  boutonPlier,
 }: {
   game: Game;
   statuts: Record<string, { state: string }>;
@@ -36,6 +37,7 @@ export function NodeList({
   onChoisir: (id: string) => void;
   erreursParNoeud: Map<string, string[]>;
   lectureSeule: boolean;
+  boutonPlier?: React.ReactNode;
 }) {
   const [recherche, setRecherche] = useState("");
   const [filtre, setFiltre] = useState<FiltreListe>("tous");
@@ -65,6 +67,7 @@ export function NodeList({
               Clic = modifier à droite
             </span>
           )}
+          {boutonPlier}
         </div>
         <div className="flex gap-2">
           <label className="flex flex-1 items-center gap-2">

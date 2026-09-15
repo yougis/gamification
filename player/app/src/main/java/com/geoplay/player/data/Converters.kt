@@ -2,10 +2,12 @@ package com.geoplay.player.data
 
 import androidx.room.TypeConverter
 import com.geoplay.player.model.Anchor
+import com.geoplay.player.model.Branding
 import com.geoplay.player.model.ConditionType
 import com.geoplay.player.model.DiscoveryMode
 import com.geoplay.player.model.Difficulty
 import com.geoplay.player.model.DrawTiming
+import com.geoplay.player.model.ExperienceStyle
 import com.geoplay.player.model.GameMode
 import com.geoplay.player.model.Milieu
 import com.geoplay.player.model.ModuleType
@@ -119,10 +121,22 @@ class Converters {
     fun stringToDiscoveryMode(value: String?): DiscoveryMode? = value?.let { DiscoveryMode.valueOf(it) }
 
     @TypeConverter
-    fun listStringToJson(list: List<String>?): String? =
-        list?.let { json.encodeToString(ListSerializer(String.serializer()), it) }
-
-    @TypeConverter
     fun jsonToListString(value: String?): List<String>? =
         value?.let { json.decodeFromString(ListSerializer(String.serializer()), it) }
+
+    @TypeConverter
+    fun experienceStyleToString(style: ExperienceStyle?): String? =
+        style?.let { json.encodeToString(ExperienceStyle.serializer(), it) }
+
+    @TypeConverter
+    fun stringToExperienceStyle(value: String?): ExperienceStyle? =
+        value?.let { json.decodeFromString(ExperienceStyle.serializer(), it) }
+
+    @TypeConverter
+    fun brandingToString(branding: Branding?): String? =
+        branding?.let { json.encodeToString(Branding.serializer(), it) }
+
+    @TypeConverter
+    fun stringToBranding(value: String?): Branding? =
+        value?.let { json.decodeFromString(Branding.serializer(), it) }
 }

@@ -26,6 +26,7 @@ enum class GameMode { NORMAL, ANIMATEUR, SOIREE, HARDCORE }
 enum class ReviewStatus { DRAFT, REVIEWED, PUBLISHED }
 enum class Milieu { EXTERIEUR, FORET, BATIMENT_CAVE }
 
+@Serializable
 data class HoldExit(val method: HoldExitMethod, val pin: String? = null, val adminPanel: Boolean = false)
 
 // Racine Jeu — calquée sur studio/src/game/types.ts (schéma opposable).
@@ -37,13 +38,13 @@ data class Game(
     val schemaVersion: String = "1.0.0",
     val minEngineVersion: String = "1.0.0",
     val nodes: List<GameNode> = emptyList(),
-    val branding: JsonElement? = null,
-    val global: JsonElement? = null,
+    val branding: Branding? = null,
+    val global: GlobalData = GlobalData(),
     val holdMode: HoldMode = HoldMode.NONE,
     val holdExit: HoldExit? = null,
-    val navigationModel: NavigationModel = NavigationModel.BASIC,
-    val presentation: List<String> = emptyList(),
-    val preset: String? = null,
+    val experienceStyle: ExperienceStyle? = null,
+    val gameMode: GameMode = GameMode.NORMAL,
+    val difficulty: Difficulty = Difficulty.FAMILLE,
     val objects: List<GameObject> = emptyList()
 )
 
@@ -62,14 +63,49 @@ data class Branding(
     val name: String = "",
     val primaryColor: String = "#1a7f37",
     val secondaryColor: String = "#5f3dc4",
-    val fontFamily: String = "system-ui"
+    val fontFamily: String = "system-ui",
+    val logo: String? = null
+)
+
+@Serializable
+data class ExperienceStyleIdentity(
+    val name: String = "",
+    val publisher: String = "",
+    val logo: String? = null,
+    val theme: String = "default"
+)
+
+@Serializable
+data class ExperienceStyleVisual(
+    val primaryColor: String = "#1a7f37",
+    val secondaryColor: String = "#5f3dc4",
+    val fontFamily: String = "system-ui",
+    val borderRadius: Int = 12,
+    val cardStyle: String = "rounded"
+)
+
+@Serializable
+data class ExperienceStyle(
+    val preset: String? = null,
+    val identity: ExperienceStyleIdentity? = null,
+    val visual: ExperienceStyleVisual? = null,
+    val components: Map<String, JsonElement> = emptyMap(),
+    val media: Map<String, JsonElement> = emptyMap(),
+    val motion: Map<String, JsonElement> = emptyMap(),
+    val map: Map<String, JsonElement> = emptyMap(),
+    val voice: Map<String, JsonElement> = emptyMap()
 )
 
 @Serializable
 data class GlobalData(
     val gpsRadiusMeters: Int = 30,
+    val navigationModel: NavigationModel = NavigationModel.BASIC,
+    val presentation: List<String> = emptyList(),
     val map: MapConfig = MapConfig(),
-    val gpxTrace: GpxTrace = GpxTrace()
+    val gpxTrace: GpxTrace = GpxTrace(),
+    val experienceStyle: ExperienceStyle? = null,
+    val gameMode: GameMode = GameMode.NORMAL,
+    val difficulty: Difficulty = Difficulty.FAMILLE
 )
 
 @Serializable
@@ -97,9 +133,11 @@ data class GpxTrace(
 
 enum class DiscoveryMode { VISIBLE_NOW, MAP, ON_COMPLETED, ON_CLUE, ON_ITEM, ON_PUZZLE, ON_PROXIMITY, ON_TIME }
 
+@Serializable
 data class Discovery(val mode: DiscoveryMode, val sourceNode: String? = null, val clueId: String? = null, val lat: Double? = null, val lng: Double? = null, val radiusMeters: Int? = null)
 
-data class Effect(val type: String, val itemId: String? = null, val nodeId: String? = null, val variableId: String? = null, val value: Any? = null)
+@Serializable
+data class Effect(val type: String, val itemId: String? = null, val nodeId: String? = null, val variableId: String? = null, val value: JsonElement? = null)
 
 enum class InventoryAction { GIVE, REMOVE, CHECK, USE }
 

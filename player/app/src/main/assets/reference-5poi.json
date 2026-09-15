@@ -2,8 +2,8 @@
   "gameId": "reference-5poi",
   "schemaVersion": "1.0.0",
   "minEngineVersion": "1.0.0",
-  "branding": {},
-  "global": {"gpsRadiusMeters": 30},
+  "branding": {"name": "GeoPlay Reference", "primaryColor": "#1a7f37", "secondaryColor": "#5f3dc4", "fontFamily": "system-ui"},
+  "global": {"gpsRadiusMeters": 30, "navigationModel": "BASIC", "presentation": ["MAP"], "gameMode": "NORMAL", "difficulty": "FAMILLE", "experienceStyle": {"preset": "BASIC"}},
   "nodes": [
     {
       "id": "start",

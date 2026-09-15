@@ -1,0 +1,430 @@
+{
+  "gameId": "sherlock-holmes",
+  "schemaVersion": "1.1.0",
+  "minEngineVersion": "1.0.0",
+  "branding": {
+    "name": "L'Affaire Moriarty",
+    "primaryColor": "#8B0000",
+    "secondaryColor": "#DAA520",
+    "fontFamily": "Georgia, serif"
+  },
+  "global": {
+    "gpsRadiusMeters": 20,
+    "navigationModel": "ESCAPE_GAME",
+    "presentation": [
+      "MAP",
+      "CLUE",
+      "TOOLBOX"
+    ],
+    "holdMode": "guidedAccess",
+    "holdExit": {
+      "method": "adminPin",
+      "pin": "1234"
+    },
+    "difficulty": "FAMILLE",
+    "gameMode": "NORMAL"
+  },
+  "objects": [
+    {
+      "id": "loupe",
+      "name": "Loupe d'investigation",
+      "icon": "loupe.svg",
+      "description": "Permet d'observer les indices caches",
+      "consumable": false,
+      "stackable": true
+    },
+    {
+      "id": "carnet",
+      "name": "Carnet de notes",
+      "icon": "carnet.svg",
+      "description": "Note vos deductions et observations",
+      "consumable": false,
+      "stackable": true
+    },
+    {
+      "id": "poudre",
+      "name": "Poudre fluorescente",
+      "icon": "poudre.svg",
+      "description": "Revele les traces invisibles",
+      "consumable": true,
+      "stackable": false
+    },
+    {
+      "id": "lettre",
+      "name": "Lettre cryptée",
+      "icon": "lettre.svg",
+      "description": "Message code de Moriarty",
+      "consumable": false,
+      "stackable": true
+    },
+    {
+      "id": "cle",
+      "name": "Clé du coffre",
+      "icon": "cle.svg",
+      "description": "Ouvre le coffre de Moriarty",
+      "consumable": false,
+      "stackable": true
+    },
+    {
+      "id": "morceau",
+      "name": "Morceau de carte",
+      "icon": "morceau.svg",
+      "description": "Fragment d'une carte cachee",
+      "consumable": false,
+      "stackable": true
+    }
+  ],
+  "nodes": [
+    {
+      "id": "start",
+      "module": {
+        "type": "INFO",
+        "data": {
+          "backgroundImage": "assets/baker-street.jpg"
+        }
+      },
+      "activation": {
+        "requires": [
+          {
+            "type": "TIMER",
+            "anchor": "GAME_START",
+            "delaySeconds": 0
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "GIVE_ITEM",
+          "itemId": "loupe"
+        },
+        {
+          "type": "GIVE_ITEM",
+          "itemId": "carnet"
+        }
+      ]
+    },
+    {
+      "id": "pool",
+      "module": {
+        "type": "RANDOM_POOL",
+        "data": {}
+      },
+      "activation": {
+        "requires": [
+          {
+            "type": "NODE_COMPLETED",
+            "nodeId": "start"
+          }
+        ]
+      },
+      "randomPool": {
+        "candidates": [
+          "baker",
+          "scotland",
+          "strand",
+          "stbarts",
+          "holmes",
+          "moriarty"
+        ],
+        "drawCount": 1,
+        "drawTiming": "ON_POOL_ACTIVATION"
+      }
+    },
+    {
+      "id": "baker",
+      "module": {
+        "type": "QUIZ",
+        "data": {
+          "schemaVersion": "1.0.0",
+          "questions": [
+            {
+              "q": "Quel indice n'a pas été retrouve sur les lieux du crime ?",
+              "options": [
+                "La loupe brisée",
+                "L'empreinte digitale",
+                "Le cheval blanc",
+                "La pipe brisée"
+              ],
+              "correctIndex": 2,
+              "explanation": "Le cheval blanc n'apparait pas dans le rapport de scène.",
+              "points": 10
+            }
+          ]
+        }
+      },
+      "activation": {
+        "requires": [
+          {
+            "type": "POOL_DRAWN",
+            "poolNodeId": "pool"
+          },
+          {
+            "type": "GEOFENCE",
+            "lat": 48.01,
+            "lng": 2.01,
+            "radiusMeters": 30,
+            "predicate": "dwell",
+            "dwellMs": 8000
+          }
+        ],
+        "operator": "AND"
+      },
+      "latch": true,
+      "effects": [
+        {
+          "type": "GIVE_ITEM",
+          "itemId": "poudre"
+        },
+        {
+          "type": "REVEAL_NODE",
+          "nodeId": "moriarty"
+        }
+      ]
+    },
+    {
+      "id": "scotland",
+      "module": {
+        "type": "PUZZLE",
+        "data": {
+          "schemaVersion": "1.0.0",
+          "image": "assets/scotland-yard.svg"
+        }
+      },
+      "activation": {
+        "requires": [
+          {
+            "type": "POOL_DRAWN",
+            "poolNodeId": "pool"
+          },
+          {
+            "type": "GEOFENCE",
+            "lat": 48.02,
+            "lng": 2.02,
+            "radiusMeters": 25,
+            "predicate": "enter"
+          }
+        ],
+        "operator": "AND"
+      },
+      "latch": true,
+      "effects": [
+        {
+          "type": "GIVE_ITEM",
+          "itemId": "lettre"
+        }
+      ]
+    },
+    {
+      "id": "strand",
+      "module": {
+        "type": "CODE_INPUT",
+        "data": {
+          "schemaVersion": "1.0.0",
+          "code": "MORIARTY"
+        }
+      },
+      "activation": {
+        "requires": [
+          {
+            "type": "POOL_DRAWN",
+            "poolNodeId": "pool"
+          },
+          {
+            "type": "GEOFENCE",
+            "lat": 48.03,
+            "lng": 2.03,
+            "radiusMeters": 20,
+            "predicate": "dwell",
+            "dwellMs": 5000
+          },
+          {
+            "type": "ITEM_REQUIRED",
+            "itemId": "lettre"
+          }
+        ],
+        "operator": "AND"
+      },
+      "latch": true,
+      "effects": [
+        {
+          "type": "GIVE_ITEM",
+          "itemId": "cle"
+        }
+      ]
+    },
+    {
+      "id": "stbarts",
+      "module": {
+        "type": "BOUSSOLE",
+        "data": {
+          "schemaVersion": "1.0.0",
+          "toleranceDeg": 10
+        }
+      },
+      "activation": {
+        "requires": [
+          {
+            "type": "POOL_DRAWN",
+            "poolNodeId": "pool"
+          },
+          {
+            "type": "GEOFENCE",
+            "lat": 48.04,
+            "lng": 2.04,
+            "radiusMeters": 25,
+            "predicate": "enter"
+          }
+        ],
+        "operator": "AND"
+      },
+      "latch": true,
+      "effects": [
+        {
+          "type": "GIVE_ITEM",
+          "itemId": "morceau"
+        }
+      ]
+    },
+    {
+      "id": "holmes",
+      "module": {
+        "type": "AR_MARKER",
+        "data": {
+          "schemaVersion": "1.0.0",
+          "marker": "assets/holmes.marker.svg",
+          "fallback2D": {}
+        }
+      },
+      "activation": {
+        "requires": [
+          {
+            "type": "POOL_DRAWN",
+            "poolNodeId": "pool"
+          },
+          {
+            "type": "GEOFENCE",
+            "lat": 48.05,
+            "lng": 2.05,
+            "radiusMeters": 30,
+            "predicate": "enter"
+          }
+        ],
+        "operator": "AND"
+      },
+      "latch": true,
+      "discovery": {
+        "mode": "ON_COMPLETED",
+        "sourceNode": "start"
+      },
+      "effects": [
+        {
+          "type": "REVEAL_NODE",
+          "nodeId": "moriarty"
+        }
+      ]
+    },
+    {
+      "id": "moriarty",
+      "module": {
+        "type": "DIFFERENCE_GAME",
+        "data": {
+          "schemaVersion": "1.0.0",
+          "polygons": [
+            {
+              "x": 10,
+              "y": 10,
+              "w": 5,
+              "h": 5
+            }
+          ]
+        }
+      },
+      "activation": {
+        "requires": [
+          {
+            "type": "ITEM_REQUIRED",
+            "itemId": "cle"
+          },
+          {
+            "type": "ITEM_REQUIRED",
+            "itemId": "morceau"
+          },
+          {
+            "type": "ITEM_USED",
+            "itemId": "poudre",
+            "consumed": true
+          }
+        ],
+        "operator": "AND"
+      },
+      "latch": true,
+      "discovery": {
+        "mode": "ON_PUZZLE",
+        "sourceNode": "holmes"
+      },
+      "effects": [
+        {
+          "type": "GIVE_ITEM",
+          "itemId": "cle"
+        },
+        {
+          "type": "REVEAL_NODE",
+          "nodeId": "fin"
+        }
+      ]
+    },
+    {
+      "id": "fin",
+      "module": {
+        "type": "QUIZ",
+        "data": {
+          "schemaVersion": "1.0.0",
+          "questions": [
+            {
+              "q": "Qui a résolu l'affaire Moriarty ?",
+              "options": [
+                "Watson",
+                "L'inspecteur Lestrade",
+                "Sherlock Holmes",
+                "Moriarty"
+              ],
+              "correctIndex": 2,
+              "explanation": "Seul Sherlock Holmes a pu reunir toutes les pieces du puzzle.",
+              "points": 100
+            }
+          ]
+        }
+      },
+      "isEnding": true,
+      "activation": {
+        "requires": [
+          {
+            "type": "NODE_COMPLETED",
+            "nodeId": "baker"
+          },
+          {
+            "type": "NODE_COMPLETED",
+            "nodeId": "scotland"
+          },
+          {
+            "type": "NODE_COMPLETED",
+            "nodeId": "strand"
+          },
+          {
+            "type": "NODE_COMPLETED",
+            "nodeId": "stbarts"
+          },
+          {
+            "type": "NODE_COMPLETED",
+            "nodeId": "holmes"
+          },
+          {
+            "type": "NODE_COMPLETED",
+            "nodeId": "moriarty"
+          }
+        ],
+        "operator": "OR"
+      }
+    }
+  ]
+}

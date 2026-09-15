@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#4a5568"/>
+      <stop offset="100%" stop-color="#2d3748"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="600" fill="url(#sky)"/>
+  <!-- Building -->
+  <rect x="200" y="150" width="400" height="450" fill="#1a202c" rx="4"/>
+  <!-- Windows -->
+  <rect x="280" y="200" width="60" height="80" fill="#faf5eb" opacity="0.8" rx="2"/>
+  <rect x="380" y="200" width="60" height="80" fill="#faf5eb" opacity="0.8" rx="2"/>
+  <rect x="480" y="200" width="60" height="80" fill="#faf5eb" opacity="0.8" rx="2"/>
+  <rect x="280" y="320" width="60" height="80" fill="#faf5eb" opacity="0.8" rx="2"/>
+  <rect x="380" y="320" width="60" height="80" fill="#faf5eb" opacity="0.8" rx="2"/>
+  <rect x="480" y="320" width="60" height="80" fill="#faf5eb" opacity="0.8" rx="2"/>
+  <rect x="280" y="440" width="60" height="80" fill="#faf5eb" opacity="0.8" rx="2"/>
+  <rect x="380" y="440" width="60" height="80" fill="#faf5eb" opacity="0.8" rx="2"/>
+  <rect x="480" y="440" width="60" height="80" fill="#faf5eb" opacity="0.8" rx="2"/>
+  <!-- Door -->
+  <rect x="370" y="420" width="60" height="180" fill="#8B0000" rx="3"/>
+  <!-- Roof -->
+  <rect x="180" y="130" width="440" height="30" fill="#DAA520" rx="4"/>
+  <!-- Flag -->
+  <line x1="400" y1="130" x2="400" y2="90" stroke="#8B0000" stroke-width="3"/>
+  <rect x="400" y="80" width="40" height="25" fill="#8B0000"/>
+  <!-- Name plate -->
+  <rect x="320" y="530" width="160" height="30" fill="#DAA520" rx="3"/>
+  <text x="400" y="550" text-anchor="middle" font-size="16" fill="#8B0000" font-family="Georgia, serif">SCOTLAND YARD</text>
+</svg>

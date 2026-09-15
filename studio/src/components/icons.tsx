@@ -11,6 +11,7 @@ export type IconName =
   | "valider"
   | "exemple"
   | "exporter"
+  | "importer"
   | "annuler"
   | "retablir"
   | "liste"
@@ -75,6 +76,13 @@ const PATHS: Record<IconName, React.ReactNode> = {
     <>
       <path d="M12 4v11" />
       <path d="M7.5 10.5 12 15l4.5-4.5" />
+      <path d="M4.5 19.5h15" />
+    </>
+  ),
+  importer: (
+    <>
+      <path d="M12 20v-11" />
+      <path d="M7.5 13.5 12 9l4.5 4.5" />
       <path d="M4.5 19.5h15" />
     </>
   ),

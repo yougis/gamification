@@ -4,6 +4,7 @@ export interface ModuleRegistryEntry {
   needsLock?: boolean;
   needsInventory?: boolean;
   presentationNeeds?: string[];
+  experienceNeeds?: string[];
   producesEffects?: string[];
 }
 

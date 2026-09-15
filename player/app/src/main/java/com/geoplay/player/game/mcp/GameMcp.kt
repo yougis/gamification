@@ -2,8 +2,10 @@ package com.geoplay.player.game.mcp
 
 import com.geoplay.player.model.Activation
 import com.geoplay.player.model.Anchor
+import com.geoplay.player.model.Branding
 import com.geoplay.player.model.Condition
 import com.geoplay.player.model.ConditionType
+import com.geoplay.player.model.ExperienceStyle
 import com.geoplay.player.model.Game
 import com.geoplay.player.model.GameNode
 import com.geoplay.player.model.HoldExit
@@ -11,6 +13,8 @@ import com.geoplay.player.model.HoldExitMethod
 import com.geoplay.player.model.HoldMode
 import com.geoplay.player.model.ModuleData
 import com.geoplay.player.model.Operator
+import com.geoplay.player.model.GameMode
+import com.geoplay.player.model.Difficulty
 
 // Port de studio/src/game/mcp.ts addSecoursCode : secours QUIZ + OR sur les avals.
 fun addSecoursCode(game: Game, nodeId: String): Game {
@@ -48,3 +52,22 @@ fun setHoldExit(game: Game, exitConfig: HoldExit): Game {
 fun getHoldConfig(game: Game): Pair<HoldMode, HoldExit?> {
     return Pair(game.holdMode, game.holdExit)
 }
+
+fun setExperienceStyle(game: Game, style: ExperienceStyle): Game {
+    return game.copy(experienceStyle = style)
+}
+
+fun setBranding(game: Game, branding: Branding): Game {
+    return game.copy(branding = branding)
+}
+
+fun setGameMode(game: Game, mode: GameMode): Game {
+    return game.copy(gameMode = mode)
+}
+
+fun setDifficulty(game: Game, difficulty: Difficulty): Game {
+    return game.copy(difficulty = difficulty)
+}
+
+fun getGameMode(game: Game): GameMode = game.gameMode
+fun getDifficulty(game: Game): Difficulty = game.difficulty

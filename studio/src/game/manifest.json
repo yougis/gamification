@@ -1,0 +1,63 @@
+{
+  "version": "1.0.0",
+  "gameId": "sherlock-holmes",
+  "theme": "victorian",
+  "description": "L Affaire Moriarty - Jeu demo Sherlock Holmes",
+  "files": [
+    {
+      "path": "game-sherlock-holmes.json",
+      "size": 9320,
+      "sha256": "f5add100182c4703e09022b65b14e9defc5c2c6ea51c4053d0e0cb043ea6311c"
+    },
+    {
+      "path": "assets/baker-street.jpg",
+      "size": 7556094,
+      "sha256": "7336051d2faf8472a553f80fadd8ba26778e55210acbdd75764abfc6ba14976b"
+    },
+    {
+      "path": "assets/carnet.svg",
+      "size": 545,
+      "sha256": "3bff7e90a487d6ffd30d981a844683448ef5d48d62de11a45ca8803904dc8956"
+    },
+    {
+      "path": "assets/cle.svg",
+      "size": 556,
+      "sha256": "0fdf31282682556c5ce0b2f8775bd44a7c8942b7c12c492eb0fb288b56196805"
+    },
+    {
+      "path": "assets/holmes-fallback.svg",
+      "size": 209,
+      "sha256": "ee1a49aa49661e09df594839d21492745c1d58ba45b49f79e58d05b0a0b28702"
+    },
+    {
+      "path": "assets/holmes.marker.svg",
+      "size": 476,
+      "sha256": "6ee8c977ad01a5f8c6bde504a2bb2fc1996f03bab69be3ef01d1822d0156f854"
+    },
+    {
+      "path": "assets/lettre.svg",
+      "size": 518,
+      "sha256": "c3fdf55fb4c588aada60ef82a6c3c112187a193d99d74d9829de65cff4491864"
+    },
+    {
+      "path": "assets/loupe.svg",
+      "size": 414,
+      "sha256": "25f30b97a50b31b96c948850e706d237086c14196848acf106ab4259cb918a03"
+    },
+    {
+      "path": "assets/morceau.svg",
+      "size": 416,
+      "sha256": "e31ce17f9941159fca9e9b092549e8ab8c7c40678a9055350fbe8d5cd26d24c1"
+    },
+    {
+      "path": "assets/poudre.svg",
+      "size": 383,
+      "sha256": "5584e29c961abf4310962a82e6e2f9bb4580aa7b97f0bffbfe3b81a25a3143e9"
+    },
+    {
+      "path": "assets/scotland-yard.svg",
+      "size": 1747,
+      "sha256": "dec73b991e6e4b8ee01919d3c0e6525dcbd68efc4cd3f3c09b0c59d16601c84c"
+    }
+  ]
+}

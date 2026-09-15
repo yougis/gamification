@@ -3,8 +3,10 @@ package com.geoplay.player.game
 import com.geoplay.player.model.ConditionType
 import com.geoplay.player.model.DrawTiming
 import com.geoplay.player.model.DiscoveryMode
+import com.geoplay.player.model.ExperienceStyle
 import com.geoplay.player.model.Game
 import com.geoplay.player.model.GameNode
+import com.geoplay.player.model.GlobalData
 import com.geoplay.player.model.HoldExit
 import com.geoplay.player.model.HoldMode
 import com.geoplay.player.model.ModuleData
@@ -13,6 +15,8 @@ import com.geoplay.player.model.Operator
 import com.geoplay.player.model.Predicate
 import com.geoplay.player.model.RandomPool
 import com.geoplay.player.model.*
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonPrimitive
 import kotlin.math.abs
 
 private val ENV = setOf(ConditionType.GEOFENCE, ConditionType.TIMER, ConditionType.PROXIMITY_MASTER)
@@ -22,19 +26,19 @@ private val ITEM_CONDITIONS = setOf(ConditionType.ITEM_REQUIRED, ConditionType.I
 // Sémantique opposable = specs 000/100 : latch, file FIFO à modale unique,
 // pools persistés, WINDOW/CONDITIONAL ignorés gracieusement, HOLD kiosque.
 
-data class DiscoveryState(val discovered: Set<String> = emptySet(), val variables: Map<String, Any> = emptyMap())
+data class DiscoveryState(val discovered: Set<String> = emptySet(), val items: Map<String, Int> = emptyMap(), val variables: Map<String, Any> = emptyMap())
 
-data class InventoryState(val items: Map<String, Int> = emptyMap())
+data class InventoryState(val items: Map<String, Int> = emptyMap(), val variables: Map<String, Any> = emptyMap())
 
 fun evaluateDiscovery(node: GameNode, discoveryState: DiscoveryState): Boolean {
     val d = node.discovery ?: return true
     return when (d.mode) {
         DiscoveryMode.VISIBLE_NOW -> true
-        DiscoveryMode.ON_COMPLETED -> d.sourceNode?.let { id -> discoveryState.discovered.contains(id) } ?: true
-        DiscoveryMode.ON_CLUE -> d.clueId?.let { id -> discoveryState.discovered.contains(id) } ?: true
-        DiscoveryMode.ON_ITEM -> d.itemId?.let { id -> discoveryState.items.containsKey(id) } ?: true
-        DiscoveryMode.ON_PUZZLE -> d.sourceNode?.let { id -> discoveryState.discovered.contains(id) } ?: true
-        DiscoveryMode.ON_PROXIMITY -> d.sourceNode?.let { id -> discoveryState.discovered.contains(id) } ?: true
+        DiscoveryMode.ON_COMPLETED -> d.sourceNode != null && discoveryState.discovered.contains(d.sourceNode)
+        DiscoveryMode.ON_CLUE -> d.clueId != null && discoveryState.discovered.contains(d.clueId)
+        DiscoveryMode.ON_ITEM -> d.sourceNode != null && discoveryState.items.containsKey(d.sourceNode)
+        DiscoveryMode.ON_PUZZLE -> d.sourceNode != null && discoveryState.discovered.contains(d.sourceNode)
+        DiscoveryMode.ON_PROXIMITY -> d.sourceNode != null && discoveryState.discovered.contains(d.sourceNode)
         DiscoveryMode.ON_TIME -> true
         DiscoveryMode.MAP -> true
     }
@@ -46,7 +50,7 @@ fun applyEffects(node: GameNode, inventory: InventoryState): InventoryState {
         when (effect.type) {
             "GIVE_ITEM" -> {
                 val itemId = effect.itemId ?: continue
-                val qty = effect.value as? Int ?: 1
+                val qty = effect.value?.let { it as? JsonPrimitive }?.content?.toInt() ?: 1
                 state = state.copy(items = state.items + (itemId to (state.items[itemId] ?: 0) + qty))
             }
             "REMOVE_ITEM" -> {
@@ -55,7 +59,7 @@ fun applyEffects(node: GameNode, inventory: InventoryState): InventoryState {
             }
             "MODIFY_VARIABLE" -> {
                 val vid = effect.variableId ?: continue
-                state = state.copy(variables = state.variables + (vid to (effect.value ?: true)))
+                state = state.copy(variables = state.variables + (vid to (effect.value?.let { it as? JsonPrimitive }?.content?.toBoolean() ?: true)))
             }
             "REVEAL_NODE", "UNLOCK_NODE" -> { /* handled by discovery */ }
         }
@@ -112,8 +116,6 @@ fun drawPool(pool: GameNode, seedStr: String, forced: List<String>? = null): Lis
     }
     return out
 }
-
-private val ENV = setOf(ConditionType.GEOFENCE, ConditionType.TIMER, ConditionType.PROXIMITY_MASTER)
 
 private fun condTrue(
     nodeId: String,
@@ -276,8 +278,6 @@ fun validateHoldConfig(game: Game): List<String> {
     if (holdMode != HoldMode.NONE) {
         if (game.holdExit == null) {
             errors.add("holdExit requis quand holdMode=$holdMode")
-        } else if (game.holdExit.method == null) {
-            errors.add("holdExit.method requis")
         }
     }
     // Vérifie que les modules needsLock ne sont pas en mode none
@@ -295,18 +295,61 @@ fun presentWithHold(
     holdActive: Boolean,
     holdMode: HoldMode
 ): Presentation {
-    // Si HOLD actif, l'application est verrouillée : aucune nouvelle modale.
     if (holdActive && holdMode != HoldMode.NONE) {
-        val queue = prevQueue.filter { stillThere.contains(it) && it != prevActive }.toMutableList()
+        val queue = prevQueue.filter { unlocked.contains(it) && it != prevActive }.toMutableList()
         for (id in unlocked) if (id != prevActive && !queue.contains(id)) queue.add(id)
         return Presentation(prevActive, queue)
     }
     return present(unlocked, prevQueue, prevActive)
 }
 
-// --- Navigation models (tache 4.1-4.3) ---
+fun resolveExperienceStyle(game: Game): ExperienceStyle {
+    val preset = game.experienceStyle?.preset ?: "BASIC"
+    val defaults = defaultExperienceStyleForPreset(preset)
+    val override = game.experienceStyle ?: ExperienceStyle()
+    return ExperienceStyle(
+        preset = preset,
+        identity = override.identity ?: defaults.identity,
+        visual = override.visual ?: defaults.visual,
+        components = override.components.ifEmpty { defaults.components },
+        media = override.media.ifEmpty { defaults.media },
+        motion = override.motion.ifEmpty { defaults.motion },
+        map = override.map.ifEmpty { defaults.map },
+        voice = override.voice.ifEmpty { defaults.voice }
+    )
+}
+
+fun defaultExperienceStyleForPreset(preset: String): ExperienceStyle {
+    return when (preset) {
+        "GUIDED" -> ExperienceStyle(
+            preset = preset,
+            visual = ExperienceStyleVisual(primaryColor = "#2196F3", secondaryColor = "#9C27B0", fontFamily = "system-ui")
+        )
+        "TREASURE_HUNT" -> ExperienceStyle(
+            preset = preset,
+            visual = ExperienceStyleVisual(primaryColor = "#4CAF50", secondaryColor = "#FF9800", fontFamily = "system-ui"),
+            components = mapOf<String, JsonElement>("cluePanel" to JsonPrimitive("expanded"), "mapStyle" to JsonPrimitive("satellite"))
+        )
+        "ESCAPE_GAME" -> ExperienceStyle(
+            preset = preset,
+            visual = ExperienceStyleVisual(primaryColor = "#F44336", secondaryColor = "#2196F3", fontFamily = "monospace"),
+            components = mapOf<String, JsonElement>("toolbox" to JsonPrimitive("expanded"), "cluePanel" to JsonPrimitive("always-visible"))
+        )
+        "OPEN_EXPLORATION" -> ExperienceStyle(
+            preset = preset,
+            visual = ExperienceStyleVisual(primaryColor = "#795548", secondaryColor = "#607D8B", fontFamily = "system-ui"),
+            components = mapOf<String, JsonElement>("mapStyle" to JsonPrimitive("topographic"), "navigationBar" to JsonPrimitive("minimal"))
+        )
+        else -> ExperienceStyle(preset = "BASIC")
+    }
+}
+
+fun getExperienceStyle(game: Game): ExperienceStyle {
+    return game.experienceStyle ?: resolveExperienceStyle(game)
+}
+
 fun getNavigationModel(game: Game): NavigationModel {
-    return game.navigationModel
+    return game.global.navigationModel
 }
 
 fun isAutoActivated(game: Game, nodeId: String): Boolean {
@@ -317,7 +360,7 @@ fun isAutoActivated(game: Game, nodeId: String): Boolean {
         NavigationModel.ESCAPE_GAME -> node.activation.requires.any { it.type == ConditionType.CODE_INPUT || it.type == ConditionType.CLUE_RESOLVED }
         NavigationModel.TREASURE_HUNT -> node.activation.requires.any { it.type == ConditionType.GEOFENCE || it.type == ConditionType.PROXIMITY_MASTER }
         NavigationModel.OPEN_EXPLORATION -> true
-        NavigationModel.BASIC -> node.activation.requires.any { ENV.contains(it.type) }
+        NavigationModel.BASIC -> node.activation.requires.any { t -> t.type in ENV }
     }
 }
 

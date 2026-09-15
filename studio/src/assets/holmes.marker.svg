@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <circle cx="50" cy="50" r="45" fill="none" stroke="#8B0000" stroke-width="4"/>
+  <circle cx="50" cy="50" r="30" fill="#DAA520" opacity="0.3"/>
+  <text x="50" y="55" text-anchor="middle" font-size="24" fill="#8B0000" font-weight="bold">H</text>
+  <path d="M30 30 Q50 20 70 30" fill="none" stroke="#DAA520" stroke-width="2"/>
+  <path d="M30 70 Q50 80 70 70" fill="none" stroke="#DAA520" stroke-width="2"/>
+</svg>

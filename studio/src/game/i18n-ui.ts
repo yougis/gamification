@@ -54,6 +54,27 @@ export const MILIEUX = {
 
 export type Milieu = keyof typeof MILIEUX;
 
+export const EXPERIENCE_STYLE_PRESETS: Record<string, { nom: string; aide: string }> = {
+  BASIC: { nom: "Basique", aide: "Course d'orientation classique avec carte" },
+  GUIDED: { nom: "Guidé", aide: "Parcours linéaire narratif sans GPS requis" },
+  TREASURE_HUNT: { nom: "Chasse au trésor", aide: "Indices + carte + objets à collecter" },
+  ESCAPE_GAME: { nom: "Escape game", aide: "Boîte à outils + énigmes + objets" },
+  OPEN_EXPLORATION: { nom: "Exploration libre", aide: "Tous les POI accessibles dès le départ" },
+};
+
+export const GAME_MODES: Record<string, { nom: string; aide: string }> = {
+  NORMAL: { nom: "Normal", aide: "Jeu standard sans contraintes spéciales" },
+  ANIMATEUR: { nom: "Animateur", aide: "Mode guidé pour l'animateur" },
+  SOIREE: { nom: "Soirée", aide: "Mode événementiel avec timings" },
+  HARDCORE: { nom: "Hardcore", aide: "Sans indices, sans reprise" },
+};
+
+export const DIFFICULTIES: Record<string, { nom: string; aide: string }> = {
+  ENFANT: { nom: "Enfant", aide: "Adapté aux jeunes joueurs" },
+  FAMILLE: { nom: "Famille", aide: "Accessible à tous âges" },
+  EXPERT: { nom: "Expert", aide: "Difficulté élevée, indices limités" },
+};
+
 // États lisibles.
 export const ETATS_FR: Record<string, string> = {
   draft: "Brouillon",
@@ -65,6 +86,8 @@ export const OPERATEURS_FR: Record<string, string> = {
   AND: "Toutes les conditions (Tous)",
   OR: "Au moins une (Au moins un)",
 };
+
+export const IMPORTER = { nom: "Importer", aide: "Charger un fichier JSON de jeu" };
 
 // Erreurs de validation traduites (cartographie des verdicts C1/C2).
 export function erreurFR(msg: string): string {

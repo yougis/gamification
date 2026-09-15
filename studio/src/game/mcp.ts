@@ -1,7 +1,7 @@
 // Outils MCP du Studio (spike) : meme schema des deux cotes, rien ne sort sans validation.
 import { validateGame } from "./validate";
 import { sha256Hex, type ManifestFile } from "./pack";
-import type { Game, GameNode, ReviewStatus, StudioMeta, HoldMode, HoldExit, NavigationModel, Discovery, Effect, GameObject } from "./types";
+import type { Game, GameNode, ReviewStatus, StudioMeta, HoldMode, HoldExit, NavigationModel, Discovery, Effect, GameObject, ExperienceStyle, Branding, GameMode, Difficulty } from "./types";
 
 export type { ManifestFile };
 const sha256hex = sha256Hex;
@@ -38,6 +38,24 @@ export function registerAsset(
 ): ManifestFile[] {
   if (!/^[0-9a-f]{64}$/.test(file.sha256)) throw new Error(`SHA-256 invalide pour ${file.path}`);
   return [...manifest.filter((m) => m.path !== file.path), file];
+}
+
+// --- Import de fichier JSON (change import-game-studio) ---
+// Lit un fichier choisi par l'utilisateur et le parse en Game.
+// La validation bi-couche (validateGame) est faite par l'appelant
+// avant de charger le jeu dans l'état du Studio.
+export async function importGame(file: File): Promise<Game> {
+  const text = await file.text();
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error(`Fichier illisible : ${file.name} n'est pas un JSON valide`);
+  }
+  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as Game).nodes)) {
+    throw new Error(`Fichier invalide : ${file.name} ne contient pas un jeu GeoPlay (nodes[] manquant)`);
+  }
+  return parsed as Game;
 }
 
 export interface ExportResult {
@@ -135,8 +153,22 @@ export function setPresentation(game: Game, presentations: string[]): Game {
   return { ...game, global };
 }
 
-export function setPreset(game: Game, preset: string): Game {
-  const global = { ...(game.global ?? {}), preset };
+export function setExperienceStyle(game: Game, style: ExperienceStyle): Game {
+  const global = { ...(game.global ?? {}), experienceStyle: style };
+  return { ...game, global };
+}
+
+export function setBranding(game: Game, branding: Branding): Game {
+  return { ...game, branding };
+}
+
+export function setGameMode(game: Game, mode: GameMode): Game {
+  const global = { ...(game.global ?? {}), gameMode: mode };
+  return { ...game, global };
+}
+
+export function setDifficulty(game: Game, difficulty: Difficulty): Game {
+  const global = { ...(game.global ?? {}), difficulty };
   return { ...game, global };
 }
 

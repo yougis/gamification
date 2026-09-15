@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useReducer } from "react";
+import { useEffect, useMemo, useState, useReducer, useRef } from "react";
 import {
   ReactFlow,
   Background,
@@ -10,20 +10,43 @@ import {
   type Node,
   type NodeChange,
   type Connection,
+  type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { validateGame, deadEnds } from "./game/validate";
 import { evaluate, drawPool, type Sim } from "./game/evaluate";
-import { composeNodes, setActivation, registerAsset, exportPack, addSecoursCode, type ManifestFile } from "./game/mcp";
-import { emptyMeta, type Condition, type Game, type GameNode, type Predicate, type StudioMeta } from "./game/types";
+import { composeNodes, setActivation, registerAsset, exportPack, addSecoursCode, importGame, type ManifestFile } from "./game/mcp";
+import { emptyMeta, type Condition, type Game, type GameNode, type Predicate, type StudioMeta, type ExperienceStyle, type Branding, type GameMode, type Difficulty } from "./game/types";
 import {
   MODULES_FR, CONDITIONS_FR, FAMILLES, PRESETS_RAYON, MILIEUX, ETATS_FR,
-  OPERATEURS_FR, erreurFR, type Milieu,
+  OPERATEURS_FR, erreurFR, IMPORTER, type Milieu,
 } from "./game/i18n-ui";
 import registre from "./game/schema/registry.json";
+import { MODULE_REGISTRY } from "./game/modules";
 
 const TYPES_MODULE = ["INFO", ...Object.keys(registre), "RANDOM_POOL"];
+
+// Mise en page par défaut (change studio-layout-revamp) : largeurs en px,
+// bornées à l'usage (droite 280–640, liste 220–520), sections dépliées.
+const LAYOUT_DEFAUT = {
+  droite: 400,
+  liste: 340,
+  repliees: { graphe: false, liste: false, detail: false, essai: false },
+};
+type SectionPliable = keyof typeof LAYOUT_DEFAUT.repliees;
+
+// Drill-down workflow → section (change studio-layout-revamp) :
+// 1 Graphe → graphe, 2 Épreuves → détail, 3 Relecture → liste,
+// 4 Validation → pied/rapport, 5 Export → essai (manifest avant export).
+const SECTION_PAR_ETAPE: Record<EtapeWorkflow, string> = {
+  1: "graphe",
+  2: "detail",
+  3: "liste",
+  4: "validation",
+  5: "essai",
+};
 import { Icon } from "./components/icons";
+import Splitter from "./components/Splitter";
 import { WorkflowStepper, type EtapeWorkflow } from "./components/WorkflowStepper";
 import { NodeList } from "./components/NodeList";
 
@@ -34,8 +57,8 @@ const jeuVide = (): Game => ({
   gameId: "nouvelle-enquete",
   schemaVersion: "1.0.0",
   minEngineVersion: "1.0.0",
-  branding: {},
-  global: { gpsRadiusMeters: 30 },
+  branding: { name: "", primaryColor: "#1a7f37", secondaryColor: "#5f3dc4", fontFamily: "system-ui" },
+  global: { gpsRadiusMeters: 30, navigationModel: "BASIC", presentation: ["MAP"], gameMode: "NORMAL", difficulty: "FAMILLE", experienceStyle: { preset: "BASIC" } },
   nodes: [],
 });
 
@@ -119,6 +142,103 @@ export default function App() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [log, setLog] = useState<string[]>([]);
   const [testAll, setTestAll] = useState<string | null>(null);
+  const inputImportRef = useRef<HTMLInputElement>(null);
+  const [historique, setHistorique] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem("geoplay-import-history");
+      const parsed: unknown = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string").slice(0, 10) : [];
+    } catch {
+      return [];
+    }
+  });
+  // Menu de gauche repliable (change studio-layout-revamp), état persisté.
+  const [menuReplie, setMenuReplie] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("geoplay-menu-replie") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const basculerMenu = () => {
+    setMenuReplie((v) => {
+      const nv = !v;
+      try {
+        localStorage.setItem("geoplay-menu-replie", nv ? "1" : "0");
+      } catch {
+        /* stockage indisponible : état en mémoire seulement */
+      }
+      return nv;
+    });
+  };
+  // Largeurs des panneaux + sections pliées (change studio-layout-revamp), persistées ensemble.
+  const [mep, setMep] = useState(() => {
+    try {
+      const raw = localStorage.getItem("geoplay-layout-v1");
+      if (!raw) return { ...LAYOUT_DEFAUT, repliees: { ...LAYOUT_DEFAUT.repliees } };
+      const p = JSON.parse(raw) as Partial<{ droite: number; liste: number; repliees: Partial<Record<SectionPliable, boolean>> }>;
+      const borne = (v: unknown, def: number, min: number, max: number) =>
+        typeof v === "number" && Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : def;
+      return {
+        droite: borne(p.droite, 400, 280, 640),
+        liste: borne(p.liste, 340, 220, 520),
+        repliees: {
+          graphe: p.repliees?.graphe === true,
+          liste: p.repliees?.liste === true,
+          detail: p.repliees?.detail === true,
+          essai: p.repliees?.essai === true,
+        },
+      };
+    } catch {
+      return { ...LAYOUT_DEFAUT, repliees: { ...LAYOUT_DEFAUT.repliees } };
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem("geoplay-layout-v1", JSON.stringify(mep));
+    } catch {
+      /* stockage indisponible : mise en page en mémoire seulement */
+    }
+  }, [mep]);
+  const basculerSection = (s: SectionPliable) => {
+    setMolette(null);
+    setMep((m) => ({ ...m, repliees: { ...m.repliees, [s]: !m.repliees[s] } }));
+  };
+  // Panneau « molette » ouvert (change studio-layout-revamp) : une seule section à la fois.
+  const [molette, setMolette] = useState<SectionPliable | null>(null);
+  const basculerMolette = (s: SectionPliable) => setMolette((m) => (m === s ? null : s));
+  // Instance ReactFlow pour « Recentrer » (fitView à la demande).
+  const rfRef = useRef<ReactFlowInstance | null>(null);
+  // Section surlignée après un drill-down (anneau temporaire, sans décalage de mise en page).
+  const [sectionSurlignee, setSectionSurlignee] = useState<string | null>(null);
+  const surlignageTimer = useRef<number | undefined>(undefined);
+  const surlignage = (s: string) =>
+    sectionSurlignee === s ? { outline: "3px solid var(--focus)", outlineOffset: 2 } : undefined;
+  const allerEtape = (e: EtapeWorkflow) => {
+    setEtapeWorkflow(e);
+    const cible = SECTION_PAR_ETAPE[e];
+    const pliable = (["graphe", "detail", "liste", "essai"] as const).includes(cible as SectionPliable)
+      ? (cible as SectionPliable)
+      : null;
+    if (pliable) setMep((m) => ({ ...m, repliees: { ...m.repliees, [pliable]: false } }));
+    window.clearTimeout(surlignageTimer.current);
+    setSectionSurlignee(cible);
+    surlignageTimer.current = window.setTimeout(() => setSectionSurlignee(null), 1600);
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        document.getElementById(`section-${cible}`)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }),
+    );
+  };
+  const reinitialiserMiseEnPage = () => {
+    setMep({ ...LAYOUT_DEFAUT, repliees: { ...LAYOUT_DEFAUT.repliees } });
+    setMenuReplie(false);
+    try {
+      localStorage.setItem("geoplay-menu-replie", "0");
+    } catch {
+      /* ignore */
+    }
+  };
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 900px)");
@@ -454,12 +574,53 @@ export default function App() {
     setEtapeWorkflow(5);
   };
 
-  const chargerFixture = async () => {
-    const mod = await import("./game/game-5poi.json");
-    const g = (mod as { default: Game }).default;
-    edit((s) => ({ game: g, meta: { ...s.meta } }));
-    setSel(null);
-    nouvelleSession();
+  // Import d'un fichier JSON de jeu (change import-game-studio) :
+  // parse via le MCP, validation bi-couche, chargement seulement si OK.
+  const importerFichier = async (file: File | undefined) => {
+    if (!file || relecture) return;
+    try {
+      const g = await importGame(file);
+      const v = validateGame(g);
+      if (!v.ok) {
+        setBrut(v.layers.flatMap((l) => l.errors));
+        setRapport(v.layers.flatMap((l) => (l.errors.length ? l.errors.map(erreurFR) : [`Couche ${l.layer} : OK`])));
+        return;
+      }
+      edit((s) => ({ game: g, meta: emptyMeta() }));
+      setSel(null);
+      nouvelleSession();
+      const recents = [file.name, ...historique.filter((n) => n !== file.name)].slice(0, 10);
+      setHistorique(recents);
+      try {
+        localStorage.setItem("geoplay-import-history", JSON.stringify(recents));
+      } catch {
+        /* stockage indisponible : l'historique reste en mémoire */
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setBrut([msg]);
+      setRapport([msg]);
+    }
+  };
+
+  const importer = async () => {
+    if (relecture) return;
+    const w = window as unknown as {
+      showOpenFilePicker?: (opts?: unknown) => Promise<{ getFile: () => Promise<File> }[]>;
+    };
+    if (w.showOpenFilePicker) {
+      try {
+        const [handle] = await w.showOpenFilePicker({
+          types: [{ description: "JSON GeoPlay", accept: { "application/json": [".json"] } }],
+          multiple: false,
+        });
+        await importerFichier(await handle.getFile());
+        return;
+      } catch {
+        return; // annulation par l'utilisateur : on ne fait rien
+      }
+    }
+    inputImportRef.current?.click();
   };
 
   const erreurs = rapport.filter((r) => !r.includes(": OK"));
@@ -502,12 +663,15 @@ export default function App() {
         <Icon name="fin" size={17} /> Fin du jeu
       </button>
       <span className="text-xs" style={{ color: "var(--ink-2)" }}>Glisse un lien d'une étape à l'autre pour « après l'étape… ».</span>
+      <button className="btn" style={{ justifyContent: "flex-start" }} onClick={reinitialiserMiseEnPage} title="Restaurer les largeurs et le menu par défaut">
+        <Icon name="retablir" size={15} /> Mise en page par défaut
+      </button>
     </nav>
   );
 
   const zoneGraphe = (
     <div className="carte studio-flow relative min-h-0 flex-1 overflow-hidden" style={{ minHeight: 320 }}>
-      <ReactFlow nodes={noeuds} edges={aretes} onNodesChange={onNodesChange} onConnect={onConnect} onNodeClick={(_, n) => choisirNoeud(n.id)} fitView minZoom={0.3} maxZoom={2} nodesConnectable={!relecture} nodesDraggable={!relecture} elementsSelectable>
+      <ReactFlow nodes={noeuds} edges={aretes} onNodesChange={onNodesChange} onConnect={onConnect} onNodeClick={(_, n) => choisirNoeud(n.id)} onInit={(instance) => { rfRef.current = instance; }} fitView={nbEtapes > 0} fitViewOptions={{ padding: 0.2 }} minZoom={0.3} maxZoom={2} nodesConnectable={!relecture} nodesDraggable={!relecture} elementsSelectable style={{ width: "100%", height: "100%" }}>
         <Background gap={22} />
         <Controls showInteractive={false} />
         <MiniMap pannable zoomable style={{ borderRadius: 10 }} aria-label="Mini-carte du graphe" />
@@ -584,6 +748,9 @@ export default function App() {
   const essai = (
     <aside className="carte min-h-0 overflow-auto p-2" aria-label="Essai et relecture" style={{ minWidth: 0 }}>
       <ManifestForm manifest={manifest} setManifest={setManifest} lectureSeule={relecture} />
+      <ModePanel game={game} edit={edit} lectureSeule={relecture} />
+      <ExperienceStylePanel game={game} edit={edit} lectureSeule={relecture} />
+      <BrandingPanel game={game} edit={edit} lectureSeule={relecture} />
       <I18nPanel meta={st.present.meta} edit={edit} lectureSeule={relecture} />
       <ReviewOverlay game={game} meta={st.present.meta} />
       <Apercu
@@ -596,7 +763,20 @@ export default function App() {
   );
 
   return (
-    <div className="flex h-screen flex-col text-sm" style={{ background: "var(--surface-2)", color: "var(--ink)", paddingBottom: "env(safe-area-inset-bottom)" }}>
+    <div className="flex h-screen flex-col text-sm" style={{ background: "var(--surface-2)", color: "var(--ink)", paddingBottom: "env(safe-area-inset-bottom)" }}
+      onDragOver={(e) => { if (!relecture) e.preventDefault(); }}
+      onDrop={(e) => {
+        if (relecture) return;
+        e.preventDefault();
+        const file = e.dataTransfer.files?.[0];
+        if (!file) return;
+        if (file.type !== "application/json" && !file.name.endsWith(".json")) {
+          setBrut([`Fichier refusé : ${file.name} n'est pas un JSON (.json attendu)`]);
+          setRapport([`Fichier refusé : ${file.name} n'est pas un JSON (.json attendu)`]);
+          return;
+        }
+        void importerFichier(file);
+      }}>
       <header className="flex flex-col gap-2 border-b px-3 pt-2" style={{ borderColor: "var(--line)", background: "var(--surface)", paddingTop: "max(8px, env(safe-area-inset-top))" }}>
         <div className="flex flex-wrap items-center gap-2">
           <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
@@ -614,9 +794,11 @@ export default function App() {
           <button className="btn" onClick={valider} title="Valider couches 1+2">
             <Icon name="valider" size={16} /> Valider
           </button>
-          <button className="btn" onClick={chargerFixture} disabled={relecture} title="Charger la fixture neutre 1/5 vers FIN">
-            <Icon name="exemple" size={16} /> Exemple
+          <button className="btn" onClick={importer} disabled={relecture} title={historique.length ? `${IMPORTER.aide} — Récents : ${historique.join(", ")}` : IMPORTER.aide}>
+            <Icon name="importer" size={16} /> {IMPORTER.nom}
           </button>
+          <input ref={inputImportRef} type="file" accept="application/json,.json" className="sr-only" aria-label={IMPORTER.nom}
+            onChange={(e) => { void importerFichier(e.target.files?.[0]); e.target.value = ""; }} />
           <button className="btn-primaire" onClick={exporter} disabled={bloqueExport && !animateur} title={bloqueExport && !animateur ? "Corrige les problèmes avant d'exporter" : "Exporter game.json + manifest + studio-meta.json"}>
             <Icon name="exporter" size={16} /> Exporter
           </button>
@@ -633,7 +815,7 @@ export default function App() {
             </button>
           </span>
         </div>
-        <WorkflowStepper courant={etapeWorkflow} onAller={setEtapeWorkflow} fait={fait} bloqueExport={bloqueExport && !animateur} nbErreurs={erreurs.length} nbBrouillons={nbBrouillons} />
+        <WorkflowStepper courant={etapeWorkflow} onAller={allerEtape} fait={fait} bloqueExport={bloqueExport && !animateur} nbErreurs={erreurs.length} nbBrouillons={nbBrouillons} />
         {relecture && (
           <p className="puce" style={{ alignSelf: "flex-start" }}>
             <Icon name="statut" size={13} /> Petit écran : relecture — visualisation, statuts et validation. Retouche sur grand écran.
@@ -643,22 +825,102 @@ export default function App() {
 
       {/* Grand écran : 3 volets sobres. Petit écran : onglets + barre basse. */}
       <div className="hidden min-h-0 flex-1 gap-3 p-3 lg:flex">
-        <div className="carte w-60 shrink-0 overflow-auto p-3" style={{ maxWidth: 260 }}>
-          {palette}
-        </div>
-        <main className="flex min-w-0 flex-[3] flex-col gap-2" aria-label="Graphe et liste">
-          <div className="flex min-h-0 flex-1 gap-3">
-            <div className="flex min-w-0 flex-[3] flex-col">{zoneGraphe}</div>
-            <div className="flex min-w-0 flex-[2] flex-col" style={{ maxWidth: 340 }}>
-              <NodeList game={game} statuts={st.present.meta.status} impasses={impasses} sel={sel} onChoisir={choisirNoeud} erreursParNoeud={erreursParNoeud} lectureSeule={relecture} />
-            </div>
+        {menuReplie ? (
+          <div className="carte flex w-14 shrink-0 flex-col items-center gap-2 overflow-auto p-2" aria-label="Menu replié">
+            <button className="btn" style={{ padding: "0 10px" }} onClick={basculerMenu} title="Déplier le menu" aria-label="Déplier le menu">
+              <Icon name="liste" size={17} />
+            </button>
+            <button className="btn" style={{ padding: "0 10px" }} onClick={() => ajouterEtape("etape")} disabled={relecture} title="Créer une étape Quiz / jeu" aria-label="Étape de jeu">
+              <Icon name="etape" size={17} />
+            </button>
+            <button className="btn" style={{ padding: "0 10px" }} onClick={() => ajouterEtape("lieu")} disabled={relecture} title="Créer un lieu avec zone GPS" aria-label="Lieu GPS">
+              <Icon name="lieu" size={17} />
+            </button>
+            <button className="btn" style={{ padding: "0 10px" }} onClick={() => ajouterEtape("tirage")} disabled={relecture} title="Créer un tirage au sort parmi des étapes" aria-label="Tirage au sort">
+              <Icon name="tirage" size={17} />
+            </button>
+            <button className="btn" style={{ padding: "0 10px" }} onClick={() => ajouterEtape("fin")} disabled={relecture} title="Créer l'étape de fin du jeu" aria-label="Fin du jeu">
+              <Icon name="fin" size={17} />
+            </button>
           </div>
-          {pied}
-          {listeErreurs}
+        ) : (
+          <div className="carte w-60 shrink-0 overflow-auto p-3" style={{ maxWidth: 260 }}>
+            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 4 }}>
+              <button className="btn" style={{ padding: "0 10px" }} onClick={basculerMenu} title="Replier le menu" aria-label="Replier le menu">
+                <Icon name="liste" size={15} />
+              </button>
+            </div>
+            {palette}
+          </div>
+        )}
+        <main className="flex min-h-0 min-w-0 flex-[3] flex-col gap-2" aria-label="Graphe et liste">
+          <div className="flex min-h-0 flex-1 gap-3">
+            {mep.repliees.graphe ? (
+              <div className="carte flex w-12 shrink-0 flex-col items-center p-2" aria-label="Graphe replié">
+                <button className="btn" style={{ padding: "0 10px" }} onClick={() => basculerSection("graphe")} title="Déplier le graphe" aria-label="Déplier le graphe">
+                  <Icon name="graphe" size={17} />
+                </button>
+              </div>
+            ) : (
+              <div id="section-graphe" className="relative flex min-h-0 min-w-0 flex-1 flex-col" style={surlignage("graphe")}>
+                {zoneGraphe}
+                <button className="btn" style={{ position: "absolute", top: 8, right: 8, zIndex: 5, minHeight: 32, padding: "0 10px", fontSize: 12 }} onClick={() => basculerSection("graphe")} title="Replier le graphe">
+                  Replier
+                </button>
+              </div>
+            )}
+            <Splitter label="Ajuster la largeur de la liste" onDelta={(dx) => setMep((m) => ({ ...m, liste: Math.min(520, Math.max(220, m.liste - dx)) }))} />
+            {mep.repliees.liste ? (
+              <div className="carte flex w-12 shrink-0 flex-col items-center p-2" aria-label="Liste repliée">
+                <button className="btn" style={{ padding: "0 10px" }} onClick={() => basculerSection("liste")} title="Déplier la liste" aria-label="Déplier la liste">
+                  <Icon name="liste" size={17} />
+                </button>
+              </div>
+            ) : (
+              <div id="section-liste" className="flex min-w-0 flex-col" style={{ width: mep.liste, ...surlignage("liste") }}>
+                <NodeList game={game} statuts={st.present.meta.status} impasses={impasses} sel={sel} onChoisir={choisirNoeud} erreursParNoeud={erreursParNoeud} lectureSeule={relecture} boutonPlier={<button className="btn" style={{ minHeight: 32, padding: "0 8px", fontSize: 12 }} onClick={() => basculerSection("liste")} title="Replier la liste">Replier</button>} />
+              </div>
+            )}
+          </div>
+          <div id="section-validation" style={surlignage("validation")}>
+            {pied}
+            {listeErreurs}
+          </div>
         </main>
-        <div className="flex min-w-0 flex-[2] flex-col gap-3 overflow-auto" style={{ maxWidth: 400 }}>
-          {detail}
-          {essai}
+        <Splitter label="Ajuster la largeur du panneau latéral" onDelta={(dx) => setMep((m) => ({ ...m, droite: Math.min(640, Math.max(280, m.droite - dx)) }))} />
+        <div className="flex min-w-0 flex-col gap-3 overflow-auto" style={{ width: mep.droite }}>
+          {mep.repliees.detail ? (
+            <div className="carte flex shrink-0 items-center gap-2 p-2" aria-label="Détail replié">
+              <button className="btn" style={{ minHeight: 32, padding: "0 10px", fontSize: 12 }} onClick={() => basculerSection("detail")} title="Déplier le détail">
+                Détail
+              </button>
+            </div>
+          ) : (
+            <div id="section-detail" className="flex min-h-0 flex-1 flex-col gap-1" style={surlignage("detail")}>
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <button className="btn" style={{ minHeight: 32, padding: "0 10px", fontSize: 12 }} onClick={() => basculerSection("detail")} title="Replier le détail">
+                  Replier
+                </button>
+              </div>
+              {detail}
+            </div>
+          )}
+          {mep.repliees.essai ? (
+            <div className="carte flex shrink-0 items-center gap-2 p-2" aria-label="Essai replié">
+              <button className="btn" style={{ minHeight: 32, padding: "0 10px", fontSize: 12 }} onClick={() => basculerSection("essai")} title="Déplier l'essai">
+                Essai
+              </button>
+            </div>
+          ) : (
+            <div id="section-essai" className="flex flex-col gap-1" style={surlignage("essai")}>
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <button className="btn" style={{ minHeight: 32, padding: "0 10px", fontSize: 12 }} onClick={() => basculerSection("essai")} title="Replier l'essai">
+                  Replier
+                </button>
+              </div>
+              {essai}
+            </div>
+          )}
         </div>
       </div>
 
@@ -1064,6 +1326,104 @@ function ManifestForm({ manifest, setManifest, lectureSeule }: { manifest: Manif
           <button className="btn" onClick={() => { try { setManifest(registerAsset(manifest, f)); } catch (e) { alert(String(e)); } }}><Icon name="ajouter" size={15} /> Fichier</button>
         </div>
       )}
+    </div>
+  );
+}
+
+function ExperienceStylePanel({ game, edit, lectureSeule }: {
+  game: Game;
+  edit: (fn: (s: { game: Game; meta: StudioMeta }) => { game: Game; meta: StudioMeta }) => void;
+  lectureSeule: boolean;
+}) {
+  const ex = game.experienceStyle ?? { preset: "BASIC" as const };
+  return (
+    <div className="carte p-3">
+      <h3 style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 13 }}>
+        <Icon name="engrenage" size={15} /> Experience Style
+      </h3>
+      <label className="text-xs flex gap-1 items-center">
+        Preset :
+        <select className="champ" value={ex.preset ?? "BASIC"} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, experienceStyle: { ...s.game.experienceStyle, preset: e.target.value as any } } }))}>
+          {["BASIC", "GUIDED", "TREASURE_HUNT", "ESCAPE_GAME", "OPEN_EXPLORATION"].map((p) => <option key={p} value={p}>{p}</option>)}
+        </select>
+      </label>
+      {ex.identity && (
+        <>
+          <label className="text-xs flex gap-1 items-center mt-1">
+            Nom éditeur :
+            <input className="champ" value={ex.identity.name ?? ""} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, experienceStyle: { ...s.game.experienceStyle, identity: { ...ex.identity, name: e.target.value } } } }))} />
+          </label>
+          <label className="text-xs flex gap-1 items-center">
+            Éditeur :
+            <input className="champ" value={ex.identity.publisher ?? ""} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, experienceStyle: { ...s.game.experienceStyle, identity: { ...ex.identity, publisher: e.target.value } } } }))} />
+          </label>
+        </>
+      )}
+      {ex.visual && (
+        <>
+          <label className="text-xs flex gap-1 items-center mt-1">
+            Couleur primaire :
+            <input type="color" className="champ" value={ex.visual.primaryColor ?? "#1a7f37"} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, experienceStyle: { ...s.game.experienceStyle, visual: { ...ex.visual, primaryColor: e.target.value } } } }))} />
+          </label>
+          <label className="text-xs flex gap-1 items-center">
+            Couleur secondaire :
+            <input type="color" className="champ" value={ex.visual.secondaryColor ?? "#5f3dc4"} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, experienceStyle: { ...s.game.experienceStyle, visual: { ...ex.visual, secondaryColor: e.target.value } } } }))} />
+          </label>
+        </>
+      )}
+    </div>
+  );
+}
+
+function BrandingPanel({ game, edit, lectureSeule }: {
+  game: Game;
+  edit: (fn: (s: { game: Game; meta: StudioMeta }) => { game: Game; meta: StudioMeta }) => void;
+  lectureSeule: boolean;
+}) {
+  const b = game.branding ?? { name: "", primaryColor: "#1a7f37", secondaryColor: "#5f3dc4", fontFamily: "system-ui" };
+  return (
+    <div className="carte p-3">
+      <h3 style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 13 }}>
+        <Icon name="detail" size={15} /> Branding
+      </h3>
+      <label className="text-xs flex gap-1 items-center">
+        Nom :
+        <input className="champ" value={b.name} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, branding: { ...b, name: e.target.value } } }))} />
+      </label>
+      <label className="text-xs flex gap-1 items-center mt-1">
+        Couleur primaire :
+        <input type="color" className="champ" value={b.primaryColor} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, branding: { ...b, primaryColor: e.target.value } } }))} />
+      </label>
+      <label className="text-xs flex gap-1 items-center">
+        Couleur secondaire :
+        <input type="color" className="champ" value={b.secondaryColor} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, branding: { ...b, secondaryColor: e.target.value } } }))} />
+      </label>
+    </div>
+  );
+}
+
+function ModePanel({ game, edit, lectureSeule }: {
+  game: Game;
+  edit: (fn: (s: { game: Game; meta: StudioMeta }) => { game: Game; meta: StudioMeta }) => void;
+  lectureSeule: boolean;
+}) {
+  return (
+    <div className="carte p-3">
+      <h3 style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 13 }}>
+        <Icon name="exemple" size={15} /> Mode et Difficulté
+      </h3>
+      <label className="text-xs flex gap-1 items-center">
+        Mode :
+        <select className="champ" value={game.gameMode ?? "NORMAL"} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, gameMode: e.target.value as any } }))}>
+          {["NORMAL", "ANIMATEUR", "SOIREE", "HARDCORE"].map((m) => <option key={m} value={m}>{m}</option>)}
+        </select>
+      </label>
+      <label className="text-xs flex gap-1 items-center mt-1">
+        Difficulté :
+        <select className="champ" value={game.difficulty ?? "FAMILLE"} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, difficulty: e.target.value as any } }))}>
+          {["ENFANT", "FAMILLE", "EXPERT"].map((d) => <option key={d} value={d}>{d}</option>)}
+        </select>
+      </label>
     </div>
   );
 }

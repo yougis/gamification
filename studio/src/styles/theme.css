@@ -29,6 +29,30 @@
   --ombre-forte: 0 2px 4px rgb(19 23 28 / 0.12), 0 10px 28px rgb(19 23 28 / 0.14);
 }
 
+/* Thème Victorien — Sherlock Holmes : burgundy, or, sépia. */
+.theme-victorian {
+  --couleur-accent: #8B0000;
+  --couleur-accent-fonce: #5C0000;
+  --couleur-accent-douce: #ffd6d6;
+  --couleur-alerte: #8a5a00;
+  --couleur-alerte-douce: #fff4d6;
+  --couleur-tirage: #DAA520;
+  --couleur-tirage-douce: #fff8dc;
+  --couleur-fin: #8B0000;
+  --couleur-fin-douce: #ffd6d6;
+
+  --surface: #faf5eb;
+  --surface-2: #f0e8d8;
+  --surface-3: #e5d9c4;
+  --ink: #2c1810;
+  --ink-2: #6b4423;
+  --ink-3: #8b6b4a;
+  --line: #c4a882;
+  --line-forte: #a08060;
+
+  --font-studio: Georgia, "Times New Roman", serif;
+}
+
 html {
   -webkit-text-size-adjust: 100%;
 }
