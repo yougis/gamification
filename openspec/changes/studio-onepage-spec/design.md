@@ -51,6 +51,6 @@ Aucune migration de données (aucun changement de schéma ni de format). Déploi
 
 ## Open Questions
 
-1. Porte d'export définitive (`exportPack` vs `exportPackFull`) — tranchée en tâche 1 ; la spec couvre les deux branches, donc le choix ne change ni la spec ni le découpage des tâches suivantes.
-2. Config globale : écran séparé ou modal depuis Composer ? — sans effet sur la spec (le contrat reste neutre) ; à trancher selon la densité d'usage observée.
+~~1. Porte d'export définitive (`exportPack` vs `exportPackFull`)~~ — **TRANCHÉ (tâche 1.1) : `exportPackFull` est la voie unique visible par défaut** (validation objets/indices incluse) ; `exportPack` historique est déprécié et masqué derrière un accès explicite.
+~~2. Config globale : écran séparé ou modal depuis Composer ?~~ — **TRANCHÉ (tâche 1.2, avec `studio-layout-revamp`) : écran séparé** ; la spec reste inchangée (elle était neutre).
 3. Niveau de détail de l'overlay de relecture pour les modules sans représentation visuelle naturelle — à prototyper, sans effet sur le contrat.

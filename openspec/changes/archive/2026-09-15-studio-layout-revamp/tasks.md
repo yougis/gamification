@@ -8,10 +8,10 @@
 - [x] T4. Panneaux redimensionnables — poignées de séparation au pointeur (`col-resize`), largeurs bornées persistées (`geoplay-layout-v1`), bouton « réinitialiser la mise en page ». Fichiers : `studio/src/App.tsx` (+ nouveau `studio/src/components/Splitter.tsx` si pertinent).
 - [x] T5. Sections pliables — palette, graphe, liste, détail, essai : bouton plier/déplier, état mémorisé. Fichiers : `studio/src/App.tsx`.
 - [x] T6. Drill-down workflow → section — `onAller` fait défiler + surligne la section correspondante via une table étape → section. Fichiers : `studio/src/App.tsx`, `studio/src/components/WorkflowStepper.tsx`.
-- [ ] T7. Boutons « molette » par section — mini-panneau : plier/déplier, réinitialiser la taille, recentrer (graphe). Réutiliser `Icon name="engrenage"`. Fichiers : `studio/src/App.tsx`.
-- [ ] T8. Sélection nœud → détail — clic graphe/liste ouvre et surligne la section détail. Fichiers : `studio/src/App.tsx`.
-- [ ] T9. Non-régression petit écran + tactile — onglets inchangés, cibles ≥ 44px, poignées utilisables au tactile (`touch-action: none`). Fichiers : `studio/src/App.tsx`, `studio/src/styles/theme.css`.
-- [ ] T10. Vérification finale — `tsc --noEmit`, `lint`, smokes (`dev:smoke`, `test:runtime`, `test:modules`, `test:pack`), chargement des deux jeux démo. Aucun changement JSON/validation.
+- [x] T7. Boutons « molette » par section — mini-panneau : plier/déplier, réinitialiser la taille, recentrer (graphe). Réutiliser `Icon name="engrenage"`. Fichiers : `studio/src/App.tsx`.
+- [x] T8. Sélection nœud → détail — clic graphe/liste ouvre et surligne la section détail. Fichiers : `studio/src/App.tsx`.
+- [x] T9. Non-régression petit écran + tactile — onglets inchangés, cibles ≥ 44px, poignées utilisables au tactile (`touch-action: none`). Fichiers : `studio/src/App.tsx`, `studio/src/styles/theme.css`.
+- [x] T10. Vérification finale — `tsc --noEmit`, `lint`, smokes (`dev:smoke`, `test:runtime`, `test:modules`, `test:pack`), chargement des deux jeux démo. Aucun changement JSON/validation.
 
 ## Priorité
 

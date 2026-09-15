@@ -1,5 +1,6 @@
 /* Polices du Studio : système par défaut (lisible en extérieur), aucune police
    distante (offline-first : rien ne se télécharge à l'usage). */
 :root {
-  --font-studio: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+   --font-studio: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
 }

@@ -29,6 +29,8 @@ export function NodeList({
   erreursParNoeud,
   lectureSeule,
   boutonPlier,
+  boutonMolette,
+  panneauMolette,
 }: {
   game: Game;
   statuts: Record<string, { state: string }>;
@@ -38,6 +40,8 @@ export function NodeList({
   erreursParNoeud: Map<string, string[]>;
   lectureSeule: boolean;
   boutonPlier?: React.ReactNode;
+  boutonMolette?: React.ReactNode;
+  panneauMolette?: React.ReactNode;
 }) {
   const [recherche, setRecherche] = useState("");
   const [filtre, setFiltre] = useState<FiltreListe>("tous");
@@ -67,8 +71,10 @@ export function NodeList({
               Clic = modifier à droite
             </span>
           )}
+          {boutonMolette}
           {boutonPlier}
         </div>
+        {panneauMolette}
         <div className="flex gap-2">
           <label className="flex flex-1 items-center gap-2">
             <span className="sr-only">Rechercher une étape</span>

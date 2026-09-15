@@ -45,7 +45,7 @@ export default function Splitter({
       }}
       style={{
         flex: "0 0 auto",
-        width: 10,
+        width: 16,
         minHeight: 44,
         alignSelf: "stretch",
         cursor: "col-resize",

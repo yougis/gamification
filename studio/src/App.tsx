@@ -11,11 +11,12 @@ import {
   type NodeChange,
   type Connection,
   type ReactFlowInstance,
+  MarkerType,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { validateGame, deadEnds } from "./game/validate";
 import { evaluate, drawPool, type Sim } from "./game/evaluate";
-import { composeNodes, setActivation, registerAsset, exportPack, addSecoursCode, importGame, type ManifestFile } from "./game/mcp";
+import { composeNodes, setActivation, registerAsset, exportPackFull, canExport, addSecoursCode, importGame, addObject, setObjects, setReview, type ManifestFile } from "./game/mcp";
 import { emptyMeta, type Condition, type Game, type GameNode, type Predicate, type StudioMeta, type ExperienceStyle, type Branding, type GameMode, type Difficulty } from "./game/types";
 import {
   MODULES_FR, CONDITIONS_FR, FAMILLES, PRESETS_RAYON, MILIEUX, ETATS_FR,
@@ -45,13 +46,16 @@ const SECTION_PAR_ETAPE: Record<EtapeWorkflow, string> = {
   4: "validation",
   5: "essai",
 };
-import { Icon } from "./components/icons";
+import { Icon, type IconName } from "./components/icons";
 import Splitter from "./components/Splitter";
 import { WorkflowStepper, type EtapeWorkflow } from "./components/WorkflowStepper";
 import { NodeList } from "./components/NodeList";
 
 type Snap = { game: Game; meta: StudioMeta };
-interface State { past: Snap[]; present: Snap; future: Snap[]; }
+// Entrée d'historique : l'instantané + l'opération MCP nommée qui l'a produit
+// (spec studio-onepage-spec §2.5 : pas de diff JSON opaque).
+type Entree = { snap: Snap; op: string };
+interface State { past: Entree[]; present: Snap; future: Entree[]; }
 
 const jeuVide = (): Game => ({
   gameId: "nouvelle-enquete",
@@ -64,20 +68,20 @@ const jeuVide = (): Game => ({
 
 const init: State = { past: [], present: { game: jeuVide(), meta: emptyMeta() }, future: [] };
 
-type Action = { t: "set"; snap: Snap } | { t: "undo" } | { t: "redo" };
+type Action = { t: "set"; snap: Snap; op: string } | { t: "undo" } | { t: "redo" };
 
 const reduce = (s: State, a: Action): State => {
   if (a.t === "undo") {
     if (!s.past.length) return s;
     const prev = s.past[s.past.length - 1];
-    return { past: s.past.slice(0, -1), present: prev, future: [s.present, ...s.future] };
+    return { past: s.past.slice(0, -1), present: prev.snap, future: [{ snap: s.present, op: prev.op }, ...s.future] };
   }
   if (a.t === "redo") {
     if (!s.future.length) return s;
     const [next, ...rest] = s.future;
-    return { past: [...s.past, s.present], present: next, future: rest };
+    return { past: [...s.past, { snap: s.present, op: next.op }], present: next.snap, future: rest };
   }
-  return { past: [...s.past, s.present], present: a.snap, future: [] };
+  return { past: [...s.past, { snap: s.present, op: a.op }], present: a.snap, future: [] };
 };
 
 const TYPES_CONDITION = ["GEOFENCE", "NODE_COMPLETED", "TIMER", "POOL_DRAWN", "PROXIMITY_MASTER", "CONDITIONAL", "WINDOW", "ITEM_REQUIRED", "ITEM_USED", "CODE_INPUT", "CLUE_RESOLVED"];
@@ -115,12 +119,33 @@ const discoverySourceDe = (n: GameNode): string | undefined => n.discovery?.sour
 const effectRevealNodes = (n: GameNode): string[] =>
   (n.effects ?? []).filter((e) => e.type === "REVEAL_NODE").map((e) => e.nodeId).filter(Boolean) as string[];
 
+// Icône par type de condition, partagée entre inspecteur et arêtes du graphe.
+const iconeCondition = (type: string): "zone" | "apres" | "delai" | "tiree" | "animateur" | "package" | "engrenage" | "detail" =>
+  type === "GEOFENCE" ? "zone" : type === "NODE_COMPLETED" ? "apres" : type === "TIMER" ? "delai" : type === "POOL_DRAWN" ? "tiree" : type === "PROXIMITY_MASTER" ? "animateur" : type === "ITEM_REQUIRED" || type === "ITEM_USED" ? "package" : type === "CODE_INPUT" || type === "CLUE_RESOLVED" ? "engrenage" : "detail";
+
 type Onglet = "graphe" | "liste" | "detail" | "essai";
+
+// Écrans du Studio (spec studio-onepage-spec) : navigation sur un état partagé,
+// sans état par écran (hors simulateur de Prévisualiser).
+type Ecran = "composer" | "importer" | "relire" | "valider" | "previsualiser" | "exporter" | "config";
+
+const ECRANS: { id: Ecran; nom: string; icone: IconName }[] = [
+  { id: "composer", nom: "Composer", icone: "graphe" },
+  { id: "importer", nom: "Importer", icone: "importer" },
+  { id: "relire", nom: "Relire", icone: "oeil" },
+  { id: "valider", nom: "Valider", icone: "valider" },
+  { id: "previsualiser", nom: "Prévisualiser", icone: "essai" },
+  { id: "exporter", nom: "Exporter", icone: "exporter" },
+  { id: "config", nom: "Configuration", icone: "engrenage" },
+];
 
 export default function App() {
   const [st, dispatch] = useReducer(reduce, init);
   const { game } = st.present;
   const [sel, setSel] = useState<string | null>(null);
+  // Sélection multiple (Shift+clic, native ReactFlow) + recherche dans le graphe.
+  const [selMulti, setSelMulti] = useState<string[]>([]);
+  const [recherche, setRecherche] = useState("");
   const [positions, setPositions] = useState<Record<string, { x: number; y: number }>>({});
   const [rapport, setRapport] = useState<string[]>([]);
   const [brut, setBrut] = useState<string[]>([]);
@@ -129,6 +154,13 @@ export default function App() {
   const [nouveauType, setNouveauType] = useState("GEOFENCE");
   const [etapeWorkflow, setEtapeWorkflow] = useState<EtapeWorkflow>(1);
   const [onglet, setOnglet] = useState<Onglet>("graphe");
+  const [ecran, setEcran] = useState<Ecran>("composer");
+  // Verdicts C1/C2 pour la barre globale (null = couche non exécutée).
+  const [couches, setCouches] = useState<{ c1: boolean; c2: boolean | null }>({ c1: true, c2: true });
+  // Détail par couche pour l'écran Valider (erreurs brutes, groupées au rendu).
+  const [detailCouches, setDetailCouches] = useState<{ layer: number; errors: string[] }[]>([]);
+  // Calque transverse superposé (null = fermé) : i18n ou difficultés/modes.
+  const [calque, setCalque] = useState<null | "i18n" | "modes">(null);
   const [exportOk, setExportOk] = useState(false);
   const [etroite, setEtroite] = useState(false);
   // --- prévisualisation ---
@@ -143,15 +175,36 @@ export default function App() {
   const [log, setLog] = useState<string[]>([]);
   const [testAll, setTestAll] = useState<string | null>(null);
   const inputImportRef = useRef<HTMLInputElement>(null);
-  const [historique, setHistorique] = useState<string[]>(() => {
+  const [historique, setHistorique] = useState<{ nom: string; date: string; resultat: "chargé" | "rejeté"; raison?: string }[]>(() => {
     try {
       const raw = localStorage.getItem("geoplay-import-history");
       const parsed: unknown = raw ? JSON.parse(raw) : [];
-      return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string").slice(0, 10) : [];
+      if (!Array.isArray(parsed)) return [];
+      return parsed.flatMap((x): { nom: string; date: string; resultat: "chargé" | "rejeté"; raison?: string }[] => {
+        if (typeof x === "string") return [{ nom: x, date: "", resultat: "chargé" }];
+        if (x && typeof x === "object" && typeof (x as { nom?: unknown }).nom === "string") {
+          const e = x as { nom: string; date?: unknown; resultat?: unknown; raison?: unknown };
+          return [{ nom: e.nom, date: typeof e.date === "string" ? e.date : "", resultat: e.resultat === "rejeté" ? "rejeté" : "chargé", raison: typeof e.raison === "string" ? e.raison : undefined }];
+        }
+        return [];
+      }).slice(0, 10);
     } catch {
       return [];
     }
   });
+  const memoriserImport = (e: { nom: string; date: string; resultat: "chargé" | "rejeté"; raison?: string }) => {
+    setHistorique((h) => {
+      const recents = [e, ...h.filter((x) => x.nom !== e.nom)].slice(0, 10);
+      try {
+        localStorage.setItem("geoplay-import-history", JSON.stringify(recents));
+      } catch {
+        /* stockage indisponible : l'historique reste en mémoire */
+      }
+      return recents;
+    });
+  };
+  // Dernier import en échec : la raison brute (couche 1) reste affichée sur l'écran Importer.
+  const [importEchoue, setImportEchoue] = useState<string | null>(null);
   // Menu de gauche repliable (change studio-layout-revamp), état persisté.
   const [menuReplie, setMenuReplie] = useState<boolean>(() => {
     try {
@@ -253,12 +306,12 @@ export default function App() {
   const relecture = etroite;
   void lectureSeule;
 
-  const edit = (fn: (s: Snap) => Snap) => {
+  const edit = (fn: (s: Snap) => Snap, op = "modifier") => {
     if (relecture) return;
-    dispatch({ t: "set", snap: fn(st.present) });
+    dispatch({ t: "set", snap: fn(st.present), op });
     setExportOk(false);
   };
-  const editGame = (fn: (g: Game) => Game) => edit((s) => ({ ...s, game: fn(s.game) }));
+  const editGame = (fn: (g: Game) => Game, op = "modifier") => edit((s) => ({ ...s, game: fn(s.game) }), op);
   const etape: GameNode | undefined = game.nodes.find((n) => n.id === sel);
   const impasses = useMemo(() => new Set(deadEnds(game)), [game]);
 
@@ -282,48 +335,66 @@ export default function App() {
     return m;
   }, [brut, game.nodes, impasses]);
 
-  const noeuds: Node[] = useMemo(
-    () =>
-      game.nodes.map((n, i) => {
-        const estSel = sel === n.id;
-        const enErreur = (erreursParNoeud.get(n.id) ?? []).length > 0;
-        const statut = st.present.meta.status[n.id]?.state ?? "draft";
-        const nom = MODULES_FR[n.module.type]?.nom ?? n.module.type;
-        return {
-          id: n.id,
-          position: positions[n.id] ?? { x: (i % 4) * 250, y: Math.floor(i / 4) * 160 },
-          selected: estSel,
-          data: {
-            label: `${n.isEnding ? "FIN · " : ""}${n.id} · ${nom}${statut === "draft" ? " · Brouillon" : ""}${enErreur ? " · À corriger" : ""}`,
-          },
-          style: {
-            border: estSel
-              ? "3px solid #0b5fff"
-              : enErreur
-                ? "2px solid #b42318"
+const RAIL_PAR_TYPE: Record<string, string> = {
+  INFO: "#6b7280", QUIZ: "#1a7f37", DIFFERENCE_GAME: "#5f3dc4", PUZZLE: "#8a5a00",
+  AR_MARKER: "#0077b6", BOUSSOLE: "#d4a017", RANDOM_POOL: "#5f3dc4",
+  CODE_INPUT: "#b42318", CLUE_RESOLVED: "#1a7f37", ITEM_DROPPER: "#8a5a00", ITEM_CONSUMER: "#b42318",
+};
+
+const noeuds: Node[] = useMemo(
+  () =>
+    game.nodes.map((n, i) => {
+      const estSel = sel === n.id;
+      const enErreur = (erreursParNoeud.get(n.id) ?? []).length > 0;
+      const statut = st.present.meta.status[n.id]?.state ?? "draft";
+      const nom = MODULES_FR[n.module.type]?.nom ?? n.module.type;
+      const q = recherche.trim().toLowerCase();
+      const match = q ? n.id.toLowerCase().includes(q) || nom.toLowerCase().includes(q) || n.module.type.toLowerCase().includes(q) : false;
+      const railColor = RAIL_PAR_TYPE[n.module.type] ?? "#b9c1ca";
+      return {
+        id: n.id,
+        position: positions[n.id] ?? { x: (i % 4) * 250, y: Math.floor(i / 4) * 160 },
+        selected: estSel,
+        data: {
+          label: `${n.isEnding ? "FIN · " : ""}${n.id} · ${nom}${statut === "draft" ? " · Brouillon" : ""}${enErreur ? " · À corriger" : ""}`,
+          nodeType: n.module.type,
+          nodeStatus: statut,
+        },
+        style: {
+          border: estSel
+            ? "3px solid #0b5fff"
+            : enErreur
+              ? "2px solid #b42318"
+              : statut === "draft"
+                ? "2px dotted #8a5a00"
                 : n.isEnding
                   ? "2px solid #8a5a00"
                   : n.module.type === "RANDOM_POOL"
                     ? "2px dashed #5f3dc4"
                     : "1px solid #b9c1ca",
-            background: estSel
-              ? "#e8efff"
-              : enErreur
-                ? "#fdecea"
+          borderLeft: `4px solid ${railColor}`,
+          background: estSel
+            ? "#e8efff"
+            : enErreur
+              ? "#fdecea"
+              : statut === "draft"
+                ? "#fffdf3"
                 : n.isEnding
                   ? "#fff4d6"
                   : n.module.type === "RANDOM_POOL"
                     ? "#ede9fe"
                     : "#ffffff",
-            borderRadius: 12,
-            padding: 8,
-            fontWeight: estSel || enErreur ? 700 : 500,
-            boxShadow: estSel ? "0 0 0 3px #fff, 0 0 0 5px #0b5fff" : undefined,
-          },
-        };
-      }),
-    [game.nodes, positions, erreursParNoeud, sel, st.present.meta.status],
-  );
+          borderRadius: 12,
+          padding: 8,
+          fontWeight: estSel || enErreur ? 700 : 500,
+          boxShadow: estSel ? "0 0 0 3px #fff, 0 0 0 5px #0b5fff" : undefined,
+          outline: match && !estSel ? "3px solid #0b5fff" : undefined,
+          outlineOffset: match && !estSel ? 2 : undefined,
+        },
+      };
+    }),
+  [game.nodes, positions, erreursParNoeud, sel, st.present.meta.status, recherche],
+);
   const aretes: Edge[] = useMemo(() => {
     const edges: Edge[] = [];
     for (const n of game.nodes) {
@@ -333,8 +404,9 @@ export default function App() {
           const impasse = impasses.has(n.id);
           edges.push({
             id: `${from}->${n.id}:${c.type}`, source: from, target: n.id,
-            label: CONDITIONS_FR[c.type]?.nom ?? c.type,
+            label: (<span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><Icon name={iconeCondition(c.type)} size={12} />{CONDITIONS_FR[c.type]?.nom ?? c.type}</span>),
             animated: impasse,
+            markerEnd: { type: MarkerType.ArrowClosed, width: 18, height: 18 },
             style: impasse ? { stroke: "#b42318", strokeWidth: 2.5 } : { stroke: "#6b7280", strokeWidth: 1.6 },
             labelStyle: { fill: impasse ? "#b42318" : "#374151", fontWeight: 600 },
             labelBgStyle: { fill: "#fff", fillOpacity: 0.92 },
@@ -345,21 +417,23 @@ export default function App() {
     for (const n of game.nodes) {
       const discSource = discoverySourceDe(n);
       if (discSource && game.nodes.some((m) => m.id === discSource)) {
-        edges.push({
-          id: `${discSource}->${n.id}:discovery`, source: discSource, target: n.id,
-          label: "Discovery",
-          animated: false,
-          style: { stroke: "#0b5fff", strokeWidth: 1.6, strokeDasharray: "6 3" },
-          labelStyle: { fill: "#0b5fff", fontWeight: 600 },
-          labelBgStyle: { fill: "#e8efff", fillOpacity: 0.92 },
-        });
+          edges.push({
+            id: `${discSource}->${n.id}:discovery`, source: discSource, target: n.id,
+            label: (<span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><Icon name="oeil" size={12} />Discovery</span>),
+            animated: false,
+            markerEnd: { type: MarkerType.ArrowClosed, width: 18, height: 18 },
+            style: { stroke: "#0b5fff", strokeWidth: 1.6, strokeDasharray: "6 3" },
+            labelStyle: { fill: "#0b5fff", fontWeight: 600 },
+            labelBgStyle: { fill: "#e8efff", fillOpacity: 0.92 },
+          });
       }
       for (const revealNode of effectRevealNodes(n)) {
         if (game.nodes.some((m) => m.id === revealNode)) {
           edges.push({
             id: `${n.id}->${revealNode}:effect`, source: n.id, target: revealNode,
-            label: "Effet",
+            label: (<span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><Icon name="engrenage" size={12} />Effet</span>),
             animated: false,
+            markerEnd: { type: MarkerType.ArrowClosed, width: 18, height: 18 },
             style: { stroke: "#2b8a3e", strokeWidth: 1.6, strokeDasharray: "3 3" },
             labelStyle: { fill: "#2b8a3e", fontWeight: 600 },
             labelBgStyle: { fill: "#eafff0", fillOpacity: 0.92 },
@@ -403,39 +477,46 @@ export default function App() {
   const valider = () => {
     actualiserRapport(game);
     setEtapeWorkflow(4);
-    if (!etroite) setOnglet("graphe");
+    if (!etroite) { setOnglet("graphe"); setEcran("valider"); }
   };
   useEffect(() => {
     const v = validateGame(game);
     setBrut(v.layers.flatMap((l) => l.errors));
     setRapport(v.layers.flatMap((l) => (l.errors.length ? l.errors.map(erreurFR) : [`Couche ${l.layer} : OK`])));
+    setCouches({
+      c1: (v.layers[0]?.errors.length ?? 1) === 0,
+      c2: v.layers[1] ? v.layers[1].errors.length === 0 : null,
+    });
+    setDetailCouches(v.layers.map((l) => ({ layer: l.layer, errors: [...l.errors] })));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [game]);
 
+  // Création d'étapes via l'opération MCP nommée (historique lisible).
+  const composerEtapes = (nodes: GameNode[]) => editGame((g) => composeNodes(g, nodes), "composeNodes");
   const ajouterEtape = (preset: "etape" | "tirage" | "fin" | "lieu") => {
     if (relecture) return;
     const id = `etape-${game.nodes.length + 1}`;
     if (preset === "tirage") {
-      editGame((g) => composeNodes(g, [{
+      composerEtapes([{
         id, module: { type: "RANDOM_POOL", data: {} },
         activation: { requires: [{ type: "TIMER", anchor: "GAME_START", delaySeconds: 0 }] },
         randomPool: { candidates: [], drawCount: 1, drawTiming: "ON_POOL_ACTIVATION" },
-      }]));
+      }]);
     } else if (preset === "fin") {
-      editGame((g) => composeNodes(g, [{
+      composerEtapes([{
         id, module: { type: "QUIZ", data: { schemaVersion: "1.0.0", questions: [] } },
         activation: { requires: [] }, isEnding: true,
-      }]));
+      }]);
     } else if (preset === "lieu") {
-      editGame((g) => composeNodes(g, [{
+      composerEtapes([{
         id, module: { type: "INFO", data: {} },
         activation: { requires: [{ type: "GEOFENCE", lat: 48.0, lng: 2.0, radiusMeters: 30, predicate: "enter" }] },
-      }]));
+      }]);
     } else {
-      editGame((g) => composeNodes(g, [{
+      composerEtapes([{
         id, module: { type: "QUIZ", data: { schemaVersion: "1.0.0", questions: [] } },
         activation: { requires: [] },
-      }]));
+      }]);
     }
     setSel(id);
     setEtapeWorkflow(2);
@@ -457,7 +538,30 @@ export default function App() {
   }
   const file = activeId ? ev.unlocked.filter((id) => id !== activeId) : ev.unlocked;
 
-  const journal = (msg: string) => setLog((l) => [...l, `[${sessionId}] ${msg} (triche)`]);
+  const journal = (msg: string) => setLog((l) => [...l, `[${sessionId}] ${msg} (triche, hold=${game.global?.holdMode ?? "none"})`]);
+  // HOLD simulé (prévisualisation uniquement, jamais écrit dans le JSON).
+  const [holdSim, setHoldSim] = useState<"none" | "locked">("none");
+  const forcerHoldLock = () => {
+    setHoldSim("locked");
+    journal("forceHoldLock : verrouillage kiosque simulé");
+  };
+  const forcerHoldExit = () => {
+    setHoldSim("none");
+    journal("forceHoldExit : sortie animateur simulée");
+  };
+  // Reculer d'un pas : rouvre la dernière étape terminée de la simulation.
+  const reculerSim = () => {
+    const ids = Object.keys(done);
+    if (!ids.length) return;
+    const last = ids[ids.length - 1];
+    setDone((d) => { const n = { ...d }; delete n[last]; return n; });
+    setCounts((c) => {
+      const n = { ...c };
+      if ((n[last] ?? 1) <= 1) delete n[last]; else n[last]--;
+      return n;
+    });
+    journal(`retour ${last} : étape rouverte`);
+  };
   const ouvrir = (id: string) => {
     setActiveId(id);
     journal(`ouverture ${id}`);
@@ -550,7 +654,8 @@ export default function App() {
   };
 
   const exporter = async () => {
-    const r = await exportPack(game, st.present.meta, manifest, animateur);
+    setEcran("exporter");
+    const r = await exportPackFull(game, st.present.meta, manifest, animateur);
     if (!r.ok) {
       setBrut(r.errors);
       setRapport(r.errors.map(erreurFR));
@@ -558,6 +663,7 @@ export default function App() {
       const m = r.errors.join(" ");
       const fautif = game.nodes.find((n) => m.includes(n.id));
       if (fautif) setSel(fautif.id);
+      if (!etroite) setEcran("composer");
       return;
     }
     const dl = (name: string, text: string) => {
@@ -570,6 +676,7 @@ export default function App() {
     dl("manifest.json", JSON.stringify(r.manifest, null, 2));
     dl("studio-meta.json", JSON.stringify(st.present.meta, null, 2));
     setRapport([`Export OK : game.json + manifest (${r.manifest!.files.length} fichiers) + studio-meta.json`]);
+    setDernierExport({ date: new Date().toISOString(), files: r.manifest!.files });
     setExportOk(true);
     setEtapeWorkflow(5);
   };
@@ -582,29 +689,30 @@ export default function App() {
       const g = await importGame(file);
       const v = validateGame(g);
       if (!v.ok) {
+        const premier = v.layers.flatMap((l) => l.errors)[0] ?? "validation échouée";
         setBrut(v.layers.flatMap((l) => l.errors));
         setRapport(v.layers.flatMap((l) => (l.errors.length ? l.errors.map(erreurFR) : [`Couche ${l.layer} : OK`])));
+        setImportEchoue(file.name);
+        memoriserImport({ nom: file.name, date: new Date().toISOString(), resultat: "rejeté", raison: premier });
         return;
       }
-      edit((s) => ({ game: g, meta: emptyMeta() }));
+      edit((s) => ({ game: g, meta: emptyMeta() }), "importer");
       setSel(null);
       nouvelleSession();
-      const recents = [file.name, ...historique.filter((n) => n !== file.name)].slice(0, 10);
-      setHistorique(recents);
-      try {
-        localStorage.setItem("geoplay-import-history", JSON.stringify(recents));
-      } catch {
-        /* stockage indisponible : l'historique reste en mémoire */
-      }
+      setImportEchoue(null);
+      memoriserImport({ nom: file.name, date: new Date().toISOString(), resultat: "chargé" });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setBrut([msg]);
       setRapport([msg]);
+      setImportEchoue(file.name);
+      memoriserImport({ nom: file.name, date: new Date().toISOString(), resultat: "rejeté", raison: msg });
     }
   };
 
   const importer = async () => {
     if (relecture) return;
+    setEcran("importer");
     const w = window as unknown as {
       showOpenFilePicker?: (opts?: unknown) => Promise<{ getFile: () => Promise<File> }[]>;
     };
@@ -627,7 +735,14 @@ export default function App() {
   const nbEtapes = game.nodes.length;
   const finPresente = game.nodes.some((n) => n.isEnding);
   const nbBrouillons = game.nodes.filter((n) => (st.present.meta.status[n.id]?.state ?? "draft") === "draft").length;
-  const bloqueExport = erreurs.length > 0 || (!animateur && nbBrouillons > 0);
+  // Règle centrale "export possible" (spec studio-onepage-spec, décision 1.1),
+  // consommée par la barre globale, Relire et Exporter.
+  const blocage = useMemo(() => canExport(game, st.present.meta, animateur), [game, st.present.meta, animateur]);
+  const bloqueExport = !blocage.ok;
+  const raisonsBlocage = blocage.raisons;
+  const [dernierExport, setDernierExport] = useState<{ date: string; files: ManifestFile[] } | null>(null);
+  // Statut global du jeu pour la barre globale (spec studio-onepage-spec).
+  const statutJeu = nbEtapes === 0 || nbBrouillons > 0 ? "draft" : "reviewed";
   const fait = {
     1: nbEtapes > 0,
     2: nbEtapes > 0,
@@ -638,8 +753,56 @@ export default function App() {
 
   const choisirNoeud = (id: string) => {
     setSel(id);
-    if (etroite) setOnglet("detail");
-    else if (etapeWorkflow === 1) setEtapeWorkflow(2);
+    if (etroite) {
+      setOnglet("detail");
+      return;
+    }
+    // Drill-down desktop (change studio-layout-revamp) : déplie, surligne et
+    // fait défiler la section détail vers le nœud choisi.
+    setMep((m) => ({ ...m, repliees: { ...m.repliees, detail: false } }));
+    setEcran("composer");
+    window.clearTimeout(surlignageTimer.current);
+    setSectionSurlignee("detail");
+    surlignageTimer.current = window.setTimeout(() => setSectionSurlignee(null), 1600);
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        document.getElementById("section-detail")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }),
+    );
+    if (etapeWorkflow === 1) setEtapeWorkflow(2);
+  };
+
+  // Position effective d'un nœud (placée ou grille par défaut) pour l'alignement.
+  const posEffective = (id: string) => {
+    const i = game.nodes.findIndex((n) => n.id === id);
+    return positions[id] ?? { x: (i % 4) * 250, y: Math.floor(i / 4) * 160 };
+  };
+  // Aligne la sélection multiple (≥2 nœuds) sur la moyenne d'un axe.
+  const aligner = (axe: "x" | "y") => {
+    const ids = selMulti.filter((id) => game.nodes.some((n) => n.id === id));
+    if (ids.length < 2 || relecture) return;
+    const moy = ids.reduce((s, id) => s + posEffective(id)[axe], 0) / ids.length;
+    setPositions((p) => {
+      const n = { ...p };
+      for (const id of ids) {
+        const base = posEffective(id);
+        n[id] = axe === "x" ? { x: moy, y: base.y } : { x: base.x, y: moy };
+      }
+      return n;
+    });
+  };
+  // Recherche par nom/type : Entrée sélectionne le 1er résultat et le centre.
+  const allerRecherche = () => {
+    const q = recherche.trim().toLowerCase();
+    if (!q) return;
+    const m = game.nodes.find((n) =>
+      n.id.toLowerCase().includes(q) ||
+      n.module.type.toLowerCase().includes(q) ||
+      (MODULES_FR[n.module.type]?.nom ?? "").toLowerCase().includes(q));
+    if (!m) return;
+    choisirNoeud(m.id);
+    const p = posEffective(m.id);
+    rfRef.current?.setCenter(p.x, p.y, { zoom: 1, duration: 300 });
   };
 
   const palette = (
@@ -671,7 +834,7 @@ export default function App() {
 
   const zoneGraphe = (
     <div className="carte studio-flow relative min-h-0 flex-1 overflow-hidden" style={{ minHeight: 320 }}>
-      <ReactFlow nodes={noeuds} edges={aretes} onNodesChange={onNodesChange} onConnect={onConnect} onNodeClick={(_, n) => choisirNoeud(n.id)} onInit={(instance) => { rfRef.current = instance; }} fitView={nbEtapes > 0} fitViewOptions={{ padding: 0.2 }} minZoom={0.3} maxZoom={2} nodesConnectable={!relecture} nodesDraggable={!relecture} elementsSelectable style={{ width: "100%", height: "100%" }}>
+      <ReactFlow nodes={noeuds} edges={aretes} onNodesChange={onNodesChange} onConnect={onConnect} onNodeClick={(_, n) => choisirNoeud(n.id)} onSelectionChange={({ nodes: ns }) => setSelMulti(ns.map((n) => n.id))} multiSelectionKeyCode="Shift" onInit={(instance) => { rfRef.current = instance; }} fitView={nbEtapes > 0} fitViewOptions={{ padding: 0.2 }} minZoom={0.3} maxZoom={2} nodesConnectable={!relecture} nodesDraggable={!relecture} elementsSelectable style={{ width: "100%", height: "100%" }}>
         <Background gap={22} />
         <Controls showInteractive={false} />
         <MiniMap pannable zoomable style={{ borderRadius: 10 }} aria-label="Mini-carte du graphe" />
@@ -679,6 +842,11 @@ export default function App() {
           <span className="puce">
             <Icon name="graphe" size={13} /> {nbEtapes} étape{nbEtapes > 1 ? "s" : ""} · glisser pour relier
           </span>
+          <input className="champ" style={{ minHeight: 32, marginTop: 4 }} value={recherche} size={14}
+            placeholder="Rechercher (nom, type) — Entrée"
+            aria-label="Rechercher un nœud par nom ou type"
+            onChange={(e) => setRecherche(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") allerRecherche(); }} />
         </Panel>
       </ReactFlow>
     </div>
@@ -735,6 +903,7 @@ export default function App() {
         <Inspecteur
           game={game} node={etape} meta={st.present.meta} editGame={editGame} edit={edit}
           nouveauType={nouveauType} setNouveauType={setNouveauType} lectureSeule={relecture}
+          onAllerConfig={() => setEcran("config")}
         />
       ) : (
         <div className="p-3 text-sm">
@@ -758,8 +927,135 @@ export default function App() {
         ouvrir={ouvrir} terminer={terminer} draws={draws} forced={forced} setForced={setForced}
         log={log} testAll={testAll} testerBranches={testerBranches} sessionId={sessionId}
         setSessionId={setSessionId} nouvelleSession={nouvelleSession}
+        reculer={reculerSim} nbTermines={Object.keys(done).length}
+        holdSim={holdSim} onHoldLock={forcerHoldLock} onHoldExit={forcerHoldExit}
       />
     </aside>
+  );
+
+  // Contenus des écrans (spec studio-onepage-spec) : tous branchés sur le même
+  // état { game, meta } + historique, sans état par écran (hors simulateur).
+  const ecranCourant = (
+    <>
+      {ecran === "importer" && (
+        <div className="carte flex min-h-0 flex-1 flex-col gap-2 overflow-auto p-3" aria-label="Écran Importer">
+          <h2 className="text-base font-bold">Importer un jeu</h2>
+          <p className="text-xs" style={{ color: "var(--ink-2)" }}>
+            Charge un fichier JSON de jeu : il rejoint exactement le même état que Composer
+            (même undo/redo, mêmes écrans). Tu peux aussi déposer le fichier n'importe où dans la fenêtre.
+          </p>
+          <div>
+            <button className="btn-primaire" onClick={importer} disabled={relecture} title={IMPORTER.aide}>
+              <Icon name="importer" size={16} /> {IMPORTER.nom}
+            </button>
+          </div>
+          <h3 className="text-sm font-bold">Imports récents ({historique.length})</h3>
+          {historique.length ? (
+            <ul className="text-xs">
+              {historique.map((h) => (
+                <li key={h.nom} style={{ padding: "4px 0" }}>
+                  <b>{h.nom}</b> — {h.resultat}{h.date ? ` · ${new Date(h.date).toLocaleString()}` : ""}
+                  {h.raison ? <><br /><span style={{ color: "var(--ink-2)" }}>{h.raison}</span></> : null}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-xs" style={{ color: "var(--ink-2)" }}>Aucun import enregistré sur cet appareil.</p>
+          )}
+          {importEchoue && (
+            <div>
+              <h3 className="text-sm font-bold">Erreur brute du schéma — {importEchoue}</h3>
+              <ul className="text-xs font-mono">{brut.map((b, i) => <li key={i} style={{ padding: "2px 0" }}>{b}</li>)}</ul>
+            </div>
+          )}
+        </div>
+      )}
+      {ecran === "relire" && (
+        <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-auto" aria-label="Écran Relire">
+          <FileRelire game={game} meta={st.present.meta} edit={edit} manifest={manifest} lectureSeule={relecture} onChoisir={choisirNoeud} estAnimateur={animateur} exportPret={!bloqueExport || animateur} />
+          <ReviewOverlay game={game} meta={st.present.meta} />
+        </div>
+      )}
+      {ecran === "valider" && (
+        <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-auto" aria-label="Écran Valider">
+          <div>
+            <button className="btn-primaire" onClick={valider} title="Valider couches 1+2">
+              <Icon name="valider" size={16} /> Valider
+            </button>
+          </div>
+          <BlocValidation couches={detailCouches} game={game} onVoir={choisirNoeud} />
+        </div>
+      )}
+      {ecran === "previsualiser" && (
+        <div className="carte min-h-0 flex-1 overflow-auto p-2" aria-label="Écran Prévisualiser">
+          <Apercu
+            game={game} sim={sim} setSim={setSim} file={file} activeId={activeId}
+            ouvrir={ouvrir} terminer={terminer} draws={draws} forced={forced} setForced={setForced}
+            log={log} testAll={testAll} testerBranches={testerBranches} sessionId={sessionId}
+            setSessionId={setSessionId} nouvelleSession={nouvelleSession}
+            reculer={reculerSim} nbTermines={Object.keys(done).length}
+            holdSim={holdSim} onHoldLock={forcerHoldLock} onHoldExit={forcerHoldExit}
+          />
+        </div>
+      )}
+      {ecran === "exporter" && (
+        <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-auto" aria-label="Écran Exporter">
+          <ManifestForm manifest={manifest} setManifest={setManifest} lectureSeule={relecture} />
+          <div className="carte p-3">
+            <h3 className="text-sm font-bold">Résumé pré-export</h3>
+            <p className="text-xs" style={{ color: "var(--ink-2)" }}>
+              Seront générés : game.json, manifest.json ({manifest.length} fichier{manifest.length > 1 ? "s" : ""} au manifest), studio-meta.json.
+            </p>
+            <div style={{ marginTop: 8 }}>
+              <button className="btn-primaire" onClick={exporter} disabled={bloqueExport && !animateur} title={bloqueExport && !animateur ? `Export bloqué : ${erreurFR(raisonsBlocage[0] ?? "validation en cours")}` : "Exporter game.json + manifest + studio-meta.json"}>
+                <Icon name="exporter" size={16} /> Exporter
+              </button>
+            </div>
+            {bloqueExport && !animateur && (
+              <p className="text-xs" style={{ color: "var(--ink-2)" }}>Bloqué : {erreurFR(raisonsBlocage[0] ?? "validation en cours")}{raisonsBlocage.length > 1 ? ` (+${raisonsBlocage.length - 1} autre(s), voir Valider)` : ""}</p>
+            )}
+          </div>
+          {dernierExport && (
+            <div className="carte p-3">
+              <h3 className="text-sm font-bold">Dernier export — {new Date(dernierExport.date).toLocaleString()}</h3>
+              <ul className="text-xs font-mono">
+                {dernierExport.files.map((f) => (
+                  <li key={f.path} style={{ padding: "2px 0" }}>{f.path} v{f.version} {f.size}o<br />sha256:{f.sha256}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+      {ecran === "config" && (
+        <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-auto" aria-label="Écran Configuration globale">
+          <ModePanel game={game} edit={edit} lectureSeule={relecture} />
+          <ExperienceStylePanel game={game} edit={edit} lectureSeule={relecture} />
+          <BrandingPanel game={game} edit={edit} lectureSeule={relecture} />
+          <ObjetsPanel game={game} editGame={editGame} lectureSeule={relecture} onChoisir={choisirNoeud} />
+          {(() => {
+            const holdMode = game.global?.holdMode ?? "none";
+            const verrous = game.nodes.filter((n) => MODULE_REGISTRY[n.module.type]?.needsLock);
+            if (!verrous.length) return null;
+            return (
+              <div className="carte p-3">
+                <h3 style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 13 }}>
+                  <Icon name="animateur" size={15} /> Verrouillage HOLD
+                </h3>
+                <p className="text-xs" style={{ color: "var(--ink-2)" }}>holdMode actuel : <b>{holdMode}</b> — recalculé à chaque changement.</p>
+                <ul className="text-xs">
+                  {verrous.map((n) => (
+                    <li key={n.id}>{n.id} — {holdMode === "none"
+                      ? (<span className="puce puce-erreur">bloqué (HOLD requis)</span>)
+                      : (<span className="puce puce-ok">jouable</span>)}</li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })()}
+        </div>
+      )}
+    </>
   );
 
   return (
@@ -788,24 +1084,39 @@ export default function App() {
           <label className="flex items-center gap-2">
             <span className="sr-only">Nom du jeu</span>
             <input className="champ" value={game.gameId} size={18} disabled={relecture}
-              onChange={(e) => editGame((g) => ({ ...g, gameId: e.target.value }))} aria-label="Nom du jeu" />
+              onChange={(e) => editGame((g) => ({ ...g, gameId: e.target.value }), "renommerJeu")} aria-label="Nom du jeu" />
           </label>
+          <span className="puce" title={statutJeu === "draft" ? "Des éléments sont encore en brouillon" : "Jeu relu"}>
+            <Icon name="statut" size={13} /> {statutJeu === "draft" ? "Brouillon" : "Relu"}
+          </span>
+          <span className={couches.c1 ? "puce puce-ok" : "puce puce-erreur"} title="Couche 1 — conformité AJV Draft-07">
+            C1 {couches.c1 ? "OK" : "KO"}
+          </span>
+          <span className={couches.c2 == null ? "puce" : couches.c2 ? "puce puce-ok" : "puce puce-erreur"} title="Couche 2 — validateur applicatif (non exécutée si C1 échoue)">
+            C2 {couches.c2 == null ? "–" : couches.c2 ? "OK" : "KO"}
+          </span>
           <span className="flex-1" />
           <button className="btn" onClick={valider} title="Valider couches 1+2">
             <Icon name="valider" size={16} /> Valider
           </button>
-          <button className="btn" onClick={importer} disabled={relecture} title={historique.length ? `${IMPORTER.aide} — Récents : ${historique.join(", ")}` : IMPORTER.aide}>
+          <button className="btn" onClick={importer} disabled={relecture} title={historique.length ? `${IMPORTER.aide} — Récents : ${historique.map((h) => h.nom).join(", ")}` : IMPORTER.aide}>
             <Icon name="importer" size={16} /> {IMPORTER.nom}
           </button>
           <input ref={inputImportRef} type="file" accept="application/json,.json" className="sr-only" aria-label={IMPORTER.nom}
             onChange={(e) => { void importerFichier(e.target.files?.[0]); e.target.value = ""; }} />
-          <button className="btn-primaire" onClick={exporter} disabled={bloqueExport && !animateur} title={bloqueExport && !animateur ? "Corrige les problèmes avant d'exporter" : "Exporter game.json + manifest + studio-meta.json"}>
+          <button className="btn-primaire" onClick={exporter} disabled={bloqueExport && !animateur} title={bloqueExport && !animateur ? `Export bloqué : ${erreurFR(raisonsBlocage[0] ?? "validation en cours")}` : "Exporter game.json + manifest + studio-meta.json"}>
             <Icon name="exporter" size={16} /> Exporter
           </button>
           <label className="puce" style={{ cursor: "pointer" }} title="Mode animateur : brouillons jouables, triche tracée">
             <input type="checkbox" checked={animateur} onChange={(e) => setAnimateur(e.target.checked)} aria-label="Mode animateur" />
             <Icon name="animateur" size={14} /> Animateur
           </label>
+          <button className="btn" style={{ padding: "0 10px" }} onClick={() => setCalque(calque === "i18n" ? null : "i18n")} aria-expanded={calque === "i18n"} title="Calque traductions (i18n) en surimpression">
+            <Icon name="detail" size={15} /> <span className="hidden xl:inline">Traductions</span>
+          </button>
+          <button className="btn" style={{ padding: "0 10px" }} onClick={() => setCalque(calque === "modes" ? null : "modes")} aria-expanded={calque === "modes"} title="Calque difficultés et modes en surimpression">
+            <Icon name="exemple" size={15} /> <span className="hidden xl:inline">Modes</span>
+          </button>
           <span style={{ display: "inline-flex", gap: 6 }}>
             <button className="btn" style={{ padding: "0 10px" }} onClick={() => dispatch({ t: "undo" })} disabled={!st.past.length || relecture} title="Annuler la dernière modification">
               <Icon name="annuler" size={16} /> <span className="hidden xl:inline">Annuler</span>
@@ -813,6 +1124,17 @@ export default function App() {
             <button className="btn" style={{ padding: "0 10px" }} onClick={() => dispatch({ t: "redo" })} disabled={!st.future.length || relecture} title="Rétablir">
               <Icon name="retablir" size={16} /> <span className="hidden xl:inline">Rétablir</span>
             </button>
+            <details title="Historique des opérations (nommées, pas de diff opaque)">
+              <summary className="btn" style={{ padding: "0 10px", cursor: "pointer", listStyle: "none" }}>
+                <Icon name="liste" size={16} /> <span className="hidden xl:inline">Historique ({st.past.length})</span>
+              </summary>
+              <div className="carte" style={{ position: "fixed", zIndex: 50, maxHeight: "50vh", overflow: "auto", padding: 8, minWidth: 220 }} role="dialog" aria-label="Historique des opérations">
+                <ol className="text-xs">
+                  {[...st.past].reverse().map((e, i) => <li key={i} style={{ padding: "2px 0" }}>{e.op}</li>)}
+                  <li style={{ padding: "2px 0", fontWeight: 700 }}>(actuel)</li>
+                </ol>
+              </div>
+            </details>
           </span>
         </div>
         <WorkflowStepper courant={etapeWorkflow} onAller={allerEtape} fait={fait} bloqueExport={bloqueExport && !animateur} nbErreurs={erreurs.length} nbBrouillons={nbBrouillons} />
@@ -822,6 +1144,23 @@ export default function App() {
           </p>
         )}
       </header>
+      {calque && (
+        <div className="carte" style={{ position: "fixed", top: 64, right: 12, zIndex: 50, width: 380, maxWidth: "calc(100vw - 24px)", maxHeight: "80vh", overflow: "auto", padding: 12 }} role="dialog" aria-label={calque === "i18n" ? "Calque traductions" : "Calque difficultés et modes"}>
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+            <button className="btn" style={{ minHeight: 32, padding: "0 10px" }} onClick={() => setCalque(null)} aria-label="Fermer le calque">
+              <Icon name="fermer" size={14} />
+            </button>
+          </div>
+          {calque === "i18n" ? (
+            <I18nPanel meta={st.present.meta} edit={edit} lectureSeule={relecture} />
+          ) : (
+            <>
+              <ModePanel game={game} edit={edit} lectureSeule={relecture} />
+              <p className="text-xs" style={{ color: "var(--ink-2)" }}>HOLD est un mode système : il se configure dans Configuration globale, pas ici.</p>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Grand écran : 3 volets sobres. Petit écran : onglets + barre basse. */}
       <div className="hidden min-h-0 flex-1 gap-3 p-3 lg:flex">
@@ -842,6 +1181,11 @@ export default function App() {
             <button className="btn" style={{ padding: "0 10px" }} onClick={() => ajouterEtape("fin")} disabled={relecture} title="Créer l'étape de fin du jeu" aria-label="Fin du jeu">
               <Icon name="fin" size={17} />
             </button>
+            {ECRANS.map((e) => (
+              <button key={e.id} className="btn" style={{ padding: "0 10px", fontWeight: ecran === e.id ? 700 : 500 }} onClick={() => setEcran(e.id)} title={e.nom} aria-label={e.nom} aria-current={ecran === e.id ? "page" : undefined}>
+                <Icon name={e.icone} size={17} />
+              </button>
+            ))}
           </div>
         ) : (
           <div className="carte w-60 shrink-0 overflow-auto p-3" style={{ maxWidth: 260 }}>
@@ -850,9 +1194,18 @@ export default function App() {
                 <Icon name="liste" size={15} />
               </button>
             </div>
-            {palette}
+            <nav className="flex flex-col gap-1" aria-label="Écrans du Studio" style={{ marginBottom: 8 }}>
+              <span className="text-xs font-bold uppercase" style={{ color: "var(--ink-2)" }}>Écrans</span>
+              {ECRANS.map((e) => (
+                <button key={e.id} className="btn" style={{ justifyContent: "flex-start", fontWeight: ecran === e.id ? 700 : 500 }} onClick={() => setEcran(e.id)} aria-current={ecran === e.id ? "page" : undefined} title={`Aller à l'écran ${e.nom}`}>
+                  <Icon name={e.icone} size={17} /> {e.nom}
+                </button>
+              ))}
+            </nav>
+            {ecran === "composer" && palette}
           </div>
         )}
+        {ecran === "composer" ? (<>
         <main className="flex min-h-0 min-w-0 flex-[3] flex-col gap-2" aria-label="Graphe et liste">
           <div className="flex min-h-0 flex-1 gap-3">
             {mep.repliees.graphe ? (
@@ -864,9 +1217,30 @@ export default function App() {
             ) : (
               <div id="section-graphe" className="relative flex min-h-0 min-w-0 flex-1 flex-col" style={surlignage("graphe")}>
                 {zoneGraphe}
-                <button className="btn" style={{ position: "absolute", top: 8, right: 8, zIndex: 5, minHeight: 32, padding: "0 10px", fontSize: 12 }} onClick={() => basculerSection("graphe")} title="Replier le graphe">
-                  Replier
-                </button>
+                <div style={{ position: "absolute", top: 8, right: 8, zIndex: 5, display: "flex", gap: 4 }}>
+                  <button className="btn" style={{ minHeight: 32, padding: "0 10px" }} onClick={() => basculerMolette("graphe")} title="Réglages du graphe" aria-label="Réglages du graphe" aria-expanded={molette === "graphe"}>
+                    <Icon name="engrenage" size={15} />
+                  </button>
+                  <button className="btn" style={{ minHeight: 32, padding: "0 10px", fontSize: 12 }} onClick={() => basculerSection("graphe")} title="Replier le graphe">
+                    Replier
+                  </button>
+                </div>
+                {molette === "graphe" && (
+                  <div className="carte" style={{ position: "absolute", top: 48, right: 8, zIndex: 6, padding: 8, display: "flex", flexDirection: "column", gap: 6 }} role="dialog" aria-label="Réglages du graphe">
+                    <button className="btn" style={{ justifyContent: "flex-start" }} onClick={() => { rfRef.current?.fitView({ padding: 0.2 }); setMolette(null); }} title="Recentrer le graphe">
+                      Recentrer
+                    </button>
+                    <button className="btn" style={{ justifyContent: "flex-start" }} onClick={() => { aligner("y"); }} disabled={selMulti.length < 2 || relecture} title={selMulti.length < 2 ? "Sélectionne au moins 2 nœuds (Shift+clic)" : `Aligner horizontalement (${selMulti.length} sélectionnés)`}>
+                      Aligner H
+                    </button>
+                    <button className="btn" style={{ justifyContent: "flex-start" }} onClick={() => { aligner("x"); }} disabled={selMulti.length < 2 || relecture} title={selMulti.length < 2 ? "Sélectionne au moins 2 nœuds (Shift+clic)" : `Aligner verticalement (${selMulti.length} sélectionnés)`}>
+                      Aligner V
+                    </button>
+                    <button className="btn" style={{ justifyContent: "flex-start" }} onClick={() => basculerSection("graphe")} title="Replier le graphe">
+                      Replier
+                    </button>
+                  </div>
+                )}
               </div>
             )}
             <Splitter label="Ajuster la largeur de la liste" onDelta={(dx) => setMep((m) => ({ ...m, liste: Math.min(520, Math.max(220, m.liste - dx)) }))} />
@@ -878,7 +1252,12 @@ export default function App() {
               </div>
             ) : (
               <div id="section-liste" className="flex min-w-0 flex-col" style={{ width: mep.liste, ...surlignage("liste") }}>
-                <NodeList game={game} statuts={st.present.meta.status} impasses={impasses} sel={sel} onChoisir={choisirNoeud} erreursParNoeud={erreursParNoeud} lectureSeule={relecture} boutonPlier={<button className="btn" style={{ minHeight: 32, padding: "0 8px", fontSize: 12 }} onClick={() => basculerSection("liste")} title="Replier la liste">Replier</button>} />
+                <NodeList game={game} statuts={st.present.meta.status} impasses={impasses} sel={sel} onChoisir={choisirNoeud} erreursParNoeud={erreursParNoeud} lectureSeule={relecture} boutonPlier={<button className="btn" style={{ minHeight: 32, padding: "0 8px", fontSize: 12 }} onClick={() => basculerSection("liste")} title="Replier la liste">Replier</button>} boutonMolette={<button className="btn" style={{ minHeight: 32, padding: "0 8px" }} onClick={() => basculerMolette("liste")} title="Réglages de la liste" aria-label="Réglages de la liste" aria-expanded={molette === "liste"}><Icon name="engrenage" size={14} /></button>} panneauMolette={molette === "liste" && (
+                  <div className="flex gap-2 px-2 pb-2" role="dialog" aria-label="Réglages de la liste">
+                    <button className="btn" style={{ minHeight: 32, padding: "0 8px", fontSize: 12 }} onClick={() => basculerSection("liste")} title="Replier la liste">Replier</button>
+                    <button className="btn" style={{ minHeight: 32, padding: "0 8px", fontSize: 12 }} onClick={() => { setMep((m) => ({ ...m, liste: 340 })); setMolette(null); }} title="Restaurer la largeur par défaut de la liste">Largeur 340</button>
+                  </div>
+                )} />
               </div>
             )}
           </div>
@@ -897,11 +1276,20 @@ export default function App() {
             </div>
           ) : (
             <div id="section-detail" className="flex min-h-0 flex-1 flex-col gap-1" style={surlignage("detail")}>
-              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 4 }}>
+                <button className="btn" style={{ minHeight: 32, padding: "0 10px" }} onClick={() => basculerMolette("detail")} title="Réglages du détail" aria-label="Réglages du détail" aria-expanded={molette === "detail"}>
+                  <Icon name="engrenage" size={15} />
+                </button>
                 <button className="btn" style={{ minHeight: 32, padding: "0 10px", fontSize: 12 }} onClick={() => basculerSection("detail")} title="Replier le détail">
                   Replier
                 </button>
               </div>
+              {molette === "detail" && (
+                <div className="flex gap-2" role="dialog" aria-label="Réglages du détail">
+                  <button className="btn" style={{ minHeight: 32, padding: "0 10px", fontSize: 12 }} onClick={() => basculerSection("detail")} title="Replier le détail">Replier</button>
+                  <button className="btn" style={{ minHeight: 32, padding: "0 10px", fontSize: 12 }} onClick={() => { setMep((m) => ({ ...m, droite: 400 })); setMolette(null); }} title="Restaurer la largeur par défaut du panneau">Panneau 400</button>
+                </div>
+              )}
               {detail}
             </div>
           )}
@@ -913,66 +1301,118 @@ export default function App() {
             </div>
           ) : (
             <div id="section-essai" className="flex flex-col gap-1" style={surlignage("essai")}>
-              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 4 }}>
+                <button className="btn" style={{ minHeight: 32, padding: "0 10px" }} onClick={() => basculerMolette("essai")} title="Réglages de l'essai" aria-label="Réglages de l'essai" aria-expanded={molette === "essai"}>
+                  <Icon name="engrenage" size={15} />
+                </button>
                 <button className="btn" style={{ minHeight: 32, padding: "0 10px", fontSize: 12 }} onClick={() => basculerSection("essai")} title="Replier l'essai">
                   Replier
                 </button>
               </div>
+              {molette === "essai" && (
+                <div className="flex gap-2" role="dialog" aria-label="Réglages de l'essai">
+                  <button className="btn" style={{ minHeight: 32, padding: "0 10px", fontSize: 12 }} onClick={() => basculerSection("essai")} title="Replier l'essai">Replier</button>
+                </div>
+              )}
               {essai}
             </div>
           )}
         </div>
+        </>) : (
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-auto p-3" aria-label="Écran courant">
+          {ecranCourant}
+        </main>
+        )}
       </div>
 
+      {/* Mobile : navigation unifiée sur les écrans ECRANS + onglets dans composer */}
       <div className="flex min-h-0 flex-1 flex-col gap-2 p-2 lg:hidden">
         <main className="flex min-h-0 flex-1 flex-col" aria-label="Vue courante">
-          {onglet === "graphe" && (
+          {ecran === "composer" ? (
             <div className="flex min-h-0 flex-1 flex-col gap-2">
-              <div className="carte shrink-0 p-2">{palette}</div>
-              <div className="flex min-h-0 flex-1 flex-col">{zoneGraphe}</div>
+              {onglet === "graphe" && (
+                <div className="flex min-h-0 flex-1 flex-col gap-2">
+                  <div className="carte shrink-0 p-2">{palette}</div>
+                  <div className="flex min-h-0 flex-1 flex-col">{zoneGraphe}</div>
+                </div>
+              )}
+              {onglet === "liste" && (
+                <NodeList game={game} statuts={st.present.meta.status} impasses={impasses} sel={sel} onChoisir={choisirNoeud} erreursParNoeud={erreursParNoeud} lectureSeule={relecture} />
+              )}
+              {onglet === "detail" && detail}
+              {onglet === "essai" && essai}
             </div>
+          ) : (
+            <>{ecranCourant}</>
           )}
-          {onglet === "liste" && (
-            <NodeList game={game} statuts={st.present.meta.status} impasses={impasses} sel={sel} onChoisir={choisirNoeud} erreursParNoeud={erreursParNoeud} lectureSeule={relecture} />
-          )}
-          {onglet === "detail" && detail}
-          {onglet === "essai" && essai}
         </main>
-        {pied}
-        {listeErreurs}
-        <nav className="carte flex shrink-0 items-stretch gap-1 p-1" aria-label="Vues" style={{ position: "sticky", bottom: 0 }}>
-          {(
-            [
-              { id: "graphe", nom: "Graphe", icone: "graphe" },
-              { id: "liste", nom: "Liste", icone: "liste" },
-              { id: "detail", nom: "Détail", icone: "detail" },
-              { id: "essai", nom: "Essai", icone: "essai" },
-            ] as { id: Onglet; nom: string; icone: "graphe" | "liste" | "detail" | "essai" }[]
-          ).map((o) => (
-            <button
-              key={o.id}
-              onClick={() => setOnglet(o.id)}
-              aria-current={onglet === o.id ? "page" : undefined}
-              style={{
-                flex: 1,
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                gap: 2,
-                minHeight: 56,
-                justifyContent: "center",
-                borderRadius: 10,
-                border: onglet === o.id ? "2px solid var(--focus)" : "1px solid transparent",
-                background: onglet === o.id ? "var(--surface)" : "transparent",
-                fontWeight: onglet === o.id ? 700 : 500,
-                fontSize: 12,
-              }}
-            >
-              <Icon name={o.icone} size={19} />
-              {o.nom}
-            </button>
-          ))}
-        </nav>
+        {ecran === "composer" ? (
+          <>
+            {pied}
+            {listeErreurs}
+            <nav className="carte flex shrink-0 items-stretch gap-1 p-1" aria-label="Sections du Composer" style={{ position: "sticky", bottom: 0 }}>
+              {(
+                [
+                  { id: "graphe", nom: "Graphe", icone: "graphe" },
+                  { id: "liste", nom: "Liste", icone: "liste" },
+                  { id: "detail", nom: "Détail", icone: "detail" },
+                  { id: "essai", nom: "Essai", icone: "essai" },
+                ] as { id: Onglet; nom: string; icone: "graphe" | "liste" | "detail" | "essai" }[]
+              ).map((o) => (
+                <button
+                  key={o.id}
+                  onClick={() => setOnglet(o.id)}
+                  aria-current={onglet === o.id ? "page" : undefined}
+                  style={{
+                    flex: 1,
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: 2,
+                    minHeight: 56,
+                    justifyContent: "center",
+                    borderRadius: 10,
+                    border: onglet === o.id ? "2px solid var(--focus)" : "1px solid transparent",
+                    background: onglet === o.id ? "var(--surface)" : "transparent",
+                    fontWeight: onglet === o.id ? 700 : 500,
+                    fontSize: 12,
+                  }}
+                >
+                  <Icon name={o.icone} size={19} />
+                  {o.nom}
+                </button>
+              ))}
+            </nav>
+          </>
+        ) : (
+          <nav className="carte flex shrink-0 items-stretch gap-1 p-1 flex-wrap" aria-label="Écrans du Studio" style={{ position: "sticky", bottom: 0 }}>
+            {ECRANS.map((e) => (
+              <button
+                key={e.id}
+                onClick={() => setEcran(e.id)}
+                aria-current={ecran === e.id ? "page" : undefined}
+                style={{
+                  flex: "1 1 auto",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: 2,
+                  minHeight: 48,
+                  justifyContent: "center",
+                  borderRadius: 10,
+                  border: ecran === e.id ? "2px solid var(--focus)" : "1px solid transparent",
+                  background: ecran === e.id ? "var(--surface)" : "transparent",
+                  fontWeight: ecran === e.id ? 700 : 500,
+                  fontSize: 11,
+                  padding: "4px 6px",
+                }}
+              >
+                <Icon name={e.icone} size={18} />
+                {e.nom}
+              </button>
+            ))}
+          </nav>
+        )}
       </div>
     </div>
   );
@@ -990,14 +1430,15 @@ function Famille({ titre, aide, children }: { titre: string; aide: string; child
   );
 }
 
-function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauType, lectureSeule }: {
+function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauType, lectureSeule, onAllerConfig }: {
   game: Game; node: GameNode; meta: StudioMeta;
   editGame: (fn: (g: Game) => Game) => void;
   edit: (fn: (s: { game: Game; meta: StudioMeta }) => { game: Game; meta: StudioMeta }) => void;
   nouveauType: string; setNouveauType: (s: string) => void;
   lectureSeule: boolean;
+  onAllerConfig?: () => void;
 }) {
-  const upd = (patch: Partial<GameNode>) => editGame((g) => ({ ...g, nodes: g.nodes.map((n) => (n.id === node.id ? { ...n, ...patch } : n)) }));
+  const upd = (patch: Partial<GameNode>) => editGame((g) => ({ ...g, nodes: g.nodes.map((n) => (n.id === node.id ? { ...n, ...patch } : n)) }), "modifierNoeud");
   const updDecl = (i: number, patch: Partial<Condition>) =>
     editGame((g) => ({
       ...g,
@@ -1006,12 +1447,12 @@ function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauT
         const requires = n.activation.requires.map((c, j) => (j === i ? { ...c, ...patch } : c));
         return { ...n, activation: { ...n.activation, requires } };
       }),
-    }));
+    }), "setActivation");
   const supprDecl = (i: number) =>
     editGame((g) => ({
       ...g,
       nodes: g.nodes.map((n) => (n.id === node.id ? { ...n, activation: { ...n.activation, requires: n.activation.requires.filter((_, j) => j !== i) } } : n)),
-    }));
+    }), "setActivation");
   const ajoutDecl = () =>
     editGame((g) => ({
       ...g,
@@ -1020,7 +1461,7 @@ function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauT
         const requires = [...n.activation.requires, conditionVide(nouveauType)];
         return { ...n, activation: { ...n.activation, requires, operator: n.activation.operator ?? (requires.length > 1 ? "AND" : undefined) } };
       }),
-    }));
+    }), "setActivation");
   const st = meta.status[node.id]?.state ?? "draft";
   const milieu: Milieu = meta.milieu[node.id] ?? "exterieur";
   return (
@@ -1035,6 +1476,33 @@ function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauT
         <label>Mini-jeu <select className="champ" value={node.module.type} onChange={(e) => upd({ module: { ...node.module, type: e.target.value } })}>
           {TYPES_MODULE.map((k) => <option key={k} value={k} title={MODULES_FR[k]?.aide}>{MODULES_FR[k]?.nom ?? k}</option>)}
         </select></label>
+        {(() => {
+          const reg = MODULE_REGISTRY[node.module.type];
+          if (!reg) return null;
+          const holdMode = game.global?.holdMode ?? "none";
+          const pres = game.global?.presentation ?? [];
+          const expStyle = (game.global?.experienceStyle ?? {}) as Record<string, unknown>;
+          const besoinsKO: string[] = [];
+          for (const p of reg.presentationNeeds ?? []) if (!pres.includes(p)) besoinsKO.push(`présentation ${p}`);
+          for (const e of reg.experienceNeeds ?? []) if (expStyle[e] == null) besoinsKO.push(`experienceStyle.${e}`);
+          const resume = [reg.needsLock ? "verrouillage" : null, reg.needsInventory ? "inventaire" : null, ...(reg.presentationNeeds ?? []), ...(reg.experienceNeeds ?? []).map((e) => `style:${e}`)].filter(Boolean).join(" · ");
+          return (
+            <>
+              <span className="text-xs" style={{ color: "var(--ink-2)" }}>Besoins du module (registre) : {resume || "aucun"}</span>
+              {reg.needsLock && holdMode === "none" && (
+                <p className="puce puce-erreur" style={{ whiteSpace: "normal" }}>
+                  <Icon name="alerte" size={13} /> Ce module exige un HOLD actif (needsLock), mais holdMode vaut « none » — rejet en couche 2.
+                  {onAllerConfig && <button className="btn" style={{ minHeight: 32, padding: "0 10px", fontSize: 12 }} onClick={onAllerConfig} title="Aller à la configuration globale">Configuration</button>}
+                </p>
+              )}
+              {besoinsKO.length > 0 && (
+                <p className="puce" style={{ whiteSpace: "normal" }} title="Avertissement non bloquant : seule la validation (couche 2) bloque">
+                  <Icon name="alerte" size={13} /> Besoins non satisfaits : {besoinsKO.join(", ")}.
+                </p>
+              )}
+            </>
+          );
+        })()}
         {node.module.type === "QUIZ" && (
           <div>
             {(Array.isArray(node.module.data.questions) ? node.module.data.questions as { q?: string }[] : []).map((q, i) => (
@@ -1081,7 +1549,7 @@ function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauT
         {node.activation.requires.map((c, i) => (
           <div key={i} className="carte p-2" style={{ boxShadow: "none" }}>
             <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-               <Icon name={c.type === "GEOFENCE" ? "zone" : c.type === "NODE_COMPLETED" ? "apres" : c.type === "TIMER" ? "delai" : c.type === "POOL_DRAWN" ? "tiree" : c.type === "PROXIMITY_MASTER" ? "animateur" : c.type === "ITEM_REQUIRED" || c.type === "ITEM_USED" ? "package" : c.type === "CODE_INPUT" || c.type === "CLUE_RESOLVED" ? "engrenage" : "detail"} size={15} />
+               <Icon name={iconeCondition(c.type)} size={15} />
                <b>{CONDITIONS_FR[c.type]?.nom ?? c.type}</b>
               <span style={{ flex: 1 }} />
               <button className="btn" style={{ minHeight: 32, padding: "0 10px" }} aria-label="Supprimer ce déclencheur" title="Supprimer" onClick={() => supprDecl(i)}><Icon name="fermer" size={14} /></button>
@@ -1123,18 +1591,18 @@ function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauT
         )}
       </Famille>
       <Famille titre={FAMILLES[4].titre} aide={FAMILLES[4].aide}>
-        <label>Statut <select className="champ" value={st} onChange={(e) => edit((s) => ({ ...s, meta: { ...s.meta, status: { ...s.meta.status, [node.id]: { state: e.target.value as StudioMeta["status"][string]["state"] } } } }))}>
+        <label>Statut <select className="champ" value={st} onChange={(e) => edit((s) => ({ ...s, meta: { ...s.meta, status: { ...s.meta.status, [node.id]: { state: e.target.value as StudioMeta["status"][string]["state"] } } } }), "definirStatut")}>
           {Object.entries(ETATS_FR).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select></label>
-        <label>Fournisseur <input className="champ" size={12} value={meta.provenance[node.id]?.providerId ?? ""} onChange={(e) => edit((s) => ({ ...s, meta: { ...s.meta, provenance: { ...s.meta.provenance, [node.id]: { providerId: e.target.value, license: s.meta.provenance[node.id]?.license ?? "", sourceUrl: s.meta.provenance[node.id]?.sourceUrl ?? "" } } } }))} placeholder="Qui fournit le contenu ?" /></label>
-        <label>Milieu <select className="champ" value={milieu} onChange={(e) => edit((s) => ({ ...s, meta: { ...s.meta, milieu: { ...s.meta.milieu, [node.id]: e.target.value as Milieu } } }))}>
+        <label>Fournisseur <input className="champ" size={12} value={meta.provenance[node.id]?.providerId ?? ""} onChange={(e) => edit((s) => ({ ...s, meta: { ...s.meta, provenance: { ...s.meta.provenance, [node.id]: { providerId: e.target.value, license: s.meta.provenance[node.id]?.license ?? "", sourceUrl: s.meta.provenance[node.id]?.sourceUrl ?? "" } } } }), "definirProvenance")} placeholder="Qui fournit le contenu ?" /></label>
+        <label>Milieu <select className="champ" value={milieu} onChange={(e) => edit((s) => ({ ...s, meta: { ...s.meta, milieu: { ...s.meta.milieu, [node.id]: e.target.value as Milieu } } }), "definirMilieu")}>
           {Object.entries(MILIEUX).map(([k, v]) => <option key={k} value={k}>{v.nom}</option>)}
         </select></label>
         <i className="text-xs" style={{ color: "var(--ink-2)" }}>Conseil : {MILIEUX[milieu].reco}</i>
         {node.activation.requires.some((c) => c.type === "PROXIMITY_MASTER") && (
           <button className="btn" onClick={() => {
             try {
-              editGame((g) => addSecoursCode(g, node.id));
+              editGame((g) => addSecoursCode(g, node.id), "addSecoursCode");
             } catch (e) {
               alert(String(e));
             }
@@ -1145,7 +1613,7 @@ function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauT
             try {
               const patch = JSON.parse(e.target.value) as Record<string, unknown>;
               if (patch && typeof patch === "object") {
-                edit((s) => ({ ...s, meta: { ...s.meta, overrides: { ...s.meta.overrides, [node.id]: patch as StudioMeta["overrides"][string] } } }));
+                edit((s) => ({ ...s, meta: { ...s.meta, overrides: { ...s.meta.overrides, [node.id]: patch as StudioMeta["overrides"][string] } } }), "definirOverrides");
               }
             } catch { alert("Options invalides (JSON)"); }
           }} />
@@ -1336,10 +1804,12 @@ function ExperienceStylePanel({ game, edit, lectureSeule }: {
   lectureSeule: boolean;
 }) {
   const ex = game.experienceStyle ?? { preset: "BASIC" as const };
+  const diverge = ex.preset != null && (ex.identity != null || ex.visual != null || ex.components != null || ex.media != null || ex.motion != null || ex.map != null || ex.voice != null);
   return (
     <div className="carte p-3">
       <h3 style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 13 }}>
         <Icon name="engrenage" size={15} /> Experience Style
+        {diverge && <span className="puce" title="Des dimensions ont été modifiées manuellement après le choix du preset">Personnalisé</span>}
       </h3>
       <label className="text-xs flex gap-1 items-center">
         Preset :
@@ -1398,6 +1868,79 @@ function BrandingPanel({ game, edit, lectureSeule }: {
         Couleur secondaire :
         <input type="color" className="champ" value={b.secondaryColor} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, branding: { ...b, secondaryColor: e.target.value } } }))} />
       </label>
+      <label className="text-xs flex gap-1 items-center mt-1">
+        Police :
+        <input className="champ" value={b.fontFamily} disabled={lectureSeule} placeholder="system-ui" onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, branding: { ...b, fontFamily: e.target.value } } }))} />
+      </label>
+      <label className="text-xs flex gap-1 items-center">
+        Logo (asset) :
+        <input className="champ" value={b.logo ?? ""} disabled={lectureSeule} placeholder="assets/logo.png" onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, branding: { ...b, logo: e.target.value || undefined } } }))} />
+      </label>
+    </div>
+  );
+}
+
+function refsObjet(game: Game, id: string): string[] {
+  return game.nodes.filter((n) =>
+    n.activation.requires.some((c) => (c.type === "ITEM_REQUIRED" || c.type === "ITEM_USED") && c.itemId === id) ||
+    (n.discovery?.mode === "ON_ITEM" && n.discovery.itemId === id) ||
+    (n.effects ?? []).some((e) => (e.type === "GIVE_ITEM" || e.type === "REMOVE_ITEM") && e.itemId === id) ||
+    (n.inventoryRef ?? []).includes(id),
+  ).map((n) => n.id);
+}
+
+function ObjetsPanel({ game, editGame, lectureSeule, onChoisir }: {
+  game: Game;
+  editGame: (fn: (g: Game) => Game) => void;
+  lectureSeule: boolean;
+  onChoisir: (id: string) => void;
+}) {
+  const objs = game.objects ?? [];
+  const [nid, setNid] = useState("");
+  const [nnom, setNnom] = useState("");
+  const [nconso, setNconso] = useState(false);
+  return (
+    <div className="carte p-3">
+      <h3 style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 13 }}>
+        <Icon name="package" size={15} /> Objets / inventaire ({objs.length})
+      </h3>
+      {objs.length ? (
+        <ul className="text-xs">
+          {objs.map((o) => {
+            const refs = refsObjet(game, o.id);
+            return (
+              <li key={o.id} style={{ display: "flex", gap: 6, alignItems: "center", padding: "4px 0" }}>
+                <span style={{ flex: 1 }}><b>{o.id}</b> — {o.name}{o.consumable ? " · consommable" : ""}{refs.length ? ` · utilisé par : ${refs.join(", ")}` : " · non référencé"}</span>
+                {!lectureSeule && refs.length > 0 && (
+                  <button className="btn" style={{ minHeight: 32, padding: "0 10px", fontSize: 12 }} onClick={() => onChoisir(refs[0])} title={`Aller à ${refs[0]}`}>Voir</button>
+                )}
+                {!lectureSeule && (
+                  <button className="btn" style={{ minHeight: 32, padding: "0 10px", fontSize: 12 }} aria-label={`Supprimer l'objet ${o.id}`} title="Supprimer" onClick={() => {
+                    if (refs.length && !window.confirm(`Supprimer « ${o.id} » ? Utilisé par : ${refs.join(", ")}`)) return;
+                    editGame((g) => setObjects(g, (g.objects ?? []).filter((x) => x.id !== o.id)));
+                  }}><Icon name="fermer" size={14} /></button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <p className="text-xs" style={{ color: "var(--ink-2)" }}>Aucun objet défini.</p>
+      )}
+      {!lectureSeule && (
+        <div className="flex flex-wrap gap-1">
+          <input className="champ" style={{ minHeight: 40 }} value={nid} size={10} placeholder="id (ex. cle)" aria-label="Identifiant du nouvel objet" onChange={(e) => setNid(e.target.value)} />
+          <input className="champ" style={{ minHeight: 40 }} value={nnom} size={14} placeholder="Nom affiché" aria-label="Nom du nouvel objet" onChange={(e) => setNnom(e.target.value)} />
+          <label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={nconso} onChange={(e) => setNconso(e.target.checked)} /> consommable</label>
+          <button className="btn" onClick={() => {
+            const id = nid.trim();
+            if (!id) { alert("Identifiant d'objet requis."); return; }
+            if (objs.some((o) => o.id === id)) { alert(`Objet « ${id} » déjà existant.`); return; }
+            editGame((g) => addObject(g, { id, name: nnom.trim() || id, consumable: nconso }));
+            setNid(""); setNnom(""); setNconso(false);
+          }}><Icon name="ajouter" size={15} /> Objet</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -1441,8 +1984,9 @@ function I18nPanel({ meta, edit, lectureSeule }: {
       </h3>
       {meta.i18n.map((row, i) => (
         <div key={i} className="flex gap-1">
-          <input className="champ" style={{ minHeight: 40 }} value={row.key} size={12} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, meta: { ...s.meta, i18n: s.meta.i18n.map((r, j) => (j === i ? { ...r, key: e.target.value } : r)) } }))} aria-label="Clé de texte" />
-          <input className="champ flex-1" style={{ minHeight: 40 }} value={row.value} size={16} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, meta: { ...s.meta, i18n: s.meta.i18n.map((r, j) => (j === i ? { ...r, value: e.target.value } : r)) } }))} aria-label="Texte" />
+          <input className="champ" style={{ minHeight: 40, opacity: row.locked ? 0.6 : 1 }} value={row.key} size={12} disabled={lectureSeule || row.locked} title={row.locked ? "Clé verrouillée — non éditable" : undefined} onChange={(e) => edit((s) => ({ ...s, meta: { ...s.meta, i18n: s.meta.i18n.map((r, j) => (j === i ? { ...r, key: e.target.value } : r)) } }))} aria-label="Clé de texte" />
+          <input className="champ flex-1" style={{ minHeight: 40, opacity: row.locked ? 0.6 : 1 }} value={row.value} size={16} disabled={lectureSeule || row.locked} title={row.locked ? "Texte verrouillé — non éditable" : undefined} onChange={(e) => edit((s) => ({ ...s, meta: { ...s.meta, i18n: s.meta.i18n.map((r, j) => (j === i ? { ...r, value: e.target.value } : r)) } }))} aria-label="Texte" />
+          {!row.value && <span className="puce" title="Aucune valeur saisie pour cette clé">manquant</span>}
           <label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={row.locked} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, meta: { ...s.meta, i18n: s.meta.i18n.map((r, j) => (j === i ? { ...r, locked: e.target.checked } : r)) } }))} /> verrou</label>
         </div>
       ))}
@@ -1457,6 +2001,150 @@ function I18nPanel({ meta, edit, lectureSeule }: {
         </div>
       )}
       {note && <div className="text-xs">{note}</div>}
+    </div>
+  );
+}
+
+function FileRelire({ game, meta, edit, manifest, lectureSeule, onChoisir, estAnimateur, exportPret }: {
+  game: Game; meta: StudioMeta;
+  edit: (fn: (s: { game: Game; meta: StudioMeta }) => { game: Game; meta: StudioMeta }) => void;
+  manifest: ManifestFile[];
+  lectureSeule: boolean;
+  onChoisir: (id: string) => void;
+  estAnimateur: boolean;
+  exportPret: boolean;
+}) {
+  const [filtre, setFiltre] = useState<"draft" | "reviewed" | "published" | "tous">("draft");
+  const [ouvert, setOuvert] = useState<string | null>(null);
+  const lignes = game.nodes.map((n) => ({ n, st: meta.status[n.id]?.state ?? "draft" as const }));
+  const visibles = lignes.filter((l) => filtre === "tous" || l.st === filtre);
+  const nbDraft = lignes.filter((l) => l.st === "draft").length;
+  const qui = estAnimateur ? "animateur" : "auteur";
+  const passer = (id: string, state: "draft" | "reviewed" | "published") =>
+    edit((s) => ({ ...s, meta: setReview(s.meta, id, state, state === "draft" ? undefined : qui) }));
+  const comptes = (s: "draft" | "reviewed" | "published") => lignes.filter((l) => l.st === s).length;
+  return (
+    <div className="carte p-3">
+      <h2 className="text-base font-bold" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <Icon name="oeil" size={17} /> Relecture — {nbDraft} brouillon{nbDraft > 1 ? "s" : ""}
+      </h2>
+      <p className="text-xs" style={{ color: "var(--ink-2)" }}>
+        Tant qu'un élément est en brouillon, l'export est bloqué — le kiosque HOLD exige un jeu relu.
+        Export : {exportPret ? (<span className="puce puce-ok">prêt</span>) : (<span className="puce puce-erreur">bloqué</span>)}
+      </p>
+      <div className="flex flex-wrap gap-1" role="group" aria-label="Filtrer par statut">
+        {(["draft", "reviewed", "published", "tous"] as const).map((f) => (
+          <button key={f} className="btn" style={{ minHeight: 32, padding: "0 10px", fontSize: 12, fontWeight: filtre === f ? 700 : 500 }}
+            onClick={() => setFiltre(f)} aria-pressed={filtre === f}>
+            {f === "tous" ? `Tous (${lignes.length})` : `${ETATS_FR[f]} (${comptes(f)})`}
+          </button>
+        ))}
+      </div>
+      <ul className="text-xs">
+        {visibles.map(({ n, st }) => {
+          const prov = meta.provenance[n.id];
+          const detail = ouvert === n.id;
+          return (
+            <li key={n.id} className="carte p-2" style={{ boxShadow: "none", margin: "4px 0" }}>
+              <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <b>{n.id}</b>
+                <span className="puce">{ETATS_FR[st]}</span>
+                {meta.status[n.id]?.reviewedBy && <span className="puce">par {meta.status[n.id]?.reviewedBy}</span>}
+                <span style={{ flex: 1 }} />
+                <button className="btn" style={{ minHeight: 32, padding: "0 10px", fontSize: 12 }} onClick={() => { onChoisir(n.id); setOuvert(detail ? null : n.id); }} title="Voir dans Composer et afficher la source">Voir</button>
+                {!lectureSeule && st === "draft" && (
+                  <button className="btn" style={{ minHeight: 32, padding: "0 10px", fontSize: 12 }} onClick={() => passer(n.id, "reviewed")} title="Passer en relu (enregistre le relecteur)">Relire</button>
+                )}
+                {!lectureSeule && st === "reviewed" && (
+                  <>
+                    <button className="btn" style={{ minHeight: 32, padding: "0 10px", fontSize: 12 }} onClick={() => passer(n.id, "published")} title="Publier">Publier</button>
+                    <button className="btn" style={{ minHeight: 32, padding: "0 10px", fontSize: 12 }} onClick={() => passer(n.id, "draft")} title="Annuler la relecture (action distincte)">Annuler la relecture</button>
+                  </>
+                )}
+                {!lectureSeule && st === "published" && (
+                  <button className="btn" style={{ minHeight: 32, padding: "0 10px", fontSize: 12 }} onClick={() => passer(n.id, "draft")} title="Annuler la relecture (action distincte)">Annuler la relecture</button>
+                )}
+              </span>
+              {detail && (
+                <div className="text-xs" style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4 }}>
+                  <span>Fournisseur : {prov?.providerId || "—"} · Licence : {prov?.license || "—"} · Source : {prov?.sourceUrl || "—"}</span>
+                  <span>Module : {n.module.type} · Données : {JSON.stringify(n.module.data).slice(0, 200)}</span>
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      {!visibles.length && <p className="text-xs" style={{ color: "var(--ink-2)" }}>Aucun élément avec ce statut.</p>}
+      <h3 className="text-sm font-bold">Assets du manifest ({manifest.length})</h3>
+      <ul className="text-xs">{manifest.map((m) => <li key={m.path}>{m.path} v{m.version} {m.size}o</li>)}</ul>
+    </div>
+  );
+}
+
+function categorieC2(e: string): string {
+  if (/cycle/i.test(e)) return "Cycles";
+  if (/isEnding|FIN|atteign/i.test(e)) return "Atteignabilité";
+  if (/pool|tirage|drawCount|candidat/i.test(e)) return "Pools";
+  if (/hold|needsLock/i.test(e)) return "HOLD";
+  if (/ITEM_|CLUE_|inventoryRef|discovery|objet|indice/i.test(e)) return "Références";
+  if (/consumable/i.test(e)) return "Consommables";
+  return "Autres";
+}
+
+function BlocValidation({ couches, game, onVoir }: {
+  couches: { layer: number; errors: string[] }[];
+  game: Game;
+  onVoir: (id: string) => void;
+}) {
+  const c1 = couches.find((l) => l.layer === 1);
+  const c2 = couches.find((l) => l.layer === 2);
+  const groupes = new Map<string, string[]>();
+  for (const e of c2?.errors ?? []) {
+    const c = categorieC2(e);
+    groupes.set(c, [...(groupes.get(c) ?? []), e]);
+  }
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="carte p-3" aria-label="Verdict couche 1">
+        <h3 className="text-sm font-bold" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <Icon name="valider" size={15} /> Couche 1 — forme AJV Draft-07
+          {c1 && (c1.errors.length ? <span className="puce puce-erreur">{c1.errors.length} erreur(s)</span> : <span className="puce puce-ok">OK</span>)}
+        </h3>
+        {(c1?.errors.length ?? 0) > 0 && (
+          <ul className="text-xs font-mono">{c1!.errors.map((e, i) => <li key={i} style={{ padding: "2px 0" }}>{e}</li>)}</ul>
+        )}
+      </div>
+      <div className="carte p-3" aria-label="Verdict couche 2">
+        <h3 className="text-sm font-bold" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <Icon name="valider" size={15} /> Couche 2 — validateur applicatif
+          {c2 ? (c2.errors.length ? <span className="puce puce-erreur">{c2.errors.length} erreur(s)</span> : <span className="puce puce-ok">OK</span>) : <span className="puce">non exécutée (C1 en échec)</span>}
+        </h3>
+        {[...groupes.entries()].map(([cat, errs]) => (
+          <div key={cat}>
+            <h4 className="text-xs font-bold" style={{ marginTop: 8 }}>{cat} ({errs.length})</h4>
+            <ul className="text-xs">
+              {errs.map((e, i) => {
+                const cible = game.nodes.find((n) => e.includes(n.id));
+                return (
+                  <li key={i} style={{ display: "flex", gap: 8, alignItems: "center", padding: "4px 0" }}>
+                    <Icon name="alerte" size={14} />
+                    <span style={{ flex: 1 }} title={e}>{erreurFR(e)}</span>
+                    {cible && (
+                      <button className="btn" style={{ minHeight: 32, padding: "0 10px", fontSize: 12 }} onClick={() => onVoir(cible.id)} title={`Aller à ${cible.id} dans Composer`}>
+                        Voir {cible.id}
+                      </button>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))}
+      </div>
+      <p className="text-xs" style={{ color: "var(--ink-2)" }} title="Règle exacte : C1 OK ∧ C2 OK ∧ aucun élément en brouillon (hors mode animateur) ; le kiosque HOLD exige en plus un jeu relu. Cette règle est calculée en un seul point et consommée par la barre globale, Relire et Exporter.">
+        Export possible = C1 OK ∧ C2 OK ∧ aucun brouillon (hors animateur).
+      </p>
     </div>
   );
 }
@@ -1503,8 +2191,12 @@ function Apercu(props: {
   draws: Record<string, string[]>; forced: Record<string, string>; setForced: (f: Record<string, string>) => void;
   log: string[]; testAll: string | null; testerBranches: () => void; sessionId: string;
   setSessionId: (s: string) => void; nouvelleSession: () => void;
+  reculer: () => void; nbTermines: number;
+  holdSim: "none" | "locked"; onHoldLock: () => void; onHoldExit: () => void;
 }) {
   const { game } = props;
+  const holdMode = game.global?.holdMode ?? "none";
+  const fixtureOk = props.testAll == null || props.testAll.startsWith("aucun") ? null : !props.testAll.includes("BLOQUÉE");
   const pools = game.nodes.filter((n) => n.randomPool);
   const sig = SIGNAUX.find((s) => s.m === props.sim.precision) ?? SIGNAUX[0];
   const bascule = (k: "present" | "dwell" | "through", id: string) =>
@@ -1514,6 +2206,9 @@ function Apercu(props: {
       <h3 style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 13 }}>
         <Icon name="essai" size={15} /> Essai du parcours (triche tracée)
       </h3>
+      <p className="text-xs" style={{ color: "var(--ink-2)" }}>La prévisualisation n'écrit jamais dans le JSON source : tout ici est simulation.</p>
+      <div className="carte p-2" style={{ boxShadow: "none" }} aria-label="Panneau de triche">
+        <h4 className="text-xs font-bold">Panneau de triche — chaque event porte le flag triche</h4>
       <div className="flex gap-1 items-center flex-wrap">
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
           Signal GPS
@@ -1533,7 +2228,17 @@ function Apercu(props: {
             <option value="">tirage libre</option>{p.randomPool!.candidates.map((c) => <option key={c} value={c}>forcer {c}</option>)}
           </select></div>
       ))}
+      <div className="flex gap-1 items-center flex-wrap">
+        <span className="text-xs">HOLD simulé : {props.holdSim === "locked" ? (<span className="puce puce-erreur">verrouillé</span>) : (<span className="puce">inactif</span>)}</span>
+        <button className="btn" style={{ minHeight: 36 }} onClick={props.onHoldLock} disabled={props.holdSim === "locked"} title="Simuler un verrouillage kiosque (forceHoldLock)">Simuler verrouillage</button>
+        <button className="btn" style={{ minHeight: 36 }} onClick={props.onHoldExit} disabled={props.holdSim === "none"} title="Simuler une sortie animateur (forceHoldExit)">Simuler sortie animateur</button>
+      </div>
+      </div>
       <div>File d'attente : {props.file.length ? props.file.join(", ") : "—"} | Ouverte : {props.activeId ?? "—"}</div>
+      <div className="flex gap-1">
+        <button className="btn" style={{ minHeight: 36 }} onClick={() => { if (!props.activeId && props.file[0]) props.ouvrir(props.file[0]); }} disabled={!!props.activeId || !props.file.length} title="Ouvrir la première étape en file (avancer d'un pas)">Avancer d'un pas</button>
+        <button className="btn" style={{ minHeight: 36 }} onClick={props.reculer} disabled={props.nbTermines === 0} title="Rouvrir la dernière étape terminée (reculer d'un pas)">Reculer d'un pas</button>
+      </div>
       {props.activeId && (
         <div className="flex gap-1"><button className="btn-primaire" onClick={() => props.terminer(props.activeId!, false)}><Icon name="valider" size={15} /> Terminer</button>
           <button className="btn" onClick={() => props.terminer(props.activeId!, true)}>Abandonner</button></div>
@@ -1550,8 +2255,8 @@ function Apercu(props: {
         ))}
       </div>
       <button className="btn" onClick={props.testerBranches}><Icon name="choix" size={15} /> Tout tester en 1 clic</button>
-      {props.testAll && <div className="text-xs">{props.testAll}</div>}
-      <div className="max-h-24 overflow-auto text-xs"><b>Journal</b><ul>{props.log.map((l, i) => <li key={i}>{l}</li>)}</ul></div>
+      {props.testAll && <div className="text-xs" style={{ display: "flex", gap: 6, alignItems: "center" }}>{fixtureOk == null ? null : fixtureOk ? (<span className="puce puce-ok">PASS</span>) : (<span className="puce puce-erreur">FAIL</span>)}<span>{props.testAll}</span></div>}
+      <div className="max-h-24 overflow-auto text-xs"><b>Journal</b><ul>{props.log.map((l, i) => <li key={i} style={{ display: "flex", gap: 4, alignItems: "center" }}><span className="puce">SIMULÉ</span><span className="puce">hold:{holdMode}</span><span>{l}</span></li>)}</ul></div>
     </div>
   );
 }

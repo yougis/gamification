@@ -65,6 +65,29 @@ export interface ExportResult {
   manifest?: { files: ManifestFile[] };
 }
 
+/**
+ * Règle centrale "export possible" (spec studio-onepage-spec, décision 1.1) :
+ * C1 ∧ C2 (validation complète objets/indices incluse) ∧ aucun brouillon hors
+ * mode animateur. Consommée par la barre globale, Relire et Exporter.
+ */
+export function canExport(game: Game, meta: StudioMeta, animatorMode: boolean): { ok: boolean; raisons: string[] } {
+  const v = validateGameFull(game);
+  const raisons = v.layers.flatMap((l) => l.errors).concat(v.extraErrors ?? []);
+  if (!animatorMode) {
+    for (const n of game.nodes) {
+      if ((meta.status[n.id]?.state ?? "draft") === "draft") {
+        raisons.push(`export refuse : noeud ${n.id} en draft (hors mode animateur)`);
+      }
+    }
+  }
+  return { ok: raisons.length === 0, raisons };
+}
+
+/**
+ * @deprecated Porte historique : validation couches 1+2 SANS les contrôles
+ * objets/indices. Conservée pour compatibilité, masquée de l'UI par défaut
+ * (décision 1.1 : `exportPackFull` est la voie unique visible).
+ */
 export async function exportPack(
   game: Game,
   meta: StudioMeta,
@@ -193,7 +216,7 @@ export function validateGameFull(game: Game): ValidationResult {
   const extraErrors: string[] = [];
 
   // Check object references in discovery and activation
-  const itemIds = new Set(game.objects.map((o) => o.id));
+  const itemIds = new Set((game.objects ?? []).map((o) => o.id));
   const clueIds = new Set<string>();
   for (const n of game.nodes) {
     if (n.discovery?.mode === "ON_CLUE" && n.discovery.clueId) clueIds.add(n.discovery.clueId);
