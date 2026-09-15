@@ -4,6 +4,7 @@ import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.geoplay.player.model.GameProgressEntity
+import com.geoplay.player.model.InventoryEntity
 import com.geoplay.player.model.NodeCompletionEntity
 import com.geoplay.player.model.RandomDrawEntity
 import com.geoplay.player.model.ScoreEntity
@@ -113,4 +114,32 @@ class GameRepository(
 
     suspend fun getSessionsForGame(gameId: String): List<SessionEntity> =
         dao.getSessionsForGame(gameId)
+
+    // Inventory
+    suspend fun addItem(sessionId: String, itemId: String, quantity: Int = 1, isCheat: Boolean = false) {
+        val entry = InventoryEntity(
+            sessionId = sessionId,
+            itemId = itemId,
+            quantity = quantity,
+            isCheat = isCheat
+        )
+        withContext(Dispatchers.IO) { dao.insertInventoryWithTransaction(entry) }
+    }
+
+    suspend fun removeItem(sessionId: String, itemId: String) {
+        withContext(Dispatchers.IO) { dao.removeInventoryItem(sessionId, itemId) }
+    }
+
+    suspend fun getInventory(sessionId: String): List<InventoryEntity> =
+        withContext(Dispatchers.IO) { dao.getInventory(sessionId) }
+
+    suspend fun hasItem(sessionId: String, itemId: String): Boolean =
+        dao.getInventoryCount(sessionId, itemId) > 0
+
+    suspend fun getInventoryCount(sessionId: String, itemId: String): Int =
+        dao.getInventoryCount(sessionId, itemId)
+
+    suspend fun clearInventory(sessionId: String) {
+        withContext(Dispatchers.IO) { dao.clearInventory(sessionId) }
+    }
 }

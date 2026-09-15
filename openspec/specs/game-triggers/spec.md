@@ -1,109 +1,85 @@
-# game-triggers Specification
-
 ## Purpose
-
-Definit les conditions d'activation du socle GeoPlay et le noeud structurel RANDOM_POOL, reserves comprises.
+Extension des conditions d'activation du moteur GeoPlay pour supporter de nouveaux types fonctionnels liés à l'inventaire et aux énigmes.
 
 ## Requirements
 
-### Requirement: GEOFENCE parametre depuis le JSON
+### Requirement: Enum des conditions avec PROXIMITY_MASTER
 
-Toute condition `GEOFENCE` SHALL lire depuis le JSON : `lat`, `lng`,
-`radiusMeters` (avec override par Noeud du rayon global), `predicate`
-(`enter|exit|dwell|through`), `dwellMs`, hysteresis de sortie
-(rayon ou delai distincts de l'entree) et gating `maxAccuracyM`. Aucune de
-ces valeurs ne SHALL etre une constante du code. La qualification de position repose
-sur accuracy + dwell seuls.
+`condition.type` SHALL valoir `GEOFENCE|NODE_COMPLETED|TIMER|POOL_DRAWN|PROXIMITY_MASTER|CONDITIONAL|WINDOW` comme actuellement, AINSI QUE les nouveaux types fonctionnels suivants :
 
-#### Scenario: Entree avec dwell anti-traversee voiture
+- `ITEM_REQUIRED` : un objet spécifique doit être dans l'inventaire du joueur
+- `ITEM_USED` : un objet spécifique doit avoir été utilisé (peut le consommer)
+- `CODE_INPUT` : un code doit avoir été saisi par le joueur
+- `CLUE_RESOLVED` : une énigme ou indice doit avoir été résolu
 
-- **GIVEN** un POI `predicate:dwell dwellMs:10000 radiusMeters:30`
-- **WHEN** le joueur traverse le rayon en 20 s sans s'arreter
-- **THEN** le Noeud devient `UNLOCKED`, mais une traversee de 3 s ne l'active pas
+Chaque nouvelle variante SHALL imposer ses champs (`ITEM_REQUIRED`: itemId ; `ITEM_USED`: itemId, consumed ; `CODE_INPUT`: code ; `CLUE_RESOLVED`: clueId) et interdire les autres (`additionalProperties:false` par variante). `randomPool` SHALL exclure `withReplacement`.
 
-#### Scenario: Through corridor sans arret
+#### Scenario: Variante contaminée rejetée
+- **GIVEN** une condition `TIMER` contenant `radiusMeters`
+- **WHEN** la validation Draft-07 tourne
+- **THEN** elle rejette (champ étranger à la variante)
 
-- **GIVEN** un passage `predicate:through corridorWidthM:20`
-- **WHEN** le joueur traverse le corridor sans s'arreter
-- **THEN** le Noeud devient `UNLOCKED` sur historique de positions, pas sur distance instantanee
+#### Scenario: ITEM_REQUIRED avec itemId valide
+- **GIVEN** une condition `ITEM_REQUIRED {itemId: "cle"}`
+- **WHEN** le joueur possède "cle" dans son inventaire
+- **THEN** la condition est vraie
 
-### Requirement: NODE_COMPLETED et TIMER ancres
+#### Scenario: ITEM_REQUIRED sans objet
+- **GIVEN** une condition `ITEM_REQUIRED {itemId: "cle"}`
+- **WHEN** le joueur n'a pas la clé
+- **THEN** la condition est fausse
 
-`NODE_COMPLETED {nodeId}` SHALL devenir vrai a `COMPLETED` du noeud cite et
-rester vrai. `TIMER` est un delai minimum avant eligibilite, jamais une
-echeance, avec `anchor` obligatoire (`GAME_START` ou `NODE_COMPLETION` +
-`anchorNodeId`). Le temps limite de reponse interne a un module
-(`timeLimitSeconds` + `onTimeout` du Quiz) ne SHALL jamais etre une condition
-d'activation du graphe.
+#### Scenario: CODE_INPUT avec code correct
+- **GIVEN** une condition `CODE_INPUT {code: "ABC123"}`
+- **WHEN** le joueur saisit "ABC123"
+- **THEN** la condition est vraie
 
-#### Scenario: Timer depuis completion
+#### Scenario: CLUE_RESOLVED
+- **GIVEN** une condition `CLUE_RESOLVED {clueId: "indice_1"}`
+- **WHEN** le joueur a résolu l'indice "indice_1"
+- **THEN** la condition est vraie
 
-- **GIVEN** un Noeud `TIMER anchor:NODE_COMPLETION anchorNodeId:poi-a delai:300s`
-- **WHEN** 300 s se sont ecoulees depuis `poi-a COMPLETED`
-- **THEN** le Noeud devient `UNLOCKED`, pas avant
+### Requirement: Operateur strict en if/then
 
-### Requirement: RANDOM_POOL noeud structurel ensemence
+`operator` SHALL être requis si `requires` a >=2 éléments et interdit si <=1, exprimé en `if/then` Draft-07 pur. `operator` SHALL valoir `AND|OR`.
 
-`RANDOM_POOL` SHALL etre un noeud jamais presente au joueur traversant
-`LOCKED -> (tirage) -> COMPLETED` sans `ACTIVE`, avec
-`randomPool {candidates[], drawCount, drawTiming ON_POOL_ACTIVATION|ON_GAME_START}`.
-Tirage sans remise au socle (`withReplacement` supprime).
-`ON_POOL_ACTIVATION` tire quand le pool devient `UNLOCKED`,
-`ON_GAME_START` tire a l'init de session avant toute evaluation, en ordre
-topologique si un pool `ON_GAME_START` depend d'un autre (cycle inter-pools
-rejete). Un pool `ON_GAME_START` ne SHALL pas dependre d'un candidat de pool
-`ON_POOL_ACTIVATION`. Un `nodeId` ne SHALL apparaitre que dans un seul pool.
-Le resultat SHALL etre ecrit immediatement dans
-`randomDraws[sessionId][poolNodeId]` et jamais recalcule : Reprendre = meme
-`sessionId` relit, Nouvelle partie = nouveau `sessionId` retire. Les candidats
-referencent le pool via `{type:POOL_DRAWN, poolNodeId}`. Le tirage SHALL
-pouvoir etre force (`forceDraw:[...]`) en triche/preview avec flag triche
-pour le scoring.
+#### Scenario: Double prérequis sans operateur
+- **GIVEN** un Nœud à 2 conditions et aucun `operator`
+- **WHEN** le validateur controle le Jeu
+- **THEN** le Jeu est rejeté avec une erreur operateur manquant
 
-#### Scenario: Tirage direct 1 parmi 5
+### Requirement: Montage registre en $ref
 
-- **GIVEN** un pool `candidates:[a,b,c,d,e] drawCount:1 ON_POOL_ACTIVATION`
-- **WHEN** le pool devient `UNLOCKED`
-- **THEN** exactement 1 candidat devient eligible via `POOL_DRAWN` et le resultat est persiste immediatement
+Les `data` de modules SHALL être montés par `$ref` + discriminant sur `module.type`, chaque sous-schéma portant sa `schemaVersion`. Le schéma racine ne SHALL jamais énumérer le contenu d'un module (détail au change 500).
 
-#### Scenario: Relance ne re-tire pas
+#### Scenario: Nouveau type sans toucher la racine
+- **GIVEN** un 6e type enregistré avec son sous-schéma
+- **WHEN** le schéma racine est relu
+- **THEN** aucun de ses objets n'a changé (seul le registre a gagné une entrée)
 
-- **GIVEN** une session avec tirage `pool->c` persiste
-- **WHEN** l'app relance avec le meme `sessionId` entre l'intro et le POI
-- **THEN** aucun re-tirage n'a lieu et le geofencing reste sur `c`
+### Requirement: Nouvelles conditions combinables
 
-#### Scenario: Dependance boot invalide rejetee
+Les nouvelles conditions SHALL pouvoir être combinées avec les opérateurs `AND` / `OR` existants et avec les conditions existantes (GEOFENCE, NODE_COMPLETED, etc.).
 
-- **GIVEN** un pool `ON_GAME_START` dont l'activation depend d'un candidat de
-  pool `ON_POOL_ACTIVATION`
-- **WHEN** le validateur controle l'ordonnancement
-- **THEN** le Jeu est rejete
+#### Scenario: GEOFENCE + ITEM_REQUIRED
+- **GIVEN** un nœud avec `activation: {requires: [{type: GEOFENCE, lat, lng, radiusMeters}, {type: ITEM_REQUIRED, itemId: "code"}], operator: AND}`
+- **WHEN** les deux conditions sont vraies
+- **THEN** le nœud devient UNLOCKED
 
-### Requirement: PROXIMITY_MASTER au même contrat que GEOFENCE
+### Requirement: Validation applicative des objets référencés
 
-L'enum des conditions SHALL contenir `PROXIMITY_MASTER` (`masterId`, `transport`
-`ble|wifi`, `minRssiDbm`, `dwellMs`) comme condition environnementale révocable
-au même titre que `GEOFENCE` : `latch`, hystérésis, `dwell` et file ACTIVE s'y
-appliquent, et le validateur l'assimile à une condition pouvant devenir vraie
-sous hypothèse favorable. Aucune balise fixe au socle : le MASTER est temporaire
-(téléphone animateur, Arduino BLE), identifiants non sensibles, rotation au Studio.
+Le validateur applicatif SHALL vérifier que tout `ITEM_REQUIRED`, `ITEM_USED`, `CODE_INPUT` ou `CLUE_RESOLVED` fait référence à une entité (objet, code, indice) définie dans le JSON du jeu. Toute référence à une entité inconnue SHALL être rejetée.
 
-#### Scenario: Grotte sans GPS
+#### Scenario: Référence à un objet inexistant
+- **GIVEN** un jeu avec `ITEM_REQUIRED {itemId: "objet_inexistant"}` et aucun objet "objet_inexistant" dans le JSON
+- **WHEN** le validateur applicatif controle
+- **THEN** le jeu est rejeté avec erreur : "objet 'objet_inexistant' non défini dans le jeu"
 
-- **GIVEN** un Nœud `PROXIMITY_MASTER masterId:entree-grotte latch:true`
-- **WHEN** le joueur reste à portée le `dwellMs` puis s'éloigne
-- **THEN** le Nœud devient `UNLOCKED` et le reste
+### Requirement: Consistance consumable
 
-### Requirement: Reserves CONDITIONAL et WINDOW non outillees
+Le validateur applicatif SHALL vérifier que `ITEM_USED` avec `consumed: true` fait référence à un objet défini comme `consumable: true` dans le JSON. Si un objet `consumable: false` est utilisé avec `consumed: true`, le validateur SHALL rejeter le jeu.
 
-L'enum des conditions SHALL contenir `CONDITIONAL` (branchement gamebook sur
-reponse) et `WINDOW` (fenetre horaire absolue `{from,to,timezone,onMiss}`)
-comme reserves : presentes pour eviter un breaking change, non outillees par
-le Studio au socle, comportement `onMiss`/recurrence non defini. Le moteur
-SHALL ignorer gracieusement un type reserve ou inconnu au socle.
-
-#### Scenario: Type reserve ignore sans crash
-
-- **GIVEN** un Jeu contenant une condition `WINDOW` lue par le moteur v0
-- **WHEN** le moteur evalue les activations
-- **THEN** il n'echoue pas et documente l'ignorance au lieu d'activer ou de crasher
+#### Scenario: Objet non-consommable marqué consommable
+- **GIVEN** un objet `loupe` avec `consumable: false` et une condition `ITEM_USED {itemId: "loupe", consumed: true}`
+- **WHEN** le validateur controle
+- **THEN** le jeu est rejeté avec erreur

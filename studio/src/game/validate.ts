@@ -10,27 +10,25 @@ import differenceGame from "./schema/difference-game.json";
 import puzzle from "./schema/puzzle.json";
 import arMarker from "./schema/ar-marker.json";
 import boussole from "./schema/boussole.json";
-import type { Game, GameNode } from "./types";
+import type { Game, GameNode, Condition } from "./types";
 
-export interface LayerReport {
-  layer: 1 | 2;
-  errors: string[];
+// Collect all item IDs and clue IDs from the game
+function collectItems(game: Game): Set<string> {
+  const items = new Set<string>();
+  if (game.objects) for (const o of game.objects) items.add(o.id);
+  return items;
 }
-
-const ajv = new Ajv({ allErrors: true, strict: false });
-ajv.addSchema(quiz, "https://geoplay.example/schemas/modules/quiz.json");
-ajv.addSchema(differenceGame, "https://geoplay.example/schemas/modules/difference-game.json");
-ajv.addSchema(puzzle, "https://geoplay.example/schemas/modules/puzzle.json");
-ajv.addSchema(arMarker, "https://geoplay.example/schemas/modules/ar-marker.json");
-ajv.addSchema(boussole, "https://geoplay.example/schemas/modules/boussole.json");
-const validateFn = ajv.compile(schema);
-
-export function validateLayer1(game: unknown): LayerReport {
-  const ok = validateFn(game) as boolean;
-  const errors = ok
-    ? []
-    : (validateFn.errors ?? []).map((e) => `C1 ${e.instancePath || "/"} : ${e.message ?? "invalide"}`);
-  return { layer: 1, errors };
+function collectClues(game: Game): Set<string> {
+  const clues = new Set<string>();
+  for (const n of game.nodes) {
+    const d = n.discovery;
+    if (d?.mode === "ON_CLUE" && d.clueId) clues.add(d.clueId);
+    const act = n.activation;
+    for (const c of act.requires) {
+      if (c.type === "CLUE_RESOLVED" && c.clueId) clues.add(c.clueId);
+    }
+  }
+  return clues;
 }
 function nodeRefs(n: GameNode): string[] {
   const out: string[] = [];
@@ -39,6 +37,9 @@ function nodeRefs(n: GameNode): string[] {
       if (c.allowCycle !== true) out.push(String(c.nodeId ?? c.poolNodeId));
     }
     if (c.type === "TIMER" && c.anchor === "NODE_COMPLETION" && c.anchorNodeId) out.push(c.anchorNodeId);
+    if (c.type === "ITEM_REQUIRED" && c.itemId) out.push(c.itemId);
+    if (c.type === "ITEM_USED" && c.itemId) out.push(c.itemId);
+    if (c.type === "CLUE_RESOLVED" && c.clueId) out.push(c.clueId);
   }
   return out;
 }
@@ -212,6 +213,63 @@ export function validateLayer2(game: Game): LayerReport {
       }
     }
   }
+
+  // Nouvelles regles applicatives (tache 1.7).
+  const items = collectItems(game);
+  const clues = collectClues(game);
+  const allIds = new Set([...items, ...clues]);
+
+  for (const n of game.nodes) {
+    for (const c of n.activation.requires) {
+      if (c.type === "ITEM_REQUIRED" && c.itemId && !items.has(c.itemId)) {
+        errors.push(`C2 ${n.id} : ITEM_REQUIRED itemId=${c.itemId} inexistant`);
+      }
+      if (c.type === "ITEM_USED" && c.itemId && !items.has(c.itemId)) {
+        errors.push(`C2 ${n.id} : ITEM_USED itemId=${c.itemId} inexistant`);
+      }
+      if (c.type === "CODE_INPUT" && !c.code) {
+        errors.push(`C2 ${n.id} : CODE_INPUT requiert un code`);
+      }
+      if (c.type === "CLUE_RESOLVED" && c.clueId && !clues.has(c.clueId)) {
+        errors.push(`C2 ${n.id} : CLUE_RESOLVED clueId=${c.clueId} inexistant`);
+      }
+    }
+    if (n.discovery) {
+      if (n.discovery.mode === "ON_ITEM" && n.discovery.itemId && !items.has(n.discovery.itemId)) {
+        errors.push(`C2 ${n.id} : discovery ON_ITEM itemId=${n.discovery.itemId} inexistant`);
+      }
+      if (n.discovery.mode === "ON_CLUE" && n.discovery.clueId && !clues.has(n.discovery.clueId)) {
+        errors.push(`C2 ${n.id} : discovery ON_CLUE clueId=${n.discovery.clueId} inexistant`);
+      }
+      if (n.discovery.mode === "ON_PUZZLE" && n.discovery.sourceNode && !byId.has(n.discovery.sourceNode)) {
+        errors.push(`C2 ${n.id} : discovery ON_PUZZLE sourceNode=${n.discovery.sourceNode} inexistant`);
+      }
+      if (n.discovery.mode === "ON_PROXIMITY" && n.discovery.sourceNode && !byId.has(n.discovery.sourceNode)) {
+        errors.push(`C2 ${n.id} : discovery ON_PROXIMITY sourceNode=${n.discovery.sourceNode} inexistant`);
+      }
+    }
+    if (n.inventoryRef) {
+      for (const ref of n.inventoryRef) {
+        if (!items.has(ref)) errors.push(`C2 ${n.id} : inventoryRef itemId=${ref} inexistant`);
+      }
+    }
+  }
+
+  // Consumable consistency: un objet consommable doit etre reference par au moins un ITEM_USED.
+  if (game.objects) {
+    for (const o of game.objects) {
+      if (o.consumable) {
+        let used = false;
+        for (const n of game.nodes) {
+          for (const c of n.activation.requires) {
+            if (c.type === "ITEM_USED" && c.itemId === o.id) used = true;
+          }
+        }
+        if (!used) errors.push(`C2 Objet ${o.id} est consumable mais jamais utilise par ITEM_USED`);
+      }
+    }
+  }
+
   return { layer: 2, errors };
 }
 

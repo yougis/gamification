@@ -1,8 +1,12 @@
 {
-  "$comment": "Registre des modules (change 500) : ajouter un type = une entree ici + son sous-schema, jamais de retouche Nœuds/Liens ni racine.",
+  "$comment": "Registre des modules (change 500) : ajouter un type = une entree ici + son sous-schema, jamais de retouche Noeuds/Liens ni racine.",
   "QUIZ": {"schema": "quiz.json", "version": "1.0.0"},
   "DIFFERENCE_GAME": {"schema": "difference-game.json", "version": "1.0.0"},
   "PUZZLE": {"schema": "puzzle.json", "version": "1.0.0"},
   "AR_MARKER": {"schema": "ar-marker.json", "version": "1.0.0"},
-  "BOUSSOLE": {"schema": "boussole.json", "version": "1.0.0"}
+  "BOUSSOLE": {"schema": "boussole.json", "version": "1.0.0"},
+  "CODE_INPUT": {"schema": "code-input.json", "version": "1.0.0", "needsInventory": true, "presentationNeeds": ["CLUE"], "producesEffects": ["MODIFY_VARIABLE"]},
+  "CLUE_RESOLVER": {"schema": "clue-resolver.json", "version": "1.0.0", "needsInventory": false, "presentationNeeds": ["CLUE"], "producesEffects": ["REVEAL_NODE"]},
+  "ITEM_DROPPER": {"schema": "item-dropper.json", "version": "1.0.0", "needsInventory": true, "presentationNeeds": ["TOOLBOX"], "producesEffects": ["GIVE_ITEM"]},
+  "ITEM_CONSUMER": {"schema": "item-consumer.json", "version": "1.0.0", "needsInventory": true, "presentationNeeds": ["TOOLBOX"], "producesEffects": ["REMOVE_ITEM"]}
 }

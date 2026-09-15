@@ -7,7 +7,8 @@ import kotlinx.serialization.json.JsonElement
 
 // Enums socle — définis une seule fois (source : specs 000/100 + game-schema).
 enum class ConditionType {
-    GEOFENCE, NODE_COMPLETED, TIMER, POOL_DRAWN, PROXIMITY_MASTER, CONDITIONAL, WINDOW
+    GEOFENCE, NODE_COMPLETED, TIMER, POOL_DRAWN, PROXIMITY_MASTER, CONDITIONAL, WINDOW,
+    ITEM_REQUIRED, ITEM_USED, CODE_INPUT, CLUE_RESOLVED
 }
 
 enum class HoldMode { NONE, GUIDED_ACCESS, SCREEN_PINNING, LOCK_TASK }
@@ -19,7 +20,7 @@ enum class DrawTiming { ON_POOL_ACTIVATION, ON_GAME_START }
 enum class Transport { BLE, WIFI }
 enum class NodeState { LOCKED, UNLOCKED, ACTIVE, COMPLETED }
 enum class OnReentry { IGNORE, REPLAY }
-enum class ModuleType { QUIZ, DIFFERENCE_GAME, PUZZLE, AR_MARKER, BOUSSOLE, INFO, RANDOM_POOL }
+enum class ModuleType { QUIZ, DIFFERENCE_GAME, PUZZLE, AR_MARKER, BOUSSOLE, INFO, RANDOM_POOL, CODE_INPUT, CLUE_RESOLVER, ITEM_DROPPER, ITEM_CONSUMER }
 enum class Difficulty { ENFANT, FAMILLE, EXPERT }
 enum class GameMode { NORMAL, ANIMATEUR, SOIREE, HARDCORE }
 enum class ReviewStatus { DRAFT, REVIEWED, PUBLISHED }
@@ -28,6 +29,8 @@ enum class Milieu { EXTERIEUR, FORET, BATIMENT_CAVE }
 data class HoldExit(val method: HoldExitMethod, val pin: String? = null, val adminPanel: Boolean = false)
 
 // Racine Jeu — calquée sur studio/src/game/types.ts (schéma opposable).
+enum class NavigationModel { BASIC, GUIDED, TREASURE_HUNT, ESCAPE_GAME, OPEN_EXPLORATION }
+
 @Serializable
 data class Game(
     val gameId: String,
@@ -37,7 +40,21 @@ data class Game(
     val branding: JsonElement? = null,
     val global: JsonElement? = null,
     val holdMode: HoldMode = HoldMode.NONE,
-    val holdExit: HoldExit? = null
+    val holdExit: HoldExit? = null,
+    val navigationModel: NavigationModel = NavigationModel.BASIC,
+    val presentation: List<String> = emptyList(),
+    val preset: String? = null,
+    val objects: List<GameObject> = emptyList()
+)
+
+@Serializable
+data class GameObject(
+    val id: String,
+    val name: String,
+    val icon: String? = null,
+    val description: String? = null,
+    val consumable: Boolean = false,
+    val stackable: Boolean = true
 )
 
 @Serializable
@@ -78,6 +95,16 @@ data class GpxTrace(
     val path: String = ""
 )
 
+enum class DiscoveryMode { VISIBLE_NOW, MAP, ON_COMPLETED, ON_CLUE, ON_ITEM, ON_PUZZLE, ON_PROXIMITY, ON_TIME }
+
+data class Discovery(val mode: DiscoveryMode, val sourceNode: String? = null, val clueId: String? = null, val lat: Double? = null, val lng: Double? = null, val radiusMeters: Int? = null)
+
+data class Effect(val type: String, val itemId: String? = null, val nodeId: String? = null, val variableId: String? = null, val value: Any? = null)
+
+enum class InventoryAction { GIVE, REMOVE, CHECK, USE }
+
+data class InventoryEntry(val itemId: String, val quantity: Int = 1, val acquiredAt: Long = System.currentTimeMillis())
+
 @Serializable
 data class GameNode(
     val id: String,
@@ -88,7 +115,10 @@ data class GameNode(
     val scoreOnReplay: Boolean = false,
     val isEnding: Boolean = false,
     val randomPool: RandomPool? = null,
-    val latch: Boolean = true
+    val latch: Boolean = true,
+    val discovery: Discovery? = null,
+    val effects: List<Effect> = emptyList(),
+    val inventoryRef: List<String> = emptyList()
 )
 
 @Serializable
@@ -125,7 +155,11 @@ data class Condition(
     val poolNodeId: String? = null,
     val masterId: String? = null,
     val transport: Transport? = null,
-    val minRssiDbm: Int? = null
+    val minRssiDbm: Int? = null,
+    val itemId: String? = null,
+    val consumed: Boolean = true,
+    val code: String? = null,
+    val clueId: String? = null
 )
 
 @Serializable
@@ -205,4 +239,14 @@ data class HoldJournalEntity(
     val method: String? = null,
     val success: Boolean = false,
     val timestamp: Long = System.currentTimeMillis()
+)
+
+@Entity(tableName = "inventory")
+data class InventoryEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val sessionId: String,
+    val itemId: String,
+    val quantity: Int = 1,
+    val acquiredAt: Long = System.currentTimeMillis(),
+    val isCheat: Boolean = false
 )

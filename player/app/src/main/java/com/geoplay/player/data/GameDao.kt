@@ -8,6 +8,7 @@ import androidx.room.Transaction
 import androidx.room.Update
 import com.geoplay.player.model.*
 import com.geoplay.player.model.HoldJournalEntity
+import com.geoplay.player.model.InventoryEntity
 
 @Dao
 interface GameDao {
@@ -113,5 +114,29 @@ interface GameDao {
     @Transaction
     suspend fun insertHoldJournalWithTransaction(event: HoldJournalEntity) {
         insertHoldJournal(event)
+    }
+
+    // Inventory
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertInventory(entry: InventoryEntity): Long
+
+    @Query("SELECT * FROM inventory WHERE sessionId = :sessionId")
+    suspend fun getInventory(sessionId: String): List<InventoryEntity>
+
+    @Query("SELECT * FROM inventory WHERE sessionId = :sessionId AND itemId = :itemId")
+    suspend fun getInventoryItem(sessionId: String, itemId: String): InventoryEntity?
+
+    @Query("SELECT COUNT(*) FROM inventory WHERE sessionId = :sessionId AND itemId = :itemId")
+    suspend fun getInventoryCount(sessionId: String, itemId: String): Int
+
+    @Query("DELETE FROM inventory WHERE sessionId = :sessionId AND itemId = :itemId")
+    suspend fun removeInventoryItem(sessionId: String, itemId: String)
+
+    @Query("DELETE FROM inventory WHERE sessionId = :sessionId")
+    suspend fun clearInventory(sessionId: String)
+
+    @Transaction
+    suspend fun insertInventoryWithTransaction(entry: InventoryEntity) {
+        insertInventory(entry)
     }
 }

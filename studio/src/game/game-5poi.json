@@ -3,34 +3,31 @@
   "schemaVersion": "1.0.0",
   "minEngineVersion": "1.0.0",
   "branding": {},
-  "global": {"gpsRadiusMeters": 30},
+  "global": {"gpsRadiusMeters": 30, "navigationModel": "BASIC", "presentation": ["MAP"]},
+  "objects": [
+    {"id": "cle_index", "name": "Clé de l'indice", "icon": "key", "description": "Débloque l'accès au POI secret", "consumable": false, "stackable": true},
+    {"id": "carte_carte", "name": "Carte ancienne", "icon": "map", "description": "Révèle les coordonnées cachées", "consumable": false, "stackable": true}
+  ],
   "nodes": [
     {
       "id": "start",
       "module": {"type": "INFO", "data": {}},
-      "activation": {"requires": [
-        {"type": "TIMER", "anchor": "GAME_START", "delaySeconds": 0}
-      ]}
+      "activation": {"requires": [{"type": "TIMER", "anchor": "GAME_START", "delaySeconds": 0}]},
+      "effects": [{"type": "GIVE_ITEM", "itemId": "carte_carte"}]
     },
     {
       "id": "pool",
       "module": {"type": "RANDOM_POOL", "data": {}},
-      "activation": {"requires": [
-        {"type": "NODE_COMPLETED", "nodeId": "start"}
-      ]},
-      "randomPool": {
-        "candidates": ["a", "b", "c", "d", "e"],
-        "drawCount": 1,
-        "drawTiming": "ON_POOL_ACTIVATION"
-      }
+      "activation": {"requires": [{"type": "NODE_COMPLETED", "nodeId": "start"}]},
+      "randomPool": {"candidates": ["a", "b", "c", "d", "e"], "drawCount": 1, "drawTiming": "ON_POOL_ACTIVATION"}
     },
     {
       "id": "a",
       "module": {"type": "QUIZ", "data": {"schemaVersion": "1.0.0", "questions": [{"q": "Exemple ?"}]}},
-      "activation": {"requires": [
-        {"type": "POOL_DRAWN", "poolNodeId": "pool"},
-        {"type": "GEOFENCE", "lat": 48.01, "lng": 2.01, "radiusMeters": 30, "predicate": "dwell", "dwellMs": 8000}
-      ], "operator": "AND", "latch": true}
+      "activation": {"requires": [{"type": "POOL_DRAWN", "poolNodeId": "pool"}, {"type": "GEOFENCE", "lat": 48.01, "lng": 2.01, "radiusMeters": 30, "predicate": "dwell", "dwellMs": 8000}]},
+      "operator": "AND",
+      "latch": true,
+      "inventoryRef": ["cle_index"]
     },
     {
       "id": "b",

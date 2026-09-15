@@ -3,11 +3,13 @@ package com.geoplay.player.data
 import androidx.room.TypeConverter
 import com.geoplay.player.model.Anchor
 import com.geoplay.player.model.ConditionType
+import com.geoplay.player.model.DiscoveryMode
 import com.geoplay.player.model.Difficulty
 import com.geoplay.player.model.DrawTiming
 import com.geoplay.player.model.GameMode
 import com.geoplay.player.model.Milieu
 import com.geoplay.player.model.ModuleType
+import com.geoplay.player.model.NavigationModel
 import com.geoplay.player.model.NodeState
 import com.geoplay.player.model.OnReentry
 import com.geoplay.player.model.Operator
@@ -103,6 +105,18 @@ class Converters {
 
     @TypeConverter
     fun stringToMilieu(value: String?): Milieu? = value?.let { Milieu.valueOf(it) }
+
+    @TypeConverter
+    fun navigationModelToString(model: NavigationModel?): String? = model?.name
+
+    @TypeConverter
+    fun stringToNavigationModel(value: String?): NavigationModel? = value?.let { NavigationModel.valueOf(it) }
+
+    @TypeConverter
+    fun discoveryModeToString(mode: DiscoveryMode?): String? = mode?.name
+
+    @TypeConverter
+    fun stringToDiscoveryMode(value: String?): DiscoveryMode? = value?.let { DiscoveryMode.valueOf(it) }
 
     @TypeConverter
     fun listStringToJson(list: List<String>?): String? =

@@ -20,6 +20,10 @@ export const CONDITIONS_FR: Record<string, { nom: string; aide: string }> = {
   PROXIMITY_MASTER: { nom: "Près de l'animateur", aide: "À portée du téléphone ou boîtier animateur (sans GPS)" },
   CONDITIONAL: { nom: "Selon la réponse (futur)", aide: "Réservé : branchement façon livre-jeu" },
   WINDOW: { nom: "Plage horaire (futur)", aide: "Réservé : ex. 14h–16h" },
+  ITEM_REQUIRED: { nom: "Objet requis", aide: "Le joueur doit posséder l'objet dans son inventaire" },
+  ITEM_USED: { nom: "Objet utilisé", aide: "Le joueur doit avoir utilisé un objet spécifique" },
+  CODE_INPUT: { nom: "Code saisi", aide: "Le joueur doit avoir saisi un code correct" },
+  CLUE_RESOLVED: { nom: "Indice résolu", aide: "Le joueur doit avoir résolu un indice ou énigme" },
 };
 
 export const FAMILLES = [
@@ -28,6 +32,9 @@ export const FAMILLES = [
   { id: "comportement", titre: "3 · Comportement", aide: "Ce qui se passe ensuite" },
   { id: "tirage", titre: "4 · Tirage au sort", aide: "Si c'est une étape de tirage" },
   { id: "validation", titre: "5 · Validation", aide: "Relecture équipe avant publication" },
+  { id: "decouverte", titre: "6 · Découverte", aide: "Comment l'étape devient connue du joueur" },
+  { id: "effets", titre: "7 · Effets", aide: "Ce que l'étape produit à la complétion" },
+  { id: "inventaire", titre: "8 · Inventaire", aide: "Objets requis ou référencés" },
 ] as const;
 
 // Préréglages de rayon (demande UX) : valeurs indicatives, modifiables, stockées dans le JSON.

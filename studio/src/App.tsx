@@ -57,7 +57,7 @@ const reduce = (s: State, a: Action): State => {
   return { past: [...s.past, s.present], present: a.snap, future: [] };
 };
 
-const TYPES_CONDITION = ["GEOFENCE", "NODE_COMPLETED", "TIMER", "POOL_DRAWN", "PROXIMITY_MASTER", "CONDITIONAL", "WINDOW"];
+const TYPES_CONDITION = ["GEOFENCE", "NODE_COMPLETED", "TIMER", "POOL_DRAWN", "PROXIMITY_MASTER", "CONDITIONAL", "WINDOW", "ITEM_REQUIRED", "ITEM_USED", "CODE_INPUT", "CLUE_RESOLVED"];
 
 const conditionVide = (type: string): Condition => {
   switch (type) {
@@ -71,13 +71,26 @@ const conditionVide = (type: string): Condition => {
       return { type: "POOL_DRAWN", poolNodeId: "" };
     case "PROXIMITY_MASTER":
       return { type: "PROXIMITY_MASTER", masterId: "", transport: "ble" };
+    case "ITEM_REQUIRED":
+      return { type: "ITEM_REQUIRED", itemId: "" };
+    case "ITEM_USED":
+      return { type: "ITEM_USED", itemId: "", consumed: true };
+    case "CODE_INPUT":
+      return { type: "CODE_INPUT", code: "" };
+    case "CLUE_RESOLVED":
+      return { type: "CLUE_RESOLVED", clueId: "" };
     default:
       return { type: type as Condition["type"] };
   }
 };
 
 const refDe = (c: Condition): string | undefined =>
-  c.type === "NODE_COMPLETED" ? c.nodeId : c.type === "POOL_DRAWN" ? c.poolNodeId : undefined;
+  c.type === "NODE_COMPLETED" ? c.nodeId : c.type === "POOL_DRAWN" ? c.poolNodeId : c.type === "TIMER" && c.anchor === "NODE_COMPLETION" ? c.anchorNodeId : undefined;
+
+const discoverySourceDe = (n: GameNode): string | undefined => n.discovery?.sourceNode;
+
+const effectRevealNodes = (n: GameNode): string[] =>
+  (n.effects ?? []).filter((e) => e.type === "REVEAL_NODE").map((e) => e.nodeId).filter(Boolean) as string[];
 
 type Onglet = "graphe" | "liste" | "detail" | "essai";
 
@@ -205,6 +218,31 @@ export default function App() {
             style: impasse ? { stroke: "#b42318", strokeWidth: 2.5 } : { stroke: "#6b7280", strokeWidth: 1.6 },
             labelStyle: { fill: impasse ? "#b42318" : "#374151", fontWeight: 600 },
             labelBgStyle: { fill: "#fff", fillOpacity: 0.92 },
+          });
+        }
+      }
+    }
+    for (const n of game.nodes) {
+      const discSource = discoverySourceDe(n);
+      if (discSource && game.nodes.some((m) => m.id === discSource)) {
+        edges.push({
+          id: `${discSource}->${n.id}:discovery`, source: discSource, target: n.id,
+          label: "Discovery",
+          animated: false,
+          style: { stroke: "#0b5fff", strokeWidth: 1.6, strokeDasharray: "6 3" },
+          labelStyle: { fill: "#0b5fff", fontWeight: 600 },
+          labelBgStyle: { fill: "#e8efff", fillOpacity: 0.92 },
+        });
+      }
+      for (const revealNode of effectRevealNodes(n)) {
+        if (game.nodes.some((m) => m.id === revealNode)) {
+          edges.push({
+            id: `${n.id}->${revealNode}:effect`, source: n.id, target: revealNode,
+            label: "Effet",
+            animated: false,
+            style: { stroke: "#2b8a3e", strokeWidth: 1.6, strokeDasharray: "3 3" },
+            labelStyle: { fill: "#2b8a3e", fontWeight: 600 },
+            labelBgStyle: { fill: "#eafff0", fillOpacity: 0.92 },
           });
         }
       }
@@ -781,8 +819,8 @@ function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauT
         {node.activation.requires.map((c, i) => (
           <div key={i} className="carte p-2" style={{ boxShadow: "none" }}>
             <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <Icon name={c.type === "GEOFENCE" ? "zone" : c.type === "NODE_COMPLETED" ? "apres" : c.type === "TIMER" ? "delai" : c.type === "POOL_DRAWN" ? "tiree" : c.type === "PROXIMITY_MASTER" ? "animateur" : "detail"} size={15} />
-              <b>{CONDITIONS_FR[c.type]?.nom ?? c.type}</b>
+               <Icon name={c.type === "GEOFENCE" ? "zone" : c.type === "NODE_COMPLETED" ? "apres" : c.type === "TIMER" ? "delai" : c.type === "POOL_DRAWN" ? "tiree" : c.type === "PROXIMITY_MASTER" ? "animateur" : c.type === "ITEM_REQUIRED" || c.type === "ITEM_USED" ? "package" : c.type === "CODE_INPUT" || c.type === "CLUE_RESOLVED" ? "engrenage" : "detail"} size={15} />
+               <b>{CONDITIONS_FR[c.type]?.nom ?? c.type}</b>
               <span style={{ flex: 1 }} />
               <button className="btn" style={{ minHeight: 32, padding: "0 10px" }} aria-label="Supprimer ce déclencheur" title="Supprimer" onClick={() => supprDecl(i)}><Icon name="fermer" size={14} /></button>
             </span>
@@ -851,6 +889,81 @@ function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauT
           }} />
         </details>
       </Famille>
+      <Famille titre={FAMILLES[5].titre} aide={FAMILLES[5].aide}>
+        <label>Mode <select className="champ" value={node.discovery?.mode ?? "VISIBLE_NOW"} onChange={(e) => upd({ discovery: { ...node.discovery, mode: e.target.value as any } })}>
+          {["VISIBLE_NOW", "MAP", "ON_COMPLETED", "ON_CLUE", "ON_ITEM", "ON_PUZZLE", "ON_PROXIMITY", "ON_TIME"].map((m) => <option key={m} value={m}>{m}</option>)}
+        </select></label>
+        {node.discovery?.mode === "ON_COMPLETED" && (
+          <label>Source (étape précédente) <select className="champ" value={node.discovery.sourceNode ?? ""} onChange={(e) => upd({ discovery: { ...node.discovery, sourceNode: e.target.value } })}>
+            <option value="">—</option>{game.nodes.filter((m) => m.id !== node.id).map((m) => <option key={m.id} value={m.id}>{m.id}</option>)}
+          </select></label>
+        )}
+        {node.discovery?.mode === "ON_CLUE" && (
+          <label>Indice <select className="champ" value={node.discovery.clueId ?? ""} onChange={(e) => upd({ discovery: { ...node.discovery, clueId: e.target.value } })}>
+            <option value="">—</option>{game.nodes.filter((m) => m.discovery?.mode === "ON_CLUE").map((m) => <option key={m.id} value={m.id}>{m.id}</option>)}
+          </select></label>
+        )}
+        {node.discovery?.mode === "ON_ITEM" && (
+          <label>Objet <select className="champ" value={node.discovery.itemId ?? ""} onChange={(e) => upd({ discovery: { ...node.discovery, itemId: e.target.value } })}>
+            <option value="">—</option>{game.objects?.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+          </select></label>
+        )}
+        {node.discovery?.mode === "ON_PROXIMITY" && (
+          <span>
+            <label>Lat <input className="champ w-20" type="number" step="any" value={node.discovery.lat ?? ""} onChange={(e) => upd({ discovery: { ...node.discovery, lat: Number(e.target.value) } })} /></label>
+            <label>Lng <input className="champ w-20" type="number" step="any" value={node.discovery.lng ?? ""} onChange={(e) => upd({ discovery: { ...node.discovery, lng: Number(e.target.value) } })} /></label>
+            <label>Rayon <input className="champ w-16" type="number" value={node.discovery.radiusMeters ?? ""} onChange={(e) => upd({ discovery: { ...node.discovery, radiusMeters: Number(e.target.value) } })} /></label>
+          </span>
+        )}
+        <span className="text-xs" style={{ color: "var(--ink-2)" }}>Découverte = comment l'étape devient visible. Indépendante de l'activation.</span>
+      </Famille>
+      <Famille titre={FAMILLES[6].titre} aide={FAMILLES[6].aide}>
+        {(node.effects ?? []).length === 0 && (
+          <button className="btn" onClick={() => upd({ effects: [{ type: "GIVE_ITEM", itemId: "" }] })}><Icon name="ajouter" size={15} /> Ajouter un effet</button>
+        )}
+        {(node.effects ?? []).map((eff, i) => (
+          <div key={i} className="carte p-2" style={{ boxShadow: "none" }}>
+            <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <Icon name="engrenage" size={15} />
+              <select className="champ" value={eff.type} onChange={(e) => {
+                const newEffects = [...(node.effects ?? [])];
+                newEffects[i] = { ...eff, type: e.target.value };
+                upd({ effects: newEffects });
+              }}>
+                <option value="GIVE_ITEM">Donner objet</option>
+                <option value="REMOVE_ITEM">Retirer objet</option>
+                <option value="REVEAL_NODE">Révéler nœud</option>
+                <option value="HIDE_NODE">Masquer nœud</option>
+                <option value="UNLOCK_NODE">Débloquer nœud</option>
+                <option value="MODIFY_VARIABLE">Modifier variable</option>
+                <option value="MODIFY_SCORE">Modifier score</option>
+                <option value="TRIGGER_EVENT">Déclencher événement</option>
+              </select>
+              <span style={{ flex: 1 }} />
+              <button className="btn" style={{ minHeight: 32, padding: "0 10px" }} aria-label="Supprimer cet effet" title="Supprimer" onClick={() => upd({ effects: (node.effects ?? []).filter((_, j) => j !== i) })}><Icon name="fermer" size={14} /></button>
+            </span>
+            {eff.type === "GIVE_ITEM" || eff.type === "REMOVE_ITEM" ? <label>Objet <select className="champ" value={eff.itemId ?? ""} onChange={(e) => { const ne = [...(node.effects ?? [])]; ne[i] = { ...ne[i], itemId: e.target.value }; upd({ effects: ne }); }}><option value="">—</option>{game.objects?.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</select></label> : eff.type === "REVEAL_NODE" || eff.type === "HIDE_NODE" || eff.type === "UNLOCK_NODE" ? <label>Nœud <select className="champ" value={eff.nodeId ?? ""} onChange={(e) => { const ne = [...(node.effects ?? [])]; ne[i] = { ...ne[i], nodeId: e.target.value }; upd({ effects: ne }); }}><option value="">—</option>{game.nodes.filter((m) => m.id !== node.id).map((m) => <option key={m.id} value={m.id}>{m.id}</option>)}</select></label> : eff.type === "MODIFY_VARIABLE" ? <label>Variable <input className="champ" value={eff.variableId ?? ""} onChange={(e) => { const ne = [...(node.effects ?? [])]; ne[i] = { ...ne[i], variableId: e.target.value }; upd({ effects: ne }); }} placeholder="id" size={12} /></label> : eff.type === "MODIFY_SCORE" ? <label>Score <input className="champ w-16" type="number" value={Number(eff.value) ?? 0} onChange={(e) => { const ne = [...(node.effects ?? [])]; ne[i] = { ...ne[i], value: Number(e.target.value) }; upd({ effects: ne }); }} /></label> : null}
+          </div>
+        ))}
+      </Famille>
+      <Famille titre={FAMILLES[7].titre} aide={FAMILLES[7].aide}>
+        {(node.inventoryRef ?? []).length === 0 ? (
+          <button className="btn" onClick={() => upd({ inventoryRef: [] })}><Icon name="ajouter" size={15} /> Ajouter un objet référencé</button>
+        ) : null}
+        {(node.inventoryRef ?? []).map((ref, i) => (
+          <div key={i} className="carte p-2" style={{ boxShadow: "none" }}>
+            <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <Icon name="package" size={15} />
+              <select className="champ" value={ref} onChange={(e) => { const ir = [...(node.inventoryRef ?? [])]; ir[i] = e.target.value; upd({ inventoryRef: ir }); }}>
+                <option value="">—</option>{game.objects?.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+              </select>
+              <span style={{ flex: 1 }} />
+              <button className="btn" style={{ minHeight: 32, padding: "0 10px" }} aria-label="Supprimer cette référence" title="Supprimer" onClick={() => upd({ inventoryRef: (node.inventoryRef ?? []).filter((_, j) => j !== i) })}><Icon name="fermer" size={14} /></button>
+            </span>
+          </div>
+        ))}
+        <span className="text-xs" style={{ color: "var(--ink-2)" }}>InventoryRef = objets liés à ce nœud (donnés, requis). Vide si aucun objet.</span>
+      </Famille>
       </fieldset>
     </div>
   );
@@ -905,6 +1018,28 @@ function ChampsDecl({ game, c, upd }: { game: Game; c: Condition; upd: (p: Parti
       return (
         <span>tirée par <select className="champ" style={{ minHeight: 40 }} value={c.poolNodeId ?? ""} onChange={(e) => upd({ poolNodeId: e.target.value })}>
           <option value="">—</option>{game.nodes.filter((m) => m.randomPool).map((m) => <option key={m.id} value={m.id}>{m.id}</option>)}
+        </select></span>
+      );
+    case "ITEM_REQUIRED":
+      return (
+        <span>objet <select className="champ" style={{ minHeight: 40 }} value={c.itemId ?? ""} onChange={(e) => upd({ itemId: e.target.value })}>
+          <option value="">—</option>{game.objects?.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+        </select></span>
+      );
+    case "ITEM_USED":
+      return (
+        <span>utiliser <select className="champ" style={{ minHeight: 40 }} value={c.itemId ?? ""} onChange={(e) => upd({ itemId: e.target.value })}>
+          <option value="">—</option>{game.objects?.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+        </select> consommable <label className="text-xs"><input type="checkbox" checked={c.consumed ?? true} onChange={(e) => upd({ consumed: e.target.checked })} /> oui</label></span>
+      );
+    case "CODE_INPUT":
+      return (
+        <span>code <input className="champ" style={{ minHeight: 40 }} value={c.code ?? ""} onChange={(e) => upd({ code: e.target.value })} placeholder="Code" size={12} /></span>
+      );
+    case "CLUE_RESOLVED":
+      return (
+        <span>indice <select className="champ" style={{ minHeight: 40 }} value={c.clueId ?? ""} onChange={(e) => upd({ clueId: e.target.value })}>
+          <option value="">—</option>{game.nodes.filter((m) => m.discovery?.mode === "ON_CLUE").map((m) => <option key={m.id} value={m.id}>{m.id}</option>)}
         </select></span>
       );
     default:

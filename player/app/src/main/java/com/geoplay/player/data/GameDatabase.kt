@@ -15,7 +15,8 @@ import com.geoplay.player.model.*
         RandomDrawEntity::class,
         ScoreEntity::class,
         SessionEntity::class,
-        HoldJournalEntity::class
+        HoldJournalEntity::class,
+        InventoryEntity::class
     ],
     version = 1,
     exportSchema = false

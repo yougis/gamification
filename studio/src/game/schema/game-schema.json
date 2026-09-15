@@ -31,6 +31,19 @@
             "pin": {"type": "string", "minLength": 4},
             "adminPanel": {"type": "object", "properties": {"enabled": {"type": "boolean"}}}
           }
+        },
+        "navigationModel": {
+          "type": "string",
+          "enum": ["BASIC", "GUIDED", "TREASURE_HUNT", "ESCAPE_GAME", "OPEN_EXPLORATION"],
+          "default": "BASIC"
+        },
+        "presentation": {
+          "type": "array",
+          "items": {"type": "string", "enum": ["MAP", "LIST", "STORY", "CLUE", "TOOLBOX", "TIMELINE"]}
+        },
+        "preset": {
+          "type": "string",
+          "enum": ["BASIC", "GUIDED", "TREASURE_HUNT", "ESCAPE_GAME", "OPEN_EXPLORATION"]
         }
       },
       "allOf": [
@@ -98,6 +111,25 @@
             "drawCount": {"type": "integer", "minimum": 1},
             "drawTiming": {"enum": ["ON_POOL_ACTIVATION", "ON_GAME_START"]}
           }
+        },
+        "discovery": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "mode": {"type": "string", "enum": ["VISIBLE_NOW", "MAP", "ON_COMPLETED", "ON_CLUE", "ON_ITEM", "ON_PUZZLE", "ON_PROXIMITY", "ON_TIME"]},
+            "sourceNode": {"type": "string", "minLength": 1},
+            "clueId": {"type": "string", "minLength": 1},
+            "lat": {"type": "number"},
+            "lng": {"type": "number"},
+            "radiusMeters": {"type": "number", "exclusiveMinimum": 0}
+          }
+        },
+        "effects": {
+          "type": "array",
+          "items": {"type": "object", "additionalProperties": false, "properties": {"type": {"type": "string"}, "itemId": {"type": "string"}, "nodeId": {"type": "string"}, "variableId": {"type": "string"}, "value": {}}}},
+        "inventoryRef": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
         }
       },
       "allOf": [
@@ -170,8 +202,54 @@
         {
           "required": ["type"],
           "properties": {"type": {"const": "WINDOW"}}
+        },
+        {
+          "required": ["type", "itemId"],
+          "additionalProperties": false,
+          "properties": {
+            "type": {"const": "ITEM_REQUIRED"},
+            "itemId": {"type": "string", "minLength": 1}
+          }
+        },
+        {
+          "required": ["type", "itemId"],
+          "additionalProperties": false,
+          "properties": {
+            "type": {"const": "ITEM_USED"},
+            "itemId": {"type": "string", "minLength": 1},
+            "consumed": {"type": "boolean", "default": true}
+          }
+        },
+        {
+          "required": ["type", "code"],
+          "additionalProperties": false,
+          "properties": {
+            "type": {"const": "CODE_INPUT"},
+            "code": {"type": "string", "minLength": 1}
+          }
+        },
+        {
+          "required": ["type", "clueId"],
+          "additionalProperties": false,
+          "properties": {
+            "type": {"const": "CLUE_RESOLVED"},
+            "clueId": {"type": "string", "minLength": 1}
+          }
         }
       ]
+    },
+    "object": {
+      "type": "object",
+      "required": ["id", "name"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "name": {"type": "string"},
+        "icon": {"type": "string"},
+        "description": {"type": "string"},
+        "consumable": {"type": "boolean", "default": false},
+        "stackable": {"type": "boolean", "default": true}
+      }
     }
   }
 }

@@ -2,20 +2,66 @@ package com.geoplay.player.game
 
 import com.geoplay.player.model.ConditionType
 import com.geoplay.player.model.DrawTiming
+import com.geoplay.player.model.DiscoveryMode
 import com.geoplay.player.model.Game
 import com.geoplay.player.model.GameNode
 import com.geoplay.player.model.HoldExit
 import com.geoplay.player.model.HoldMode
 import com.geoplay.player.model.ModuleData
+import com.geoplay.player.model.NavigationModel
 import com.geoplay.player.model.Operator
 import com.geoplay.player.model.Predicate
 import com.geoplay.player.model.RandomPool
 import com.geoplay.player.model.*
 import kotlin.math.abs
 
+private val ENV = setOf(ConditionType.GEOFENCE, ConditionType.TIMER, ConditionType.PROXIMITY_MASTER)
+private val ITEM_CONDITIONS = setOf(ConditionType.ITEM_REQUIRED, ConditionType.ITEM_USED)
+
 // Port Kotlin du cœur TS prouvé (studio/src/game/evaluate.ts + runtime.ts).
 // Sémantique opposable = specs 000/100 : latch, file FIFO à modale unique,
 // pools persistés, WINDOW/CONDITIONAL ignorés gracieusement, HOLD kiosque.
+
+data class DiscoveryState(val discovered: Set<String> = emptySet(), val variables: Map<String, Any> = emptyMap())
+
+data class InventoryState(val items: Map<String, Int> = emptyMap())
+
+fun evaluateDiscovery(node: GameNode, discoveryState: DiscoveryState): Boolean {
+    val d = node.discovery ?: return true
+    return when (d.mode) {
+        DiscoveryMode.VISIBLE_NOW -> true
+        DiscoveryMode.ON_COMPLETED -> d.sourceNode?.let { id -> discoveryState.discovered.contains(id) } ?: true
+        DiscoveryMode.ON_CLUE -> d.clueId?.let { id -> discoveryState.discovered.contains(id) } ?: true
+        DiscoveryMode.ON_ITEM -> d.itemId?.let { id -> discoveryState.items.containsKey(id) } ?: true
+        DiscoveryMode.ON_PUZZLE -> d.sourceNode?.let { id -> discoveryState.discovered.contains(id) } ?: true
+        DiscoveryMode.ON_PROXIMITY -> d.sourceNode?.let { id -> discoveryState.discovered.contains(id) } ?: true
+        DiscoveryMode.ON_TIME -> true
+        DiscoveryMode.MAP -> true
+    }
+}
+
+fun applyEffects(node: GameNode, inventory: InventoryState): InventoryState {
+    var state = inventory
+    for (effect in node.effects) {
+        when (effect.type) {
+            "GIVE_ITEM" -> {
+                val itemId = effect.itemId ?: continue
+                val qty = effect.value as? Int ?: 1
+                state = state.copy(items = state.items + (itemId to (state.items[itemId] ?: 0) + qty))
+            }
+            "REMOVE_ITEM" -> {
+                val itemId = effect.itemId ?: continue
+                state = state.copy(items = state.items - itemId)
+            }
+            "MODIFY_VARIABLE" -> {
+                val vid = effect.variableId ?: continue
+                state = state.copy(variables = state.variables + (vid to (effect.value ?: true)))
+            }
+            "REVEAL_NODE", "UNLOCK_NODE" -> { /* handled by discovery */ }
+        }
+    }
+    return state
+}
 
 data class HoldState(val active: Boolean, val mode: HoldMode, val attempts: Int = 0, val journal: List<String> = emptyList())
 data class SessionEvent(val type: String, val timestamp: Long, val sessionId: String)
@@ -74,7 +120,9 @@ private fun condTrue(
     c: com.geoplay.player.model.Condition,
     sim: Sim,
     draws: Map<String, List<String>>,
-    completedAt: Map<String, Long>
+    completedAt: Map<String, Long>,
+    inventory: InventoryState = InventoryState(),
+    discoveryState: DiscoveryState = DiscoveryState()
 ): Boolean {
     return when (c.type) {
         ConditionType.GEOFENCE -> {
@@ -108,6 +156,10 @@ private fun condTrue(
             sim.nowMs >= anchor + (c.delaySeconds ?: 0L) * 1000L
         }
         ConditionType.POOL_DRAWN -> !draws[c.poolNodeId].isNullOrEmpty()
+        ConditionType.ITEM_REQUIRED -> c.itemId?.let { inventory.items.containsKey(it) } ?: false
+        ConditionType.ITEM_USED -> c.itemId?.let { inventory.items.containsKey(it) && c.consumed } ?: false
+        ConditionType.CODE_INPUT -> c.code != null
+        ConditionType.CLUE_RESOLVED -> c.clueId?.let { id -> discoveryState.discovered.contains(id) } ?: false
         else -> false
     }
 }
@@ -116,9 +168,11 @@ private fun evalNode(
     n: GameNode,
     sim: Sim,
     draws: Map<String, List<String>>,
-    completedAt: Map<String, Long>
+    completedAt: Map<String, Long>,
+    inventory: InventoryState = InventoryState(),
+    discoveryState: DiscoveryState = DiscoveryState()
 ): Boolean {
-    val vals = n.activation.requires.map { condTrue(n.id, it, sim, draws, completedAt) }
+    val vals = n.activation.requires.map { condTrue(n.id, it, sim, draws, completedAt, inventory, discoveryState) }
     if (n.activation.requires.size > 1) {
         return if (n.activation.operator == Operator.OR) vals.any { it } else vals.all { it }
     }
@@ -131,13 +185,17 @@ fun evaluate(
     draws: Map<String, List<String>>,
     completedAt: Map<String, Long>,
     completedCount: Map<String, Int>,
-    prevUnlocked: Set<String>
+    prevUnlocked: Set<String>,
+    inventory: InventoryState = InventoryState(),
+    discoveryState: DiscoveryState = DiscoveryState()
 ): EvalResult {
     val unlocked = mutableListOf<String>()
     for (n in game.nodes) {
         if (n.randomPool != null) continue
         if ((completedCount[n.id] ?: 0) > 0) continue
-        val ok = evalNode(n, sim, draws, completedAt)
+        val discoveryOk = evaluateDiscovery(n, discoveryState)
+        if (!discoveryOk) continue
+        val ok = evalNode(n, sim, draws, completedAt, inventory, discoveryState)
         if (ok) {
             unlocked.add(n.id)
         } else if (prevUnlocked.contains(n.id) && n.activation.latch) {
@@ -146,7 +204,11 @@ fun evaluate(
     }
     fun hasEnv(id: String): Boolean {
         val node = game.nodes.find { it.id == id } ?: return false
-        return node.activation.requires.any { ENV.contains(it.type) }
+        return node.activation.requires.any { ENV.contains(it.type) || ITEM_CONDITIONS.contains(it.type) }
+    }
+    val nextInventory = unlocked.fold(inventory) { acc, id ->
+        val node = game.nodes.find { it.id == id } ?: return@fold acc
+        applyEffects(node, acc)
     }
     return EvalResult(
         unlocked = unlocked,
@@ -240,4 +302,29 @@ fun presentWithHold(
         return Presentation(prevActive, queue)
     }
     return present(unlocked, prevQueue, prevActive)
+}
+
+// --- Navigation models (tache 4.1-4.3) ---
+fun getNavigationModel(game: Game): NavigationModel {
+    return game.navigationModel
+}
+
+fun isAutoActivated(game: Game, nodeId: String): Boolean {
+    val node = game.nodes.find { it.id == nodeId } ?: return false
+    val model = getNavigationModel(game)
+    return when (model) {
+        NavigationModel.GUIDED -> true
+        NavigationModel.ESCAPE_GAME -> node.activation.requires.any { it.type == ConditionType.CODE_INPUT || it.type == ConditionType.CLUE_RESOLVED }
+        NavigationModel.TREASURE_HUNT -> node.activation.requires.any { it.type == ConditionType.GEOFENCE || it.type == ConditionType.PROXIMITY_MASTER }
+        NavigationModel.OPEN_EXPLORATION -> true
+        NavigationModel.BASIC -> node.activation.requires.any { ENV.contains(it.type) }
+    }
+}
+
+fun selectPresentation(presentations: List<String>): String {
+    return presentations.firstOrNull() ?: "MAP"
+}
+
+fun combinePresentations(presentations: List<String>): List<String> {
+    return presentations.ifEmpty { listOf("MAP") }
 }
