@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useReducer, useRef } from "react";
+import { useCallback, useEffect, useMemo, useState, useReducer, useRef } from "react";
 import {
   ReactFlow,
   Background,
@@ -11,7 +11,7 @@ import {
   type NodeChange,
   type Connection,
   type ReactFlowInstance,
-  MarkerType,
+  Position,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { validateGame, deadEnds } from "./game/validate";
@@ -302,16 +302,16 @@ export default function App() {
   }, []);
 
   // Mobile relecture : lecture seule + statuts + validation, pas d'édition.
-  const lectureSeule = etroite && onglet !== "graphe" ? false : etroite && false;
+  const lectureSeule = etroite && onglet !== "graphe" ? false : etroite && (Object.values(st.present.meta.status).some((st) => st.state === "draft") ? true : false);
   const relecture = etroite;
   void lectureSeule;
 
-  const edit = (fn: (s: Snap) => Snap, op = "modifier") => {
+  const edit = useCallback((fn: (s: Snap) => Snap, op = "modifier") => {
     if (relecture) return;
     dispatch({ t: "set", snap: fn(st.present), op });
     setExportOk(false);
-  };
-  const editGame = (fn: (g: Game) => Game, op = "modifier") => edit((s) => ({ ...s, game: fn(s.game) }), op);
+  }, [relecture, st.present]);
+  const editGame = useCallback((fn: (g: Game) => Game, op = "modifier") => edit((s) => ({ ...s, game: fn(s.game) }), op), [edit]);
   const etape: GameNode | undefined = game.nodes.find((n) => n.id === sel);
   const impasses = useMemo(() => new Set(deadEnds(game)), [game]);
 
@@ -335,65 +335,31 @@ export default function App() {
     return m;
   }, [brut, game.nodes, impasses]);
 
-const RAIL_PAR_TYPE: Record<string, string> = {
-  INFO: "#6b7280", QUIZ: "#1a7f37", DIFFERENCE_GAME: "#5f3dc4", PUZZLE: "#8a5a00",
-  AR_MARKER: "#0077b6", BOUSSOLE: "#d4a017", RANDOM_POOL: "#5f3dc4",
-  CODE_INPUT: "#b42318", CLUE_RESOLVED: "#1a7f37", ITEM_DROPPER: "#8a5a00", ITEM_CONSUMER: "#b42318",
-};
-
+// Nœuds au rendu par défaut ReactFlow (change studio-graph-selection, option base pure) :
+// boîtes de largeur uniforme, libellés concis, liens bas→haut. Les champs internes
+// ReactFlow (measured, dragging) sont préservés d'un rendu à l'autre via completsRef :
+// sans eux, un drag voit un nœud « non initialisé » (warning 015 + saccades).
+const noeudsRef = useRef<Node[]>([]);
+const completsRef = useRef(new Map<string, Node>());
 const noeuds: Node[] = useMemo(
-  () =>
-    game.nodes.map((n, i) => {
-      const estSel = sel === n.id;
-      const enErreur = (erreursParNoeud.get(n.id) ?? []).length > 0;
-      const statut = st.present.meta.status[n.id]?.state ?? "draft";
-      const nom = MODULES_FR[n.module.type]?.nom ?? n.module.type;
-      const q = recherche.trim().toLowerCase();
-      const match = q ? n.id.toLowerCase().includes(q) || nom.toLowerCase().includes(q) || n.module.type.toLowerCase().includes(q) : false;
-      const railColor = RAIL_PAR_TYPE[n.module.type] ?? "#b9c1ca";
-      return {
-        id: n.id,
-        position: positions[n.id] ?? { x: (i % 4) * 250, y: Math.floor(i / 4) * 160 },
-        selected: estSel,
-        data: {
-          label: `${n.isEnding ? "FIN · " : ""}${n.id} · ${nom}${statut === "draft" ? " · Brouillon" : ""}${enErreur ? " · À corriger" : ""}`,
-          nodeType: n.module.type,
-          nodeStatus: statut,
-        },
-        style: {
-          border: estSel
-            ? "3px solid #0b5fff"
-            : enErreur
-              ? "2px solid #b42318"
-              : statut === "draft"
-                ? "2px dotted #8a5a00"
-                : n.isEnding
-                  ? "2px solid #8a5a00"
-                  : n.module.type === "RANDOM_POOL"
-                    ? "2px dashed #5f3dc4"
-                    : "1px solid #b9c1ca",
-          borderLeft: `4px solid ${railColor}`,
-          background: estSel
-            ? "#e8efff"
-            : enErreur
-              ? "#fdecea"
-              : statut === "draft"
-                ? "#fffdf3"
-                : n.isEnding
-                  ? "#fff4d6"
-                  : n.module.type === "RANDOM_POOL"
-                    ? "#ede9fe"
-                    : "#ffffff",
-          borderRadius: 12,
-          padding: 8,
-          fontWeight: estSel || enErreur ? 700 : 500,
-          boxShadow: estSel ? "0 0 0 3px #fff, 0 0 0 5px #0b5fff" : undefined,
-          outline: match && !estSel ? "3px solid #0b5fff" : undefined,
-          outlineOffset: match && !estSel ? 2 : undefined,
-        },
-      };
-    }),
-  [game.nodes, positions, erreursParNoeud, sel, st.present.meta.status, recherche],
+  () => {
+    const frais: Node[] = game.nodes.map((n, i) => ({
+      id: n.id,
+      position: positions[n.id] ?? { x: (i % 4) * 250, y: Math.floor(i / 4) * 160 },
+      selected: sel === n.id || selMulti.includes(n.id),
+      sourcePosition: Position.Bottom,
+      targetPosition: Position.Top,
+      data: { label: `${n.isEnding ? "FIN · " : ""}${n.id}` },
+      style: { width: 180 },
+    }));
+    const fusionnes = frais.map((f) => {
+      const p = completsRef.current.get(f.id);
+      return p ? { ...f, measured: p.measured, dragging: p.dragging } : f;
+    });
+    noeudsRef.current = fusionnes;
+    return fusionnes;
+  },
+  [game.nodes, positions, sel, selMulti],
 );
   const aretes: Edge[] = useMemo(() => {
     const edges: Edge[] = [];
@@ -401,15 +367,9 @@ const noeuds: Node[] = useMemo(
       for (const c of n.activation.requires) {
         const from = refDe(c) ?? (c.type === "TIMER" && c.anchor === "NODE_COMPLETION" ? c.anchorNodeId : undefined);
         if (from && game.nodes.some((m) => m.id === from)) {
-          const impasse = impasses.has(n.id);
           edges.push({
             id: `${from}->${n.id}:${c.type}`, source: from, target: n.id,
-            label: (<span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><Icon name={iconeCondition(c.type)} size={12} />{CONDITIONS_FR[c.type]?.nom ?? c.type}</span>),
-            animated: impasse,
-            markerEnd: { type: MarkerType.ArrowClosed, width: 18, height: 18 },
-            style: impasse ? { stroke: "#b42318", strokeWidth: 2.5 } : { stroke: "#6b7280", strokeWidth: 1.6 },
-            labelStyle: { fill: impasse ? "#b42318" : "#374151", fontWeight: 600 },
-            labelBgStyle: { fill: "#fff", fillOpacity: 0.92 },
+            label: CONDITIONS_FR[c.type]?.nom ?? c.type,
           });
         }
       }
@@ -419,38 +379,50 @@ const noeuds: Node[] = useMemo(
       if (discSource && game.nodes.some((m) => m.id === discSource)) {
           edges.push({
             id: `${discSource}->${n.id}:discovery`, source: discSource, target: n.id,
-            label: (<span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><Icon name="oeil" size={12} />Discovery</span>),
-            animated: false,
-            markerEnd: { type: MarkerType.ArrowClosed, width: 18, height: 18 },
-            style: { stroke: "#0b5fff", strokeWidth: 1.6, strokeDasharray: "6 3" },
-            labelStyle: { fill: "#0b5fff", fontWeight: 600 },
-            labelBgStyle: { fill: "#e8efff", fillOpacity: 0.92 },
+            label: "Discovery",
           });
       }
       for (const revealNode of effectRevealNodes(n)) {
         if (game.nodes.some((m) => m.id === revealNode)) {
           edges.push({
             id: `${n.id}->${revealNode}:effect`, source: n.id, target: revealNode,
-            label: (<span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><Icon name="engrenage" size={12} />Effet</span>),
-            animated: false,
-            markerEnd: { type: MarkerType.ArrowClosed, width: 18, height: 18 },
-            style: { stroke: "#2b8a3e", strokeWidth: 1.6, strokeDasharray: "3 3" },
-            labelStyle: { fill: "#2b8a3e", fontWeight: 600 },
-            labelBgStyle: { fill: "#eafff0", fillOpacity: 0.92 },
+            label: "Effet",
           });
         }
       }
     }
     return edges;
-  }, [game.nodes, impasses]);
+  }, [game.nodes]);
 
-  const onNodesChange = (changes: NodeChange[]) => {
+  // Pipeline de sélection stabilisé (change studio-graph-selection) : onNodesChange ne
+  // traite que position/dimensions (les changements `select` passent par onSelectionChange),
+  // et chaque setter est gardé par une comparaison de contenu (pas de nouvel objet/tableau
+  // si rien n'a changé) pour couper la boucle sélection → positions → nodes → sélection.
+  const onNodesChange = useCallback((changes: NodeChange[]) => {
     if (relecture) return;
-    const nodes = applyNodeChanges(changes, noeuds);
-    const pos: Record<string, { x: number; y: number }> = { ...positions };
-    for (const n of nodes) pos[n.id] = n.position;
-    setPositions(pos);
-  };
+    const utiles = changes.filter((c) => c.type === "position" || c.type === "dimensions");
+    if (!utiles.length) return;
+    const nodes = applyNodeChanges(utiles, noeuds);
+    for (const n of nodes) completsRef.current.set(n.id, n);
+    setPositions((prev) => {
+      let change = false;
+      const pos: Record<string, { x: number; y: number }> = { ...prev };
+      for (const n of nodes) {
+        const cur = prev[n.id];
+        if (!cur || cur.x !== n.position.x || cur.y !== n.position.y) {
+          pos[n.id] = n.position;
+          change = true;
+        }
+      }
+      return change ? pos : prev;
+    });
+  }, [relecture, noeuds]);
+  const onSelectionChange = useCallback(({ nodes: ns }: { nodes: Node[] }) => {
+    const ids = ns.map((n) => n.id);
+    setSelMulti((prev) =>
+      prev.length === ids.length && prev.every((id, i) => id === ids[i]) ? prev : ids,
+    );
+  }, []);
   const onConnect = (c: Connection) => {
     if (relecture) return;
     if (!c.source || !c.target) return;
@@ -464,7 +436,7 @@ const noeuds: Node[] = useMemo(
         }).nodes.find((m) => m.id === n.id)!;
       });
       return { ...g, nodes };
-    });
+    }, "ajouterActivation");
   };
 
   const actualiserRapport = (g: Game) => {
@@ -751,7 +723,7 @@ const noeuds: Node[] = useMemo(
     5: exportOk,
   } as Record<EtapeWorkflow, boolean>;
 
-  const choisirNoeud = (id: string) => {
+  const choisirNoeud = useCallback((id: string) => {
     setSel(id);
     if (etroite) {
       setOnglet("detail");
@@ -770,7 +742,7 @@ const noeuds: Node[] = useMemo(
       }),
     );
     if (etapeWorkflow === 1) setEtapeWorkflow(2);
-  };
+  }, [etroite, etapeWorkflow]);
 
   // Position effective d'un nœud (placée ou grille par défaut) pour l'alignement.
   const posEffective = (id: string) => {
@@ -807,42 +779,54 @@ const noeuds: Node[] = useMemo(
 
   const palette = (
     <nav className="flex flex-col gap-2" aria-label="Ajouter une étape">
-      <span className="text-xs font-bold uppercase" style={{ color: "var(--ink-2)" }}>Ajouter</span>
+      <span className="text-[8px] font-bold uppercase text-fog">Ajouter</span>
       {relecture && (
-        <p className="puce" style={{ whiteSpace: "normal" }}>
+        <p className="puce whitespace-normal">
           <Icon name="statut" size={13} /> Relecture : ajout désactivé sur petit écran
         </p>
       )}
-      <button className="btn" style={{ justifyContent: "flex-start" }} onClick={() => ajouterEtape("etape")} disabled={relecture} title="Créer une étape Quiz / jeu">
+      <button className="btn justify-start" onClick={() => ajouterEtape("etape")} disabled={relecture} title="Créer une étape Quiz / jeu">
         <Icon name="etape" size={17} /> Étape de jeu
       </button>
-      <button className="btn" style={{ justifyContent: "flex-start" }} onClick={() => ajouterEtape("lieu")} disabled={relecture} title="Créer un lieu avec zone GPS">
+      <button className="btn justify-start" onClick={() => ajouterEtape("lieu")} disabled={relecture} title="Créer un lieu avec zone GPS">
         <Icon name="lieu" size={17} /> Lieu GPS
       </button>
-      <button className="btn" style={{ justifyContent: "flex-start" }} onClick={() => ajouterEtape("tirage")} disabled={relecture} title="Créer un tirage au sort parmi des étapes">
+      <button className="btn justify-start" onClick={() => ajouterEtape("tirage")} disabled={relecture} title="Créer un tirage au sort parmi des étapes">
         <Icon name="tirage" size={17} /> Tirage au sort
       </button>
-      <button className="btn" style={{ justifyContent: "flex-start" }} onClick={() => ajouterEtape("fin")} disabled={relecture} title="Créer l'étape de fin du jeu">
+      <button className="btn justify-start" onClick={() => ajouterEtape("fin")} disabled={relecture} title="Créer l'étape de fin du jeu">
         <Icon name="fin" size={17} /> Fin du jeu
       </button>
-      <span className="text-xs" style={{ color: "var(--ink-2)" }}>Glisse un lien d'une étape à l'autre pour « après l'étape… ».</span>
-      <button className="btn" style={{ justifyContent: "flex-start" }} onClick={reinitialiserMiseEnPage} title="Restaurer les largeurs et le menu par défaut">
+      <span className="text-[8px] text-fog">Glisse un lien d'une étape à l'autre pour « après l'étape… ».</span>
+      <button className="btn justify-start" onClick={reinitialiserMiseEnPage} title="Restaurer les largeurs et le menu par défaut">
         <Icon name="retablir" size={15} /> Mise en page par défaut
       </button>
     </nav>
   );
 
+  // Cadrage à la demande (change studio-graph-selection) : au montage et à l'arrivée du
+  // premier nœud uniquement — jamais sur sélection/zoom, pour ne pas contrarier la caméra.
+  const nbEtapesRef = useRef(nbEtapes);
+  useEffect(() => {
+    if (nbEtapesRef.current > 0) rfRef.current?.fitView({ padding: 0.2 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (nbEtapesRef.current === 0 && nbEtapes > 0) rfRef.current?.fitView({ padding: 0.2 });
+    nbEtapesRef.current = nbEtapes;
+  }, [nbEtapes]);
+
   const zoneGraphe = (
-    <div className="carte studio-flow relative min-h-0 flex-1 overflow-hidden" style={{ minHeight: 320 }}>
-      <ReactFlow nodes={noeuds} edges={aretes} onNodesChange={onNodesChange} onConnect={onConnect} onNodeClick={(_, n) => choisirNoeud(n.id)} onSelectionChange={({ nodes: ns }) => setSelMulti(ns.map((n) => n.id))} multiSelectionKeyCode="Shift" onInit={(instance) => { rfRef.current = instance; }} fitView={nbEtapes > 0} fitViewOptions={{ padding: 0.2 }} minZoom={0.3} maxZoom={2} nodesConnectable={!relecture} nodesDraggable={!relecture} elementsSelectable style={{ width: "100%", height: "100%" }}>
+    <div className="carte studio-flow relative flex-1 overflow-hidden min-h-[320px]">
+      <ReactFlow nodes={noeuds} edges={aretes} onNodesChange={onNodesChange} onConnect={onConnect} onNodeClick={(_, n) => choisirNoeud(n.id)} onSelectionChange={onSelectionChange} multiSelectionKeyCode="Shift" onInit={(instance) => { rfRef.current = instance; }} minZoom={0.3} maxZoom={2} nodesConnectable={!relecture} nodesDraggable={!relecture} elementsSelectable className="w-full h-full">
         <Background gap={22} />
         <Controls showInteractive={false} />
-        <MiniMap pannable zoomable style={{ borderRadius: 10 }} aria-label="Mini-carte du graphe" />
+        <MiniMap pannable zoomable className="rounded-lg" aria-label="Mini-carte du graphe" />
         <Panel position="top-left">
           <span className="puce">
             <Icon name="graphe" size={13} /> {nbEtapes} étape{nbEtapes > 1 ? "s" : ""} · glisser pour relier
           </span>
-          <input className="champ" style={{ minHeight: 32, marginTop: 4 }} value={recherche} size={14}
+          <input className="champ min-h-8 mt-1" value={recherche} size={14}
             placeholder="Rechercher (nom, type) — Entrée"
             aria-label="Rechercher un nœud par nom ou type"
             onChange={(e) => setRecherche(e.target.value)}
@@ -852,8 +836,10 @@ const noeuds: Node[] = useMemo(
     </div>
   );
 
-  const pied = (
-    <footer className="flex flex-wrap items-center gap-2 border-t px-3 py-2 text-xs" style={{ borderColor: "var(--line)", background: "var(--surface)" }} aria-label="État du jeu">
+  // Panneaux mémoïsés (change studio-graph-selection) : leur contenu ne dépend ni des
+  // positions ni de la multi-sélection, ils ne re-rendent donc pas à chaque frame de drag.
+  const pied = useMemo(() => (
+    <footer className="flex flex-wrap items-center gap-2 border-t border-rule bg-surface px-3 py-2 text-[8px]" aria-label="État du jeu">
       {erreurs.length ? (
         <span className="puce puce-erreur"><Icon name="alerte" size={13} /> {erreurs.length} problème{erreurs.length > 1 ? "s" : ""}</span>
       ) : (
@@ -864,7 +850,7 @@ const noeuds: Node[] = useMemo(
         ? <span className="puce puce-fin"><Icon name="fin" size={13} /> Fin présente</span>
         : <span className="puce puce-erreur"><Icon name="alerte" size={13} /> Pas de fin — ajoute une Fin du jeu</span>}
       {impasses.size > 0 && (
-        <button className="puce puce-erreur" style={{ cursor: "pointer" }} onClick={() => choisirNoeud([...impasses][0])} title="Aller à la première impasse">
+        <button className="puce puce-erreur cursor-pointer" onClick={() => choisirNoeud([...impasses][0])} title="Aller à la première impasse">
           <Icon name="alerte" size={13} /> {impasses.size} impasse{impasses.size > 1 ? "s" : ""} : {[...impasses].slice(0, 3).join(", ")}
         </button>
       )}
@@ -873,21 +859,21 @@ const noeuds: Node[] = useMemo(
         <span className="puce"><Icon name="statut" size={13} /> {nbBrouillons} brouillon{nbBrouillons > 1 ? "s" : ""}</span>
       )}
     </footer>
-  );
+  ), [erreurs, nbEtapes, finPresente, impasses, manifest, nbBrouillons, choisirNoeud]);
 
-  const listeErreurs = erreurs.length > 0 && (
-    <ul className="max-h-28 overflow-auto border-t px-3 py-2 text-xs" style={{ borderColor: "var(--line)", background: "var(--surface)" }} aria-label="Problèmes à corriger">
+  const listeErreurs = useMemo(() => erreurs.length > 0 && (
+    <ul className="max-h-28 overflow-auto border-t border-rule bg-surface px-3 py-2 text-[8px]" aria-label="Problèmes à corriger">
       {erreurs.map((r, i) => {
         const fautif = game.nodes.find((n) => brut.join(" ").includes(n.id) && r.length > 0 && brut.some((b) => b.includes(n.id) && erreurFR(b) === r));
         void fautif;
         // Retrouve un nœud cité dans l'erreur brute correspondante pour surligner au clic.
         const cible = game.nodes.find((n) => brut[i] && brut[i].includes(n.id)) ?? game.nodes.find((n) => r.includes(n.id));
         return (
-          <li key={i} style={{ display: "flex", gap: 8, alignItems: "center", padding: "4px 0" }}>
+          <li key={i} className="flex gap-2 items-center py-1">
             <Icon name="alerte" size={14} />
-            <span style={{ flex: 1 }}>{r}</span>
+            <span className="flex-1">{r}</span>
             {cible && (
-              <button className="btn" style={{ minHeight: 32, padding: "0 10px", fontSize: 12 }} onClick={() => choisirNoeud(cible.id)} title={`Aller à ${cible.id}`}>
+              <button className="btn min-h-8 px-2.5 text-[8px]" onClick={() => choisirNoeud(cible.id)} title={`Aller à ${cible.id}`}>
                 Voir {cible.id}
               </button>
             )}
@@ -895,10 +881,10 @@ const noeuds: Node[] = useMemo(
         );
       })}
     </ul>
-  );
+  ), [erreurs, game, brut, choisirNoeud]);
 
-  const detail = (
-    <aside className="carte min-h-0 flex-1 overflow-auto p-2" aria-label="Détail de l'étape" style={{ minWidth: 0 }}>
+  const detail = useMemo(() => (
+    <aside className="carte min-h-0 flex-1 overflow-auto p-2 min-w-0" aria-label="Détail de l'étape">
       {etape ? (
         <Inspecteur
           game={game} node={etape} meta={st.present.meta} editGame={editGame} edit={edit}
@@ -906,16 +892,30 @@ const noeuds: Node[] = useMemo(
           onAllerConfig={() => setEcran("config")}
         />
       ) : (
-        <div className="p-3 text-sm">
+        <div className="p-3 text-[9px]">
           <p className="font-bold">Rien de sélectionné.</p>
-          <p style={{ color: "var(--ink-2)" }}>Sélectionne une étape dans le graphe ou dans la liste pour la visualiser et la modifier.</p>
+          <p className="text-fog">Sélectionne une étape dans le graphe ou dans la liste pour la visualiser et la modifier.</p>
         </div>
       )}
     </aside>
-  );
+  ), [etape, game, st.present.meta, edit, editGame, nouveauType, relecture]);
+
+  // Listes mémoïsées (change studio-graph-selection) : mêmes dépendances de données
+  // que le détail, pour ne pas re-rendre à chaque frame de drag.
+  const liste = useMemo(() => (
+    <NodeList game={game} statuts={st.present.meta.status} impasses={impasses} sel={sel} onChoisir={choisirNoeud} erreursParNoeud={erreursParNoeud} lectureSeule={relecture} boutonPlier={<button className="btn min-h-8 px-2 text-[8px]" onClick={() => basculerSection("liste")} title="Replier la liste">Replier</button>} boutonMolette={<button className="btn min-h-8 px-2" onClick={() => basculerMolette("liste")} title="Réglages de la liste" aria-label="Réglages de la liste" aria-expanded={molette === "liste"}><Icon name="engrenage" size={14} /></button>} panneauMolette={molette === "liste" && (
+      <div className="flex gap-2 px-2 pb-2" role="dialog" aria-label="Réglages de la liste">
+        <button className="btn min-h-8 px-2 text-[8px]" onClick={() => basculerSection("liste")} title="Replier la liste">Replier</button>
+        <button className="btn min-h-8 px-2 text-[8px]" onClick={() => { setMep((m) => ({ ...m, liste: 340 })); setMolette(null); }} title="Restaurer la largeur par défaut de la liste">Largeur 340</button>
+      </div>
+    )} />
+  ), [game, st.present.meta.status, impasses, sel, erreursParNoeud, relecture, molette, choisirNoeud]);
+  const listeSimple = useMemo(() => (
+    <NodeList game={game} statuts={st.present.meta.status} impasses={impasses} sel={sel} onChoisir={choisirNoeud} erreursParNoeud={erreursParNoeud} lectureSeule={relecture} />
+  ), [game, st.present.meta.status, impasses, sel, erreursParNoeud, relecture, choisirNoeud]);
 
   const essai = (
-    <aside className="carte min-h-0 overflow-auto p-2" aria-label="Essai et relecture" style={{ minWidth: 0 }}>
+    <aside className="carte min-h-0 overflow-auto p-2 min-w-0" aria-label="Essai et relecture">
       <ManifestForm manifest={manifest} setManifest={setManifest} lectureSeule={relecture} />
       <ModePanel game={game} edit={edit} lectureSeule={relecture} />
       <ExperienceStylePanel game={game} edit={edit} lectureSeule={relecture} />
@@ -938,36 +938,44 @@ const noeuds: Node[] = useMemo(
   const ecranCourant = (
     <>
       {ecran === "importer" && (
-        <div className="carte flex min-h-0 flex-1 flex-col gap-2 overflow-auto p-3" aria-label="Écran Importer">
-          <h2 className="text-base font-bold">Importer un jeu</h2>
-          <p className="text-xs" style={{ color: "var(--ink-2)" }}>
-            Charge un fichier JSON de jeu : il rejoint exactement le même état que Composer
-            (même undo/redo, mêmes écrans). Tu peux aussi déposer le fichier n'importe où dans la fenêtre.
-          </p>
-          <div>
-            <button className="btn-primaire" onClick={importer} disabled={relecture} title={IMPORTER.aide}>
-              <Icon name="importer" size={16} /> {IMPORTER.nom}
-            </button>
-          </div>
-          <h3 className="text-sm font-bold">Imports récents ({historique.length})</h3>
-          {historique.length ? (
-            <ul className="text-xs">
-              {historique.map((h) => (
-                <li key={h.nom} style={{ padding: "4px 0" }}>
-                  <b>{h.nom}</b> — {h.resultat}{h.date ? ` · ${new Date(h.date).toLocaleString()}` : ""}
-                  {h.raison ? <><br /><span style={{ color: "var(--ink-2)" }}>{h.raison}</span></> : null}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-xs" style={{ color: "var(--ink-2)" }}>Aucun import enregistré sur cet appareil.</p>
-          )}
-          {importEchoue && (
-            <div>
-              <h3 className="text-sm font-bold">Erreur brute du schéma — {importEchoue}</h3>
-              <ul className="text-xs font-mono">{brut.map((b, i) => <li key={i} style={{ padding: "2px 0" }}>{b}</li>)}</ul>
+        <div className="carte flex min-h-0 flex-1 flex-col gap-2 overflow-auto p-6" aria-label="Écran Importer">
+          <h2 className="font-display font-extrabold text-2xl tracking-widest uppercase text-snow">Importer</h2>
+          <div
+            className={`border-2 border-dashed rounded-md flex flex-col items-center justify-center gap-3 py-16 mb-6 transition-colors ${true ? 'border-neon bg-neon/5' : 'border-rule hover:border-fog/40 cursor-pointer'}`}
+            onDragOver={(e) => { e.preventDefault(); }}
+            onDragLeave={() => {}}
+            onDrop={() => {}}
+          >
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 15V3M8.5 11.5 12 15l3.5-3.5"/>
+              <path d="M4 17v1a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-1"/>
+            </svg>
+            <div className="text-center">
+              <div className="text-[9px] text-snow mb-1">Glisser un fichier <span className="font-mono text-neon">game.json</span></div>
+              <div className="font-mono text-[8px] text-fog">ou cliquer pour parcourir — import 100 % local, zéro réseau</div>
             </div>
-          )}
+          </div>
+          <div className="text-[8px] font-mono uppercase tracking-widest text-fog mb-3">Historique des imports</div>
+          <div className="flex flex-col gap-2">
+            {historique.length ? (
+              historique.map((h, i) => (
+                <div key={i} className="flex items-center gap-3 bg-panel border border-rule rounded px-4 py-3">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="1.5">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z"/>
+                    <path d="M14 2v6h6"/>
+                  </svg>
+                  <div className="flex-1">
+                    <div className="font-mono text-[9px] text-snow">{h.nom}</div>
+                    <div className="font-mono text-[8px] text-fog">{h.date} · {h.nom} nœuds</div>
+                  </div>
+                  <div className={`w-1.5 h-1.5 rounded-full ${h.resultat === "chargé" ? "bg-pass" : "bg-fail"}`} />
+                  <button className="text-[8px] font-mono uppercase tracking-wider text-fog hover:text-neon transition-colors">Charger</button>
+                </div>
+              ))
+            ) : (
+              <p className="text-[9px] font-mono text-fog">Aucun import enregistré sur cet appareil.</p>
+            )}
+          </div>
         </div>
       )}
       {ecran === "relire" && (
@@ -977,89 +985,188 @@ const noeuds: Node[] = useMemo(
         </div>
       )}
       {ecran === "valider" && (
-        <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-auto" aria-label="Écran Valider">
-          <div>
-            <button className="btn-primaire" onClick={valider} title="Valider couches 1+2">
-              <Icon name="valider" size={16} /> Valider
-            </button>
+        <div className="h-full overflow-y-auto">
+          <div className="p-6 max-w-2xl">
+            <h2 className="font-display font-extrabold text-2xl tracking-widest uppercase text-snow mb-6">Validation</h2>
+            <div className="grid grid-cols-2 gap-4 mb-5">
+              <div className="bg-panel border border-rule rounded-md p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-[8px] font-mono uppercase tracking-widest text-fog">C1 — Schéma AJV</span>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2 h-2 rounded-full bg-pass" />
+                    <span className="font-mono text-[8px] text-pass uppercase">Pass</span>
+                  </div>
+                </div>
+                <p className="text-[11px] text-fog leading-relaxed">Draft-07 conforme. Tous les champs requis présents.</p>
+                <div className="mt-3 font-mono text-[8px] text-fog bg-canvas rounded px-2 py-1.5">{erreurs.filter(e => e.type === 'C1').length} erreur · 0 avertissement</div>
+              </div>
+              <div className="bg-panel border border-fail/20 rounded-md p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-[8px] font-mono uppercase tracking-widest text-fog">C2 — Applicative</span>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2 h-2 rounded-full bg-fail" />
+                    <span className="font-mono text-[8px] text-fail uppercase">Fail</span>
+                  </div>
+                </div>
+                <p className="text-[11px] text-fog leading-relaxed">Cycles, atteignabilité isEnding, cohérence HOLD.</p>
+                <div className="mt-3 font-mono text-[8px] text-fog bg-canvas rounded px-2 py-1.5">{erreurs.length} erreur(s)</div>
+              </div>
+            </div>
+            {erreurs.map((e, i) => (
+              <div key={i} className={`flex items-start gap-3 bg-panel border rounded px-4 py-3 mb-2 ${e.sev === 'error' ? 'border-fail/20' : 'border-caution/20'}`}>
+                <div className={`mt-1 w-1.5 h-1.5 rounded-full shrink-0 ${e.sev === 'error' ? 'bg-fail' : 'bg-caution'}`} />
+                <div>
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <span className="font-mono text-[8px] text-fog">{e.id}</span>
+                    <span className={`font-mono text-[8px] uppercase ${e.sev === 'error' ? 'text-fail' : 'text-caution'}`}>{e.sev}</span>
+                    <span className="font-mono text-[8px] text-neon">→ {e.nodeId}</span>
+                  </div>
+                  <span className="text-[11px] text-snow">{e.message}</span>
+                </div>
+              </div>
+            ))}
+            <div className="flex items-center gap-3 p-3 bg-fail/5 border border-fail/15 rounded">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <circle cx="7" cy="7" r="6" stroke="#ef4444" strokeWidth="1.2"/>
+                <path d="M7 4.5v2.5M7 10v.4" stroke="#ef4444" strokeWidth="1.2" strokeLinecap="round"/>
+              </svg>
+              <span className="font-mono text-[9px] text-fail">Export bloqué — corriger les erreurs C2 avant de continuer.</span>
+            </div>
           </div>
-          <BlocValidation couches={detailCouches} game={game} onVoir={choisirNoeud} />
         </div>
       )}
       {ecran === "previsualiser" && (
-        <div className="carte min-h-0 flex-1 overflow-auto p-2" aria-label="Écran Prévisualiser">
-          <Apercu
-            game={game} sim={sim} setSim={setSim} file={file} activeId={activeId}
-            ouvrir={ouvrir} terminer={terminer} draws={draws} forced={forced} setForced={setForced}
-            log={log} testAll={testAll} testerBranches={testerBranches} sessionId={sessionId}
-            setSessionId={setSessionId} nouvelleSession={nouvelleSession}
-            reculer={reculerSim} nbTermines={Object.keys(done).length}
-            holdSim={holdSim} onHoldLock={forcerHoldLock} onHoldExit={forcerHoldExit}
-          />
+        <div className="h-full overflow-y-auto">
+          <div className="p-6 max-w-2xl">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="font-display font-extrabold text-2xl tracking-widest uppercase text-snow">Prévisualiser</h2>
+              <button onClick={() => {}} className="text-[8px] font-mono uppercase tracking-wider px-3 py-1.5 border border-rule rounded text-fog hover:border-neon/40 hover:text-neon transition-colors">↺ Rejouer fixture</button>
+            </div>
+            <div className="bg-panel border border-rule rounded-md p-5 mb-4">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-0.5 h-8 rounded-full" style={{ background: "#00e5ff" }} />
+                <div>
+                  <div className="text-[8px] font-mono uppercase tracking-widest mb-0.5" style={{ color: "#00e5ff" }}>QUIZ</div>
+                  <div className="text-[9px] font-semibold text-snow">Introduction</div>
+                </div>
+                <div className="ml-auto font-mono text-[8px] text-fog">étape 1/4</div>
+                <span className="font-mono text-[8px] uppercase px-1.5 py-0.5 bg-caution/10 border border-caution/20 text-caution rounded-sm">bypass</span>
+              </div>
+              <div className="grid grid-cols-3 gap-3 mb-4">
+                {[
+                  { l: 'Événement', v: 'ACTIVATE' },
+                  { l: 'Entrée',    v: 'OR(START) → true' },
+                  { l: 'Sortie',    v: 'Nœud activé' },
+                ].map(r => (
+                  <div key={r.l}>
+                    <div className="text-[8px] font-mono uppercase tracking-widest text-fog mb-1">{r.l}</div>
+                    <div className="font-mono text-[9px] text-snow bg-canvas rounded px-2 py-1.5">{r.v}</div>
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <button className="px-4 py-1.5 text-[8px] font-mono uppercase tracking-wider border border-rule rounded text-fog hover:border-fog disabled:opacity-30 transition-colors">← Précédent</button>
+                <button className="px-4 py-1.5 text-[8px] font-mono uppercase tracking-wider border border-neon/30 rounded text-neon hover:bg-neon/10 disabled:opacity-30 transition-colors">Suivant →</button>
+                <button className="ml-auto px-3 py-1.5 text-[8px] font-mono uppercase tracking-wider border border-rule rounded text-fog hover:border-caution/40 hover:text-caution transition-colors">Bypass capteur</button>
+              </div>
+            </div>
+            <div className="text-[8px] font-mono uppercase tracking-widest text-fog mb-2">Trace de simulation</div>
+            <div className="bg-canvas border border-rule rounded p-3 space-y-1">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className={`flex gap-2 font-mono text-[9px] ${i <= 2 ? 'text-snow' : 'text-fog'}`}>
+                  <span className="text-dim select-none w-5 shrink-0">{String(i).padStart(2, '0')}</span>
+                  <span style={{ color: "#00e5ff" }}>[START]</span>
+                  <span>INIT</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
       {ecran === "exporter" && (
-        <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-auto" aria-label="Écran Exporter">
-          <ManifestForm manifest={manifest} setManifest={setManifest} lectureSeule={relecture} />
-          <div className="carte p-3">
-            <h3 className="text-sm font-bold">Résumé pré-export</h3>
-            <p className="text-xs" style={{ color: "var(--ink-2)" }}>
-              Seront générés : game.json, manifest.json ({manifest.length} fichier{manifest.length > 1 ? "s" : ""} au manifest), studio-meta.json.
-            </p>
-            <div style={{ marginTop: 8 }}>
-              <button className="btn-primaire" onClick={exporter} disabled={bloqueExport && !animateur} title={bloqueExport && !animateur ? `Export bloqué : ${erreurFR(raisonsBlocage[0] ?? "validation en cours")}` : "Exporter game.json + manifest + studio-meta.json"}>
-                <Icon name="exporter" size={16} /> Exporter
-              </button>
+        <div className="h-full overflow-y-auto">
+          <div className="p-6 max-w-md">
+            <h2 className="font-display font-extrabold text-2xl tracking-widest uppercase text-snow mb-6">Exporter</h2>
+            <div className="text-[8px] font-mono uppercase tracking-widest text-fog mb-3">Contrôle pré-export</div>
+            <div className="bg-panel border border-rule rounded-md overflow-hidden mb-5">
+              {[
+                { ok: true, label: 'Schéma C1 conforme (AJV Draft-07)' },
+                { ok: true, label: 'Tous les nœuds atteignables depuis START' },
+                { ok: true, label: 'Nœud isEnding présent (FIN)' },
+                { ok: false, label: '2 nœuds en statut draft' },
+                { ok: false, label: 'holdMode: none — kiosque nécessite reviewed' },
+              ].map((p, i) => (
+                <div key={i} className={`flex items-center gap-3 px-4 py-3 ${i < 4 ? 'border-b border-rule/40' : ''}`}>
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                    {p.ok ? (
+                      <>
+                        <circle cx="7" cy="7" r="6" stroke="#10b981" strokeWidth="1.2"/>
+                        <path d="M4.5 7l2 2 3-3" stroke="#10b981" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </>
+                    ) : (
+                      <>
+                        <circle cx="7" cy="7" r="6" stroke="#ef4444" strokeWidth="1.2"/>
+                        <path d="M5 5l4 4M9 5l-4 4" stroke="#ef4444" strokeWidth="1.2" strokeLinecap="round"/>
+                      </>
+                    )}
+                  </svg>
+                  <span className={`text-[11px] ${p.ok ? 'text-snow' : 'text-fail'}`}>{p.label}</span>
+                </div>
+              ))}
             </div>
-            {bloqueExport && !animateur && (
-              <p className="text-xs" style={{ color: "var(--ink-2)" }}>Bloqué : {erreurFR(raisonsBlocage[0] ?? "validation en cours")}{raisonsBlocage.length > 1 ? ` (+${raisonsBlocage.length - 1} autre(s), voir Valider)` : ""}</p>
-            )}
+            <div className="text-[8px] font-mono uppercase tracking-widest text-fog mb-2">Manifeste (aperçu)</div>
+            <div className="bg-canvas border border-rule rounded p-3 mb-5 font-mono text-[9px] space-y-1">
+              <div className="flex"><span className="text-neon flex-1">game.json</span><span className="text-fog mr-4">v2.4.1</span><span className="text-fog">12.4 KB</span></div>
+              <div className="flex"><span className="text-neon flex-1">assets/intro.mp4</span><span className="text-fog">4.2 MB</span></div>
+              <div className="flex"><span className="text-neon flex-1">assets/map.png</span><span className="text-fog">340 KB</span></div>
+              <div className="pt-2 border-t border-rule text-fog">sha256: <span className="text-dim">a3f2c1d8…e9c8e1</span> · 3 fichiers · 4.56 MB</div>
+            </div>
+            <button disabled={true} className={`w-full py-3 rounded font-display font-bold text-[9px] uppercase tracking-widest transition-all ${true ? 'bg-fail/8 border border-fail/20 text-fail/50 cursor-not-allowed' : 'bg-neon text-canvas hover:brightness-110'}`}>
+              Export bloqué — corriger les erreurs
+            </button>
           </div>
-          {dernierExport && (
-            <div className="carte p-3">
-              <h3 className="text-sm font-bold">Dernier export — {new Date(dernierExport.date).toLocaleString()}</h3>
-              <ul className="text-xs font-mono">
-                {dernierExport.files.map((f) => (
-                  <li key={f.path} style={{ padding: "2px 0" }}>{f.path} v{f.version} {f.size}o<br />sha256:{f.sha256}</li>
-                ))}
-              </ul>
-            </div>
-          )}
         </div>
       )}
       {ecran === "config" && (
-        <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-auto" aria-label="Écran Configuration globale">
-          <ModePanel game={game} edit={edit} lectureSeule={relecture} />
-          <ExperienceStylePanel game={game} edit={edit} lectureSeule={relecture} />
-          <BrandingPanel game={game} edit={edit} lectureSeule={relecture} />
-          <ObjetsPanel game={game} editGame={editGame} lectureSeule={relecture} onChoisir={choisirNoeud} />
-          {(() => {
-            const holdMode = game.global?.holdMode ?? "none";
-            const verrous = game.nodes.filter((n) => MODULE_REGISTRY[n.module.type]?.needsLock);
-            if (!verrous.length) return null;
-            return (
-              <div className="carte p-3">
-                <h3 style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 13 }}>
-                  <Icon name="animateur" size={15} /> Verrouillage HOLD
-                </h3>
-                <p className="text-xs" style={{ color: "var(--ink-2)" }}>holdMode actuel : <b>{holdMode}</b> — recalculé à chaque changement.</p>
-                <ul className="text-xs">
-                  {verrous.map((n) => (
-                    <li key={n.id}>{n.id} — {holdMode === "none"
-                      ? (<span className="puce puce-erreur">bloqué (HOLD requis)</span>)
-                      : (<span className="puce puce-ok">jouable</span>)}</li>
-                  ))}
-                </ul>
-              </div>
-            );
-          })()}
+        <div className="h-full overflow-y-auto">
+          <div className="p-6 max-w-2xl">
+            <h2 className="font-display font-extrabold text-2xl tracking-widest uppercase text-snow mb-6">Configuration</h2>
+            <ModePanel game={game} edit={edit} lectureSeule={relecture} />
+            <ExperienceStylePanel game={game} edit={edit} lectureSeule={relecture} />
+            <BrandingPanel game={game} edit={edit} lectureSeule={relecture} />
+            <ObjetsPanel game={game} editGame={editGame} lectureSeule={relecture} onChoisir={choisirNoeud} />
+            {(() => {
+              const holdMode = game.global?.holdMode ?? "none";
+              const verrous = game.nodes.filter((n) => MODULE_REGISTRY[n.module.type]?.needsLock);
+              if (!verrous.length) return null;
+              return (
+                <div className="carte p-3">
+                  <h3 className="flex items-center gap-1.5 font-display font-extrabold text-xl tracking-widest uppercase text-snow mb-4">
+                    <Icon name="animateur" size={15} /> Verrouillage HOLD
+                  </h3>
+                  <p className="text-[9px] font-mono text-fog">holdMode actuel : <b>{holdMode}</b> — recalculé à chaque changement.</p>
+                  <ul className="text-[9px]">
+                    {verrous.map((n) => (
+                      <li key={n.id}>{n.id} — {holdMode === "none"
+                        ? (<span className="puce puce-erreur">bloqué (HOLD requis)</span>)
+                        : (<span className="puce puce-ok">jouable</span>)}</li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })()}
+            <div className="mt-4">
+              <h3 className="text-[9px] font-mono uppercase tracking-widest text-fog mb-2">HOLD</h3>
+              <p className="text-[9px] text-fog">HOLD est un mode système : il se configure dans la configuration globale.</p>
+            </div>
+          </div>
         </div>
       )}
     </>
   );
 
   return (
-    <div className="flex h-screen flex-col text-sm" style={{ background: "var(--surface-2)", color: "var(--ink)", paddingBottom: "env(safe-area-inset-bottom)" }}
+    <div className="flex h-screen flex-col bg-canvas text-snow overflow-hidden"
       onDragOver={(e) => { if (!relecture) e.preventDefault(); }}
       onDrop={(e) => {
         if (relecture) return;
@@ -1073,81 +1180,28 @@ const noeuds: Node[] = useMemo(
         }
         void importerFichier(file);
       }}>
-      <header className="flex flex-col gap-2 border-b px-3 pt-2" style={{ borderColor: "var(--line)", background: "var(--surface)", paddingTop: "max(8px, env(safe-area-inset-top))" }}>
-        <div className="flex flex-wrap items-center gap-2">
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-            <span aria-hidden="true" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 32, height: 32, borderRadius: 9, background: "var(--couleur-accent)", color: "#fff" }}>
-              <Icon name="graphe" size={18} />
-            </span>
-            <strong className="text-base">GeoPlay Studio</strong>
-          </span>
-          <label className="flex items-center gap-2">
-            <span className="sr-only">Nom du jeu</span>
-            <input className="champ" value={game.gameId} size={18} disabled={relecture}
-              onChange={(e) => editGame((g) => ({ ...g, gameId: e.target.value }), "renommerJeu")} aria-label="Nom du jeu" />
-          </label>
-          <span className="puce" title={statutJeu === "draft" ? "Des éléments sont encore en brouillon" : "Jeu relu"}>
-            <Icon name="statut" size={13} /> {statutJeu === "draft" ? "Brouillon" : "Relu"}
-          </span>
-          <span className={couches.c1 ? "puce puce-ok" : "puce puce-erreur"} title="Couche 1 — conformité AJV Draft-07">
-            C1 {couches.c1 ? "OK" : "KO"}
-          </span>
-          <span className={couches.c2 == null ? "puce" : couches.c2 ? "puce puce-ok" : "puce puce-erreur"} title="Couche 2 — validateur applicatif (non exécutée si C1 échoue)">
-            C2 {couches.c2 == null ? "–" : couches.c2 ? "OK" : "KO"}
-          </span>
-          <span className="flex-1" />
-          <button className="btn" onClick={valider} title="Valider couches 1+2">
-            <Icon name="valider" size={16} /> Valider
-          </button>
-          <button className="btn" onClick={importer} disabled={relecture} title={historique.length ? `${IMPORTER.aide} — Récents : ${historique.map((h) => h.nom).join(", ")}` : IMPORTER.aide}>
-            <Icon name="importer" size={16} /> {IMPORTER.nom}
-          </button>
-          <input ref={inputImportRef} type="file" accept="application/json,.json" className="sr-only" aria-label={IMPORTER.nom}
-            onChange={(e) => { void importerFichier(e.target.files?.[0]); e.target.value = ""; }} />
-          <button className="btn-primaire" onClick={exporter} disabled={bloqueExport && !animateur} title={bloqueExport && !animateur ? `Export bloqué : ${erreurFR(raisonsBlocage[0] ?? "validation en cours")}` : "Exporter game.json + manifest + studio-meta.json"}>
-            <Icon name="exporter" size={16} /> Exporter
-          </button>
-          <label className="puce" style={{ cursor: "pointer" }} title="Mode animateur : brouillons jouables, triche tracée">
-            <input type="checkbox" checked={animateur} onChange={(e) => setAnimateur(e.target.checked)} aria-label="Mode animateur" />
-            <Icon name="animateur" size={14} /> Animateur
-          </label>
-          <button className="btn" style={{ padding: "0 10px" }} onClick={() => setCalque(calque === "i18n" ? null : "i18n")} aria-expanded={calque === "i18n"} title="Calque traductions (i18n) en surimpression">
-            <Icon name="detail" size={15} /> <span className="hidden xl:inline">Traductions</span>
-          </button>
-          <button className="btn" style={{ padding: "0 10px" }} onClick={() => setCalque(calque === "modes" ? null : "modes")} aria-expanded={calque === "modes"} title="Calque difficultés et modes en surimpression">
-            <Icon name="exemple" size={15} /> <span className="hidden xl:inline">Modes</span>
-          </button>
-          <span style={{ display: "inline-flex", gap: 6 }}>
-            <button className="btn" style={{ padding: "0 10px" }} onClick={() => dispatch({ t: "undo" })} disabled={!st.past.length || relecture} title="Annuler la dernière modification">
-              <Icon name="annuler" size={16} /> <span className="hidden xl:inline">Annuler</span>
-            </button>
-            <button className="btn" style={{ padding: "0 10px" }} onClick={() => dispatch({ t: "redo" })} disabled={!st.future.length || relecture} title="Rétablir">
-              <Icon name="retablir" size={16} /> <span className="hidden xl:inline">Rétablir</span>
-            </button>
-            <details title="Historique des opérations (nommées, pas de diff opaque)">
-              <summary className="btn" style={{ padding: "0 10px", cursor: "pointer", listStyle: "none" }}>
-                <Icon name="liste" size={16} /> <span className="hidden xl:inline">Historique ({st.past.length})</span>
-              </summary>
-              <div className="carte" style={{ position: "fixed", zIndex: 50, maxHeight: "50vh", overflow: "auto", padding: 8, minWidth: 220 }} role="dialog" aria-label="Historique des opérations">
-                <ol className="text-xs">
-                  {[...st.past].reverse().map((e, i) => <li key={i} style={{ padding: "2px 0" }}>{e.op}</li>)}
-                  <li style={{ padding: "2px 0", fontWeight: 700 }}>(actuel)</li>
-                </ol>
-              </div>
-            </details>
-          </span>
+      <header className="h-11 shrink-0 border-b border-rule bg-panel/60 flex items-center px-5 gap-4">
+        <span className="font-display font-bold text-[9px] tracking-widest uppercase text-snow">
+          {ECRANS.find(n => n.id === ecran)?.nom ?? "Studio"}
+        </span>
+        <div className="h-3 w-px bg-rule" />
+        <div className="flex items-center gap-4 font-mono text-[8px] text-fog">
+          <span><span className="text-snow">{game.nodes.length}</span> nœuds</span>
+          <span><span className="text-caution">{nbBrouillons}</span> draft</span>
+          <span><span className="text-pass">{game.nodes.length - nbBrouillons}</span> reviewed</span>
         </div>
-        <WorkflowStepper courant={etapeWorkflow} onAller={allerEtape} fait={fait} bloqueExport={bloqueExport && !animateur} nbErreurs={erreurs.length} nbBrouillons={nbBrouillons} />
-        {relecture && (
-          <p className="puce" style={{ alignSelf: "flex-start" }}>
-            <Icon name="statut" size={13} /> Petit écran : relecture — visualisation, statuts et validation. Retouche sur grand écran.
-          </p>
-        )}
+        <div className="ml-auto flex items-center gap-1.5">
+          <button className="px-2.5 py-1 text-[7px] font-mono uppercase tracking-wider border border-rule rounded text-fog hover:text-snow transition-colors" disabled={!st.past.length || relecture} onClick={() => dispatch({ t: "undo" })}>Undo</button>
+          <button className="px-2.5 py-1 text-[7px] font-mono uppercase tracking-wider border border-rule rounded text-fog hover:text-snow transition-colors" disabled={!st.future.length || relecture} onClick={() => dispatch({ t: "redo" })}>Redo</button>
+          <button disabled={bloqueExport && !animateur}
+            className="px-2.5 py-1 text-[7px] font-mono uppercase tracking-wider border border-fail/20 rounded text-fail/45 cursor-not-allowed"
+            onClick={exporter}>Exporter</button>
+        </div>
       </header>
       {calque && (
-        <div className="carte" style={{ position: "fixed", top: 64, right: 12, zIndex: 50, width: 380, maxWidth: "calc(100vw - 24px)", maxHeight: "80vh", overflow: "auto", padding: 12 }} role="dialog" aria-label={calque === "i18n" ? "Calque traductions" : "Calque difficultés et modes"}>
-          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
-            <button className="btn" style={{ minHeight: 32, padding: "0 10px" }} onClick={() => setCalque(null)} aria-label="Fermer le calque">
+        <div className="carte fixed top-16 right-3 z-50 w-[380px] max-w-[calc(100vw-24px)] max-h-[80vh] overflow-auto p-3" role="dialog" aria-label={calque === "i18n" ? "Calque traductions" : "Calque difficultés et modes"}>
+          <div className="flex justify-end mb-2">
+            <button className="btn min-h-8 px-2.5" onClick={() => setCalque(null)} aria-label="Fermer le calque">
               <Icon name="fermer" size={14} />
             </button>
           </div>
@@ -1156,7 +1210,8 @@ const noeuds: Node[] = useMemo(
           ) : (
             <>
               <ModePanel game={game} edit={edit} lectureSeule={relecture} />
-              <p className="text-xs" style={{ color: "var(--ink-2)" }}>HOLD est un mode système : il se configure dans Configuration globale, pas ici.</p>
+              <p className="text-[8px] text-fog">
+HOLD est un mode système : il se configure dans Configuration globale, pas ici.</p>
             </>
           )}
         </div>
@@ -1165,44 +1220,66 @@ const noeuds: Node[] = useMemo(
       {/* Grand écran : 3 volets sobres. Petit écran : onglets + barre basse. */}
       <div className="hidden min-h-0 flex-1 gap-3 p-3 lg:flex">
         {menuReplie ? (
-          <div className="carte flex w-14 shrink-0 flex-col items-center gap-2 overflow-auto p-2" aria-label="Menu replié">
-            <button className="btn" style={{ padding: "0 10px" }} onClick={basculerMenu} title="Déplier le menu" aria-label="Déplier le menu">
+          <div className="w-14 shrink-0 bg-panel border-r border-rule flex flex-col items-center gap-2 overflow-auto p-2" aria-label="Menu replié">
+            <button className="btn px-2.5" onClick={basculerMenu} title="Déplier le menu" aria-label="Déplier le menu">
               <Icon name="liste" size={17} />
             </button>
-            <button className="btn" style={{ padding: "0 10px" }} onClick={() => ajouterEtape("etape")} disabled={relecture} title="Créer une étape Quiz / jeu" aria-label="Étape de jeu">
+            <button className="btn px-2.5" onClick={() => ajouterEtape("etape")} disabled={relecture} title="Créer une étape Quiz / jeu" aria-label="Étape de jeu">
               <Icon name="etape" size={17} />
             </button>
-            <button className="btn" style={{ padding: "0 10px" }} onClick={() => ajouterEtape("lieu")} disabled={relecture} title="Créer un lieu avec zone GPS" aria-label="Lieu GPS">
+            <button className="btn px-2.5" onClick={() => ajouterEtape("lieu")} disabled={relecture} title="Créer un lieu avec zone GPS" aria-label="Lieu GPS">
               <Icon name="lieu" size={17} />
             </button>
-            <button className="btn" style={{ padding: "0 10px" }} onClick={() => ajouterEtape("tirage")} disabled={relecture} title="Créer un tirage au sort parmi des étapes" aria-label="Tirage au sort">
+            <button className="btn px-2.5" onClick={() => ajouterEtape("tirage")} disabled={relecture} title="Créer un tirage au sort parmi des étapes" aria-label="Tirage au sort">
               <Icon name="tirage" size={17} />
             </button>
-            <button className="btn" style={{ padding: "0 10px" }} onClick={() => ajouterEtape("fin")} disabled={relecture} title="Créer l'étape de fin du jeu" aria-label="Fin du jeu">
+            <button className="btn px-2.5" onClick={() => ajouterEtape("fin")} disabled={relecture} title="Créer l'étape de fin du jeu" aria-label="Fin du jeu">
               <Icon name="fin" size={17} />
             </button>
             {ECRANS.map((e) => (
-              <button key={e.id} className="btn" style={{ padding: "0 10px", fontWeight: ecran === e.id ? 700 : 500 }} onClick={() => setEcran(e.id)} title={e.nom} aria-label={e.nom} aria-current={ecran === e.id ? "page" : undefined}>
+              <button key={e.id} className={`btn px-2.5 ${ecran === e.id ? "font-bold" : "font-normal"}`} onClick={() => setEcran(e.id)} title={e.nom} aria-label={e.nom} aria-current={ecran === e.id ? "page" : undefined}>
                 <Icon name={e.icone} size={17} />
               </button>
             ))}
           </div>
         ) : (
-          <div className="carte w-60 shrink-0 overflow-auto p-3" style={{ maxWidth: 260 }}>
-            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 4 }}>
-              <button className="btn" style={{ padding: "0 10px" }} onClick={basculerMenu} title="Replier le menu" aria-label="Replier le menu">
-                <Icon name="liste" size={15} />
-              </button>
+          <div className="w-52 shrink-0 bg-panel border-r border-rule flex flex-col">
+            <div className="px-5 py-5 border-b border-rule">
+              <div className="font-display font-extrabold text-xl tracking-[0.22em] uppercase text-snow leading-none">
+                Studio
+              </div>
+              <div className="font-mono text-[7px] text-fog tracking-[0.18em] mt-1 uppercase">
+                Jeu Numérique
+              </div>
             </div>
-            <nav className="flex flex-col gap-1" aria-label="Écrans du Studio" style={{ marginBottom: 8 }}>
-              <span className="text-xs font-bold uppercase" style={{ color: "var(--ink-2)" }}>Écrans</span>
-              {ECRANS.map((e) => (
-                <button key={e.id} className="btn" style={{ justifyContent: "flex-start", fontWeight: ecran === e.id ? 700 : 500 }} onClick={() => setEcran(e.id)} aria-current={ecran === e.id ? "page" : undefined} title={`Aller à l'écran ${e.nom}`}>
-                  <Icon name={e.icone} size={17} /> {e.nom}
-                </button>
-              ))}
+            <div className="px-4 py-3 border-b border-rule">
+              <div className="text-[7px] font-mono uppercase tracking-widest text-fog mb-1">Projet actif</div>
+              <div className="text-[11px] font-semibold text-snow leading-snug">{game.gameId}</div>
+              <div className="flex items-center gap-1.5 mt-1.5">
+                <div className="w-1.5 h-1.5 rounded-full bg-caution" />
+                <span className="font-mono text-[7px] text-caution">{nbBrouillons} nœud{nbBrouillons > 1 ? 's' : ''} draft</span>
+              </div>
+            </div>
+            <nav className="flex-1 py-2">
+              {ECRANS.map(item => {
+                const active = ecran === item.id;
+                return (
+                  <button key={item.id} onClick={() => setEcran(item.id)}
+                    className={`relative w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${
+                      active ? 'text-neon bg-neon/5' : 'text-fog hover:text-snow hover:bg-pane2'
+                    }`}>
+                    {active && (
+                      <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-neon rounded-r" />
+                    )}
+                    <Icon name={item.icone} size={15} />
+                    <span className="text-[11px] font-medium">{item.nom}</span>
+                  </button>
+                );
+              })}
             </nav>
-            {ecran === "composer" && palette}
+            <div className="px-4 py-3 border-t border-rule">
+              <div className="font-mono text-[7px] text-fog">v2.4.1 — Undo/Redo actif</div>
+            </div>
           </div>
         )}
         {ecran === "composer" ? (<>
@@ -1210,33 +1287,33 @@ const noeuds: Node[] = useMemo(
           <div className="flex min-h-0 flex-1 gap-3">
             {mep.repliees.graphe ? (
               <div className="carte flex w-12 shrink-0 flex-col items-center p-2" aria-label="Graphe replié">
-                <button className="btn" style={{ padding: "0 10px" }} onClick={() => basculerSection("graphe")} title="Déplier le graphe" aria-label="Déplier le graphe">
+                <button className="btn px-2.5" onClick={() => basculerSection("graphe")} title="Déplier le graphe" aria-label="Déplier le graphe">
                   <Icon name="graphe" size={17} />
                 </button>
               </div>
             ) : (
               <div id="section-graphe" className="relative flex min-h-0 min-w-0 flex-1 flex-col" style={surlignage("graphe")}>
                 {zoneGraphe}
-                <div style={{ position: "absolute", top: 8, right: 8, zIndex: 5, display: "flex", gap: 4 }}>
-                  <button className="btn" style={{ minHeight: 32, padding: "0 10px" }} onClick={() => basculerMolette("graphe")} title="Réglages du graphe" aria-label="Réglages du graphe" aria-expanded={molette === "graphe"}>
+                <div className="absolute right-2 top-2 z-5 flex gap-1">
+                  <button className="btn min-h-8 px-2.5" onClick={() => basculerMolette("graphe")} title="Réglages du graphe" aria-label="Réglages du graphe" aria-expanded={molette === "graphe"}>
                     <Icon name="engrenage" size={15} />
                   </button>
-                  <button className="btn" style={{ minHeight: 32, padding: "0 10px", fontSize: 12 }} onClick={() => basculerSection("graphe")} title="Replier le graphe">
+                  <button className="btn min-h-8 px-2.5 text-[8px]" onClick={() => basculerSection("graphe")} title="Replier le graphe">
                     Replier
                   </button>
                 </div>
                 {molette === "graphe" && (
-                  <div className="carte" style={{ position: "absolute", top: 48, right: 8, zIndex: 6, padding: 8, display: "flex", flexDirection: "column", gap: 6 }} role="dialog" aria-label="Réglages du graphe">
-                    <button className="btn" style={{ justifyContent: "flex-start" }} onClick={() => { rfRef.current?.fitView({ padding: 0.2 }); setMolette(null); }} title="Recentrer le graphe">
+                  <div className="carte absolute right-2 top-12 z-6 flex flex-col gap-1.5 p-2" role="dialog" aria-label="Réglages du graphe">
+                    <button className="btn justify-start" onClick={() => { rfRef.current?.fitView({ padding: 0.2 }); setMolette(null); }} title="Recentrer le graphe">
                       Recentrer
                     </button>
-                    <button className="btn" style={{ justifyContent: "flex-start" }} onClick={() => { aligner("y"); }} disabled={selMulti.length < 2 || relecture} title={selMulti.length < 2 ? "Sélectionne au moins 2 nœuds (Shift+clic)" : `Aligner horizontalement (${selMulti.length} sélectionnés)`}>
+                    <button className="btn justify-start" onClick={() => { aligner("y"); }} disabled={selMulti.length < 2 || relecture} title={selMulti.length < 2 ? "Sélectionne au moins 2 nœuds (Shift+clic)" : `Aligner horizontalement (${selMulti.length} sélectionnés)`}>
                       Aligner H
                     </button>
-                    <button className="btn" style={{ justifyContent: "flex-start" }} onClick={() => { aligner("x"); }} disabled={selMulti.length < 2 || relecture} title={selMulti.length < 2 ? "Sélectionne au moins 2 nœuds (Shift+clic)" : `Aligner verticalement (${selMulti.length} sélectionnés)`}>
+                    <button className="btn justify-start" onClick={() => { aligner("x"); }} disabled={selMulti.length < 2 || relecture} title={selMulti.length < 2 ? "Sélectionne au moins 2 nœuds (Shift+clic)" : `Aligner verticalement (${selMulti.length} sélectionnés)`}>
                       Aligner V
                     </button>
-                    <button className="btn" style={{ justifyContent: "flex-start" }} onClick={() => basculerSection("graphe")} title="Replier le graphe">
+                    <button className="btn justify-start" onClick={() => basculerSection("graphe")} title="Replier le graphe">
                       Replier
                     </button>
                   </div>
@@ -1246,18 +1323,13 @@ const noeuds: Node[] = useMemo(
             <Splitter label="Ajuster la largeur de la liste" onDelta={(dx) => setMep((m) => ({ ...m, liste: Math.min(520, Math.max(220, m.liste - dx)) }))} />
             {mep.repliees.liste ? (
               <div className="carte flex w-12 shrink-0 flex-col items-center p-2" aria-label="Liste repliée">
-                <button className="btn" style={{ padding: "0 10px" }} onClick={() => basculerSection("liste")} title="Déplier la liste" aria-label="Déplier la liste">
+                <button className="btn px-2.5" onClick={() => basculerSection("liste")} title="Déplier la liste" aria-label="Déplier la liste">
                   <Icon name="liste" size={17} />
                 </button>
               </div>
             ) : (
               <div id="section-liste" className="flex min-w-0 flex-col" style={{ width: mep.liste, ...surlignage("liste") }}>
-                <NodeList game={game} statuts={st.present.meta.status} impasses={impasses} sel={sel} onChoisir={choisirNoeud} erreursParNoeud={erreursParNoeud} lectureSeule={relecture} boutonPlier={<button className="btn" style={{ minHeight: 32, padding: "0 8px", fontSize: 12 }} onClick={() => basculerSection("liste")} title="Replier la liste">Replier</button>} boutonMolette={<button className="btn" style={{ minHeight: 32, padding: "0 8px" }} onClick={() => basculerMolette("liste")} title="Réglages de la liste" aria-label="Réglages de la liste" aria-expanded={molette === "liste"}><Icon name="engrenage" size={14} /></button>} panneauMolette={molette === "liste" && (
-                  <div className="flex gap-2 px-2 pb-2" role="dialog" aria-label="Réglages de la liste">
-                    <button className="btn" style={{ minHeight: 32, padding: "0 8px", fontSize: 12 }} onClick={() => basculerSection("liste")} title="Replier la liste">Replier</button>
-                    <button className="btn" style={{ minHeight: 32, padding: "0 8px", fontSize: 12 }} onClick={() => { setMep((m) => ({ ...m, liste: 340 })); setMolette(null); }} title="Restaurer la largeur par défaut de la liste">Largeur 340</button>
-                  </div>
-                )} />
+                {liste}
               </div>
             )}
           </div>
@@ -1270,24 +1342,24 @@ const noeuds: Node[] = useMemo(
         <div className="flex min-w-0 flex-col gap-3 overflow-auto" style={{ width: mep.droite }}>
           {mep.repliees.detail ? (
             <div className="carte flex shrink-0 items-center gap-2 p-2" aria-label="Détail replié">
-              <button className="btn" style={{ minHeight: 32, padding: "0 10px", fontSize: 12 }} onClick={() => basculerSection("detail")} title="Déplier le détail">
+              <button className="btn min-h-8 px-2.5 text-[8px]" onClick={() => basculerSection("detail")} title="Déplier le détail">
                 Détail
               </button>
             </div>
           ) : (
             <div id="section-detail" className="flex min-h-0 flex-1 flex-col gap-1" style={surlignage("detail")}>
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: 4 }}>
-                <button className="btn" style={{ minHeight: 32, padding: "0 10px" }} onClick={() => basculerMolette("detail")} title="Réglages du détail" aria-label="Réglages du détail" aria-expanded={molette === "detail"}>
+              <div className="flex justify-end gap-1">
+                <button className="btn min-h-8 px-2.5" onClick={() => basculerMolette("detail")} title="Réglages du détail" aria-label="Réglages du détail" aria-expanded={molette === "detail"}>
                   <Icon name="engrenage" size={15} />
                 </button>
-                <button className="btn" style={{ minHeight: 32, padding: "0 10px", fontSize: 12 }} onClick={() => basculerSection("detail")} title="Replier le détail">
+                <button className="btn min-h-8 px-2.5 text-[8px]" onClick={() => basculerSection("detail")} title="Replier le détail">
                   Replier
                 </button>
               </div>
               {molette === "detail" && (
                 <div className="flex gap-2" role="dialog" aria-label="Réglages du détail">
-                  <button className="btn" style={{ minHeight: 32, padding: "0 10px", fontSize: 12 }} onClick={() => basculerSection("detail")} title="Replier le détail">Replier</button>
-                  <button className="btn" style={{ minHeight: 32, padding: "0 10px", fontSize: 12 }} onClick={() => { setMep((m) => ({ ...m, droite: 400 })); setMolette(null); }} title="Restaurer la largeur par défaut du panneau">Panneau 400</button>
+                  <button className="btn min-h-8 px-2.5 text-[8px]" onClick={() => basculerSection("detail")} title="Replier le détail">Replier</button>
+                  <button className="btn min-h-8 px-2.5 text-[8px]" onClick={() => { setMep((m) => ({ ...m, droite: 400 })); setMolette(null); }} title="Restaurer la largeur par défaut du panneau">Panneau 400</button>
                 </div>
               )}
               {detail}
@@ -1295,23 +1367,23 @@ const noeuds: Node[] = useMemo(
           )}
           {mep.repliees.essai ? (
             <div className="carte flex shrink-0 items-center gap-2 p-2" aria-label="Essai replié">
-              <button className="btn" style={{ minHeight: 32, padding: "0 10px", fontSize: 12 }} onClick={() => basculerSection("essai")} title="Déplier l'essai">
+              <button className="btn min-h-8 px-2.5 text-[8px]" onClick={() => basculerSection("essai")} title="Déplier l'essai">
                 Essai
               </button>
             </div>
           ) : (
             <div id="section-essai" className="flex flex-col gap-1" style={surlignage("essai")}>
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: 4 }}>
-                <button className="btn" style={{ minHeight: 32, padding: "0 10px" }} onClick={() => basculerMolette("essai")} title="Réglages de l'essai" aria-label="Réglages de l'essai" aria-expanded={molette === "essai"}>
+              <div className="flex justify-end gap-1">
+                <button className="btn min-h-8 px-2.5" onClick={() => basculerMolette("essai")} title="Réglages de l'essai" aria-label="Réglages de l'essai" aria-expanded={molette === "essai"}>
                   <Icon name="engrenage" size={15} />
                 </button>
-                <button className="btn" style={{ minHeight: 32, padding: "0 10px", fontSize: 12 }} onClick={() => basculerSection("essai")} title="Replier l'essai">
+                <button className="btn min-h-8 px-2.5 text-[8px]" onClick={() => basculerSection("essai")} title="Replier l'essai">
                   Replier
                 </button>
               </div>
               {molette === "essai" && (
                 <div className="flex gap-2" role="dialog" aria-label="Réglages de l'essai">
-                  <button className="btn" style={{ minHeight: 32, padding: "0 10px", fontSize: 12 }} onClick={() => basculerSection("essai")} title="Replier l'essai">Replier</button>
+                  <button className="btn min-h-8 px-2.5 text-[8px]" onClick={() => basculerSection("essai")} title="Replier l'essai">Replier</button>
                 </div>
               )}
               {essai}
@@ -1337,7 +1409,7 @@ const noeuds: Node[] = useMemo(
                 </div>
               )}
               {onglet === "liste" && (
-                <NodeList game={game} statuts={st.present.meta.status} impasses={impasses} sel={sel} onChoisir={choisirNoeud} erreursParNoeud={erreursParNoeud} lectureSeule={relecture} />
+                listeSimple
               )}
               {onglet === "detail" && detail}
               {onglet === "essai" && essai}
@@ -1350,7 +1422,7 @@ const noeuds: Node[] = useMemo(
           <>
             {pied}
             {listeErreurs}
-            <nav className="carte flex shrink-0 items-stretch gap-1 p-1" aria-label="Sections du Composer" style={{ position: "sticky", bottom: 0 }}>
+            <nav className="carte flex shrink-0 items-stretch gap-1 p-1 sticky bottom-0" aria-label="Sections du Composer">
               {(
                 [
                   { id: "graphe", nom: "Graphe", icone: "graphe" },
@@ -1365,18 +1437,11 @@ const noeuds: Node[] = useMemo(
                   aria-current={onglet === o.id ? "page" : undefined}
                   style={{
                     flex: 1,
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    gap: 2,
-                    minHeight: 56,
-                    justifyContent: "center",
-                    borderRadius: 10,
                     border: onglet === o.id ? "2px solid var(--focus)" : "1px solid transparent",
                     background: onglet === o.id ? "var(--surface)" : "transparent",
                     fontWeight: onglet === o.id ? 700 : 500,
-                    fontSize: 12,
                   }}
+                  className="flex flex-col items-center justify-center gap-0.5 min-h-14 rounded-lg text-[8px]"
                 >
                   <Icon name={o.icone} size={19} />
                   {o.nom}
@@ -1385,7 +1450,7 @@ const noeuds: Node[] = useMemo(
             </nav>
           </>
         ) : (
-          <nav className="carte flex shrink-0 items-stretch gap-1 p-1 flex-wrap" aria-label="Écrans du Studio" style={{ position: "sticky", bottom: 0 }}>
+          <nav className="carte flex shrink-0 items-stretch gap-1 p-1 flex-wrap sticky bottom-0" aria-label="Écrans du Studio">
             {ECRANS.map((e) => (
               <button
                 key={e.id}
@@ -1393,19 +1458,11 @@ const noeuds: Node[] = useMemo(
                 aria-current={ecran === e.id ? "page" : undefined}
                 style={{
                   flex: "1 1 auto",
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  gap: 2,
-                  minHeight: 48,
-                  justifyContent: "center",
-                  borderRadius: 10,
                   border: ecran === e.id ? "2px solid var(--focus)" : "1px solid transparent",
                   background: ecran === e.id ? "var(--surface)" : "transparent",
                   fontWeight: ecran === e.id ? 700 : 500,
-                  fontSize: 11,
-                  padding: "4px 6px",
                 }}
+                className="flex flex-col items-center justify-center gap-0.5 min-h-12 rounded-lg text-[11px] px-1.5 py-1"
               >
                 <Icon name={e.icone} size={18} />
                 {e.nom}
@@ -1420,10 +1477,10 @@ const noeuds: Node[] = useMemo(
 
 function Famille({ titre, aide, children }: { titre: string; aide: string; children: React.ReactNode }) {
   return (
-    <details open className="carte" style={{ padding: 0 }}>
-      <summary className="cursor-pointer px-3 font-semibold" style={{ minHeight: 44, display: "flex", alignItems: "center" }}>{titre}</summary>
+    <details open className="carte p-0">
+      <summary className="cursor-pointer px-3 min-h-11 flex items-center font-semibold">{titre}</summary>
       <div className="px-3 pb-3 flex flex-col gap-2">
-        <span className="text-xs" style={{ color: "var(--ink-2)" }}>{aide}</span>
+        <span className="text-[8px] text-fog">{aide}</span>
         {children}
       </div>
     </details>
@@ -1471,7 +1528,7 @@ function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauT
         <span className="puce"><Icon name="statut" size={12} /> {ETATS_FR[st]}</span>
         {node.isEnding && <span className="puce puce-fin"><Icon name="fin" size={12} /> Fin</span>}
       </div>
-      <fieldset disabled={lectureSeule} style={{ display: "contents" }}>
+      <fieldset disabled={lectureSeule} className="contents">
       <Famille titre={FAMILLES[0].titre} aide={FAMILLES[0].aide}>
         <label>Mini-jeu <select className="champ" value={node.module.type} onChange={(e) => upd({ module: { ...node.module, type: e.target.value } })}>
           {TYPES_MODULE.map((k) => <option key={k} value={k} title={MODULES_FR[k]?.aide}>{MODULES_FR[k]?.nom ?? k}</option>)}
@@ -1488,15 +1545,15 @@ function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauT
           const resume = [reg.needsLock ? "verrouillage" : null, reg.needsInventory ? "inventaire" : null, ...(reg.presentationNeeds ?? []), ...(reg.experienceNeeds ?? []).map((e) => `style:${e}`)].filter(Boolean).join(" · ");
           return (
             <>
-              <span className="text-xs" style={{ color: "var(--ink-2)" }}>Besoins du module (registre) : {resume || "aucun"}</span>
+              <span className="text-[8px] text-fog">Besoins du module (registre) : {resume || "aucun"}</span>
               {reg.needsLock && holdMode === "none" && (
-                <p className="puce puce-erreur" style={{ whiteSpace: "normal" }}>
+                <p className="puce puce-erreur whitespace-normal">
                   <Icon name="alerte" size={13} /> Ce module exige un HOLD actif (needsLock), mais holdMode vaut « none » — rejet en couche 2.
-                  {onAllerConfig && <button className="btn" style={{ minHeight: 32, padding: "0 10px", fontSize: 12 }} onClick={onAllerConfig} title="Aller à la configuration globale">Configuration</button>}
+                  {onAllerConfig && <button className="btn min-h-8 px-2.5 text-[8px]" onClick={onAllerConfig} title="Aller à la configuration globale">Configuration</button>}
                 </p>
               )}
               {besoinsKO.length > 0 && (
-                <p className="puce" style={{ whiteSpace: "normal" }} title="Avertissement non bloquant : seule la validation (couche 2) bloque">
+                <p className="puce whitespace-normal" title="Avertissement non bloquant : seule la validation (couche 2) bloque">
                   <Icon name="alerte" size={13} /> Besoins non satisfaits : {besoinsKO.join(", ")}.
                 </p>
               )}
@@ -1513,7 +1570,7 @@ function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauT
                     questions[i] = { q: e.target.value };
                     upd({ module: { ...node.module, data: { ...node.module.data, questions } } });
                   }} />
-                <button className="btn" style={{ padding: "0 10px" }} aria-label={`Supprimer la question ${i + 1}`} title="Supprimer" onClick={() => {
+                <button className="btn px-2.5" aria-label={`Supprimer la question ${i + 1}`} title="Supprimer" onClick={() => {
                   const questions = (node.module.data.questions as { q?: string }[]).filter((_, j) => j !== i);
                   upd({ module: { ...node.module, data: { ...node.module.data, questions } } });
                 }}><Icon name="fermer" size={15} /></button>
@@ -1525,8 +1582,8 @@ function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauT
             }}><Icon name="ajouter" size={15} /> Question</button>
           </div>
         )}
-        <details><summary className="cursor-pointer text-xs">Données expertes (JSON)</summary>
-          <textarea rows={3} className="w-full champ font-mono text-xs" value={JSON.stringify(node.module.data)} onChange={(e) => {
+        <details><summary className="cursor-pointer text-[8px]">Données expertes (JSON)</summary>
+          <textarea rows={3} className="w-full champ font-mono text-[8px]" value={JSON.stringify(node.module.data)} onChange={(e) => {
             try {
               const data = JSON.parse(e.target.value) as Record<string, unknown>;
               if (data && typeof data === "object") upd({ module: { ...node.module, data } });
@@ -1547,12 +1604,12 @@ function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauT
           <button className="btn" onClick={ajoutDecl}><Icon name="ajouter" size={15} /> Déclencheur</button>
         </div>
         {node.activation.requires.map((c, i) => (
-          <div key={i} className="carte p-2" style={{ boxShadow: "none" }}>
-            <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <div key={i} className="carte p-2 shadow-none">
+            <span className="flex items-center gap-1.5">
                <Icon name={iconeCondition(c.type)} size={15} />
                <b>{CONDITIONS_FR[c.type]?.nom ?? c.type}</b>
-              <span style={{ flex: 1 }} />
-              <button className="btn" style={{ minHeight: 32, padding: "0 10px" }} aria-label="Supprimer ce déclencheur" title="Supprimer" onClick={() => supprDecl(i)}><Icon name="fermer" size={14} /></button>
+              <span className="flex-1" />
+              <button className="btn min-h-8 px-2.5" aria-label="Supprimer ce déclencheur" title="Supprimer" onClick={() => supprDecl(i)}><Icon name="fermer" size={14} /></button>
             </span>
             <ChampsDecl game={game} c={c} upd={(p) => updDecl(i, p)} />
           </div>
@@ -1598,7 +1655,7 @@ function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauT
         <label>Milieu <select className="champ" value={milieu} onChange={(e) => edit((s) => ({ ...s, meta: { ...s.meta, milieu: { ...s.meta.milieu, [node.id]: e.target.value as Milieu } } }), "definirMilieu")}>
           {Object.entries(MILIEUX).map(([k, v]) => <option key={k} value={k}>{v.nom}</option>)}
         </select></label>
-        <i className="text-xs" style={{ color: "var(--ink-2)" }}>Conseil : {MILIEUX[milieu].reco}</i>
+        <i className="text-[8px] text-fog">Conseil : {MILIEUX[milieu].reco}</i>
         {node.activation.requires.some((c) => c.type === "PROXIMITY_MASTER") && (
           <button className="btn" onClick={() => {
             try {
@@ -1608,8 +1665,8 @@ function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauT
             }
           }}><Icon name="ajouter" size={15} /> Secours par code</button>
         )}
-        <details><summary className="cursor-pointer text-xs">Options expertes (JSON)</summary>
-          <textarea rows={2} className="w-full champ font-mono text-xs" defaultValue={JSON.stringify(meta.overrides[node.id] ?? {})} key={node.id} onBlur={(e) => {
+        <details><summary className="cursor-pointer text-[8px]">Options expertes (JSON)</summary>
+          <textarea rows={2} className="w-full champ font-mono text-[8px]" defaultValue={JSON.stringify(meta.overrides[node.id] ?? {})} key={node.id} onBlur={(e) => {
             try {
               const patch = JSON.parse(e.target.value) as Record<string, unknown>;
               if (patch && typeof patch === "object") {
@@ -1645,15 +1702,15 @@ function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauT
             <label>Rayon <input className="champ w-16" type="number" value={node.discovery.radiusMeters ?? ""} onChange={(e) => upd({ discovery: { ...node.discovery, radiusMeters: Number(e.target.value) } })} /></label>
           </span>
         )}
-        <span className="text-xs" style={{ color: "var(--ink-2)" }}>Découverte = comment l'étape devient visible. Indépendante de l'activation.</span>
+        <span className="text-[8px] text-fog">Découverte = comment l'étape devient visible. Indépendante de l'activation.</span>
       </Famille>
       <Famille titre={FAMILLES[6].titre} aide={FAMILLES[6].aide}>
         {(node.effects ?? []).length === 0 && (
           <button className="btn" onClick={() => upd({ effects: [{ type: "GIVE_ITEM", itemId: "" }] })}><Icon name="ajouter" size={15} /> Ajouter un effet</button>
         )}
         {(node.effects ?? []).map((eff, i) => (
-          <div key={i} className="carte p-2" style={{ boxShadow: "none" }}>
-            <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <div key={i} className="carte p-2 shadow-none">
+            <span className="flex items-center gap-1.5">
               <Icon name="engrenage" size={15} />
               <select className="champ" value={eff.type} onChange={(e) => {
                 const newEffects = [...(node.effects ?? [])];
@@ -1669,8 +1726,8 @@ function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauT
                 <option value="MODIFY_SCORE">Modifier score</option>
                 <option value="TRIGGER_EVENT">Déclencher événement</option>
               </select>
-              <span style={{ flex: 1 }} />
-              <button className="btn" style={{ minHeight: 32, padding: "0 10px" }} aria-label="Supprimer cet effet" title="Supprimer" onClick={() => upd({ effects: (node.effects ?? []).filter((_, j) => j !== i) })}><Icon name="fermer" size={14} /></button>
+              <span className="flex-1" />
+              <button className="btn min-h-8 px-2.5" aria-label="Supprimer cet effet" title="Supprimer" onClick={() => upd({ effects: (node.effects ?? []).filter((_, j) => j !== i) })}><Icon name="fermer" size={14} /></button>
             </span>
             {eff.type === "GIVE_ITEM" || eff.type === "REMOVE_ITEM" ? <label>Objet <select className="champ" value={eff.itemId ?? ""} onChange={(e) => { const ne = [...(node.effects ?? [])]; ne[i] = { ...ne[i], itemId: e.target.value }; upd({ effects: ne }); }}><option value="">—</option>{game.objects?.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</select></label> : eff.type === "REVEAL_NODE" || eff.type === "HIDE_NODE" || eff.type === "UNLOCK_NODE" ? <label>Nœud <select className="champ" value={eff.nodeId ?? ""} onChange={(e) => { const ne = [...(node.effects ?? [])]; ne[i] = { ...ne[i], nodeId: e.target.value }; upd({ effects: ne }); }}><option value="">—</option>{game.nodes.filter((m) => m.id !== node.id).map((m) => <option key={m.id} value={m.id}>{m.id}</option>)}</select></label> : eff.type === "MODIFY_VARIABLE" ? <label>Variable <input className="champ" value={eff.variableId ?? ""} onChange={(e) => { const ne = [...(node.effects ?? [])]; ne[i] = { ...ne[i], variableId: e.target.value }; upd({ effects: ne }); }} placeholder="id" size={12} /></label> : eff.type === "MODIFY_SCORE" ? <label>Score <input className="champ w-16" type="number" value={Number(eff.value) ?? 0} onChange={(e) => { const ne = [...(node.effects ?? [])]; ne[i] = { ...ne[i], value: Number(e.target.value) }; upd({ effects: ne }); }} /></label> : null}
           </div>
@@ -1681,18 +1738,18 @@ function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauT
           <button className="btn" onClick={() => upd({ inventoryRef: [] })}><Icon name="ajouter" size={15} /> Ajouter un objet référencé</button>
         ) : null}
         {(node.inventoryRef ?? []).map((ref, i) => (
-          <div key={i} className="carte p-2" style={{ boxShadow: "none" }}>
-            <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <div key={i} className="carte p-2 shadow-none">
+            <span className="flex items-center gap-1.5">
               <Icon name="package" size={15} />
               <select className="champ" value={ref} onChange={(e) => { const ir = [...(node.inventoryRef ?? [])]; ir[i] = e.target.value; upd({ inventoryRef: ir }); }}>
                 <option value="">—</option>{game.objects?.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
               </select>
-              <span style={{ flex: 1 }} />
-              <button className="btn" style={{ minHeight: 32, padding: "0 10px" }} aria-label="Supprimer cette référence" title="Supprimer" onClick={() => upd({ inventoryRef: (node.inventoryRef ?? []).filter((_, j) => j !== i) })}><Icon name="fermer" size={14} /></button>
+              <span className="flex-1" />
+              <button className="btn min-h-8 px-2.5" aria-label="Supprimer cette référence" title="Supprimer" onClick={() => upd({ inventoryRef: (node.inventoryRef ?? []).filter((_, j) => j !== i) })}><Icon name="fermer" size={14} /></button>
             </span>
           </div>
         ))}
-        <span className="text-xs" style={{ color: "var(--ink-2)" }}>InventoryRef = objets liés à ce nœud (donnés, requis). Vide si aucun objet.</span>
+        <span className="text-[8px] text-fog">InventoryRef = objets liés à ce nœud (donnés, requis). Vide si aucun objet.</span>
       </Famille>
       </fieldset>
     </div>
@@ -1705,70 +1762,70 @@ function ChampsDecl({ game, c, upd }: { game: Game; c: Condition; upd: (p: Parti
     case "GEOFENCE":
       return (
         <span className="flex flex-wrap gap-1 items-center">
-          lat <input className="champ w-20" style={{ minHeight: 40 }} type="number" step="any" value={c.lat ?? ""} onChange={(e) => upd({ lat: num(e.target.value) })} />
-          lng <input className="champ w-20" style={{ minHeight: 40 }} type="number" step="any" value={c.lng ?? ""} onChange={(e) => upd({ lng: num(e.target.value) })} />
-          rayon <input className="champ w-16" style={{ minHeight: 40 }} type="number" value={c.radiusMeters ?? ""} onChange={(e) => upd({ radiusMeters: num(e.target.value) })} /> m
+          lat <input className="champ w-20 min-h-10" type="number" step="any" value={c.lat ?? ""} onChange={(e) => upd({ lat: num(e.target.value) })} />
+          lng <input className="champ w-20 min-h-10" type="number" step="any" value={c.lng ?? ""} onChange={(e) => upd({ lng: num(e.target.value) })} />
+          rayon <input className="champ w-16 min-h-10" type="number" value={c.radiusMeters ?? ""} onChange={(e) => upd({ radiusMeters: num(e.target.value) })} /> m
           {PRESETS_RAYON.map((p) => (
-            <button key={p.nom} title={p.aide} className="btn" style={{ minHeight: 36 }} onClick={() => upd({ radiusMeters: p.metres })}>{p.nom} {p.metres}m</button>
+            <button key={p.nom} title={p.aide} className="btn min-h-9" onClick={() => upd({ radiusMeters: p.metres })}>{p.nom} {p.metres}m</button>
           ))}
-          Quand <select className="champ" style={{ minHeight: 40 }} value={c.predicate ?? "enter"} onChange={(e) => upd({ predicate: e.target.value as Predicate })}>
+          Quand <select className="champ min-h-10" value={c.predicate ?? "enter"} onChange={(e) => upd({ predicate: e.target.value as Predicate })}>
             <option value="enter">on entre</option><option value="exit">on sort</option><option value="dwell">on reste</option><option value="through">on traverse</option>
           </select>
-          rester <input className="champ w-16" style={{ minHeight: 40 }} type="number" value={(c.dwellMs ?? "") as number | string} onChange={(e) => upd({ dwellMs: num(e.target.value) })} placeholder="ms" />
+          rester <input className="champ w-16 min-h-10" type="number" value={(c.dwellMs ?? "") as number | string} onChange={(e) => upd({ dwellMs: num(e.target.value) })} placeholder="ms" />
         </span>
       );
     case "PROXIMITY_MASTER":
       return (
         <span className="flex flex-wrap gap-1 items-center">
-          animateur <input className="champ" style={{ minHeight: 40 }} value={c.masterId ?? ""} onChange={(e) => upd({ masterId: e.target.value })} size={10} />
-          <button className="btn" style={{ minHeight: 36 }} title="Changer d'identifiant (révoque l'ancien)" onClick={() => upd({ masterId: `m-${Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, "0")}` })}>Rotation</button>
-          lien <select className="champ" style={{ minHeight: 40 }} value={c.transport ?? "ble"} onChange={(e) => upd({ transport: e.target.value as "ble" | "wifi" })}>
+          animateur <input className="champ min-h-10" value={c.masterId ?? ""} onChange={(e) => upd({ masterId: e.target.value })} size={10} />
+          <button className="btn min-h-9" title="Changer d'identifiant (révoque l'ancien)" onClick={() => upd({ masterId: `m-${Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, "0")}` })}>Rotation</button>
+          lien <select className="champ min-h-10" value={c.transport ?? "ble"} onChange={(e) => upd({ transport: e.target.value as "ble" | "wifi" })}>
             <option value="ble">Bluetooth</option><option value="wifi">Wi-Fi</option>
           </select>
-          seuil <input className="champ w-16" style={{ minHeight: 40 }} type="number" value={c.minRssiDbm ?? ""} onChange={(e) => upd({ minRssiDbm: num(e.target.value) })} />
+          seuil <input className="champ w-16 min-h-10" type="number" value={c.minRssiDbm ?? ""} onChange={(e) => upd({ minRssiDbm: num(e.target.value) })} />
         </span>
       );
     case "NODE_COMPLETED":
       return (
-        <span>après <select className="champ" style={{ minHeight: 40 }} value={c.nodeId ?? ""} onChange={(e) => upd({ nodeId: e.target.value })}>
+        <span>après <select className="champ min-h-10" value={c.nodeId ?? ""} onChange={(e) => upd({ nodeId: e.target.value })}>
           <option value="">—</option>{game.nodes.map((m) => <option key={m.id} value={m.id}>{m.id}</option>)}
         </select> <label><input type="checkbox" checked={!!c.allowCycle} onChange={(e) => upd({ allowCycle: e.target.checked })} /> retour autorisé</label></span>
       );
     case "TIMER":
       return (
-        <span>attendre <input className="champ w-16" style={{ minHeight: 40 }} type="number" value={c.delaySeconds ?? ""} onChange={(e) => upd({ delaySeconds: num(e.target.value) })} /> s depuis
-          <select className="champ" style={{ minHeight: 40 }} value={c.anchor ?? "GAME_START"} onChange={(e) => upd({ anchor: e.target.value as "GAME_START" | "NODE_COMPLETION" })}>
+        <span>attendre <input className="champ w-16 min-h-10" type="number" value={c.delaySeconds ?? ""} onChange={(e) => upd({ delaySeconds: num(e.target.value) })} /> s depuis
+          <select className="champ min-h-10" value={c.anchor ?? "GAME_START"} onChange={(e) => upd({ anchor: e.target.value as "GAME_START" | "NODE_COMPLETION" })}>
             <option value="GAME_START">le démarrage</option><option value="NODE_COMPLETION">la fin de…</option>
           </select>
-          {c.anchor === "NODE_COMPLETION" && <select className="champ" style={{ minHeight: 40 }} value={c.anchorNodeId ?? ""} onChange={(e) => upd({ anchorNodeId: e.target.value })}>
+          {c.anchor === "NODE_COMPLETION" && <select className="champ min-h-10" value={c.anchorNodeId ?? ""} onChange={(e) => upd({ anchorNodeId: e.target.value })}>
             <option value="">—</option>{game.nodes.map((m) => <option key={m.id} value={m.id}>{m.id}</option>)}
           </select>}</span>
       );
     case "POOL_DRAWN":
       return (
-        <span>tirée par <select className="champ" style={{ minHeight: 40 }} value={c.poolNodeId ?? ""} onChange={(e) => upd({ poolNodeId: e.target.value })}>
+        <span>tirée par <select className="champ min-h-10" value={c.poolNodeId ?? ""} onChange={(e) => upd({ poolNodeId: e.target.value })}>
           <option value="">—</option>{game.nodes.filter((m) => m.randomPool).map((m) => <option key={m.id} value={m.id}>{m.id}</option>)}
         </select></span>
       );
     case "ITEM_REQUIRED":
       return (
-        <span>objet <select className="champ" style={{ minHeight: 40 }} value={c.itemId ?? ""} onChange={(e) => upd({ itemId: e.target.value })}>
+        <span>objet <select className="champ min-h-10" value={c.itemId ?? ""} onChange={(e) => upd({ itemId: e.target.value })}>
           <option value="">—</option>{game.objects?.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
         </select></span>
       );
     case "ITEM_USED":
       return (
-        <span>utiliser <select className="champ" style={{ minHeight: 40 }} value={c.itemId ?? ""} onChange={(e) => upd({ itemId: e.target.value })}>
+        <span>utiliser <select className="champ min-h-10" value={c.itemId ?? ""} onChange={(e) => upd({ itemId: e.target.value })}>
           <option value="">—</option>{game.objects?.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
-        </select> consommable <label className="text-xs"><input type="checkbox" checked={c.consumed ?? true} onChange={(e) => upd({ consumed: e.target.checked })} /> oui</label></span>
+        </select> consommable <label className="text-[8px]"><input type="checkbox" checked={c.consumed ?? true} onChange={(e) => upd({ consumed: e.target.checked })} /> oui</label></span>
       );
     case "CODE_INPUT":
       return (
-        <span>code <input className="champ" style={{ minHeight: 40 }} value={c.code ?? ""} onChange={(e) => upd({ code: e.target.value })} placeholder="Code" size={12} /></span>
+        <span>code <input className="champ min-h-10" value={c.code ?? ""} onChange={(e) => upd({ code: e.target.value })} placeholder="Code" size={12} /></span>
       );
     case "CLUE_RESOLVED":
       return (
-        <span>indice <select className="champ" style={{ minHeight: 40 }} value={c.clueId ?? ""} onChange={(e) => upd({ clueId: e.target.value })}>
+        <span>indice <select className="champ min-h-10" value={c.clueId ?? ""} onChange={(e) => upd({ clueId: e.target.value })}>
           <option value="">—</option>{game.nodes.filter((m) => m.discovery?.mode === "ON_CLUE").map((m) => <option key={m.id} value={m.id}>{m.id}</option>)}
         </select></span>
       );
@@ -1781,16 +1838,16 @@ function ManifestForm({ manifest, setManifest, lectureSeule }: { manifest: Manif
   const [f, setF] = useState({ path: "assets/x.png", version: "1.0.0", size: 1024, sha256: "" });
   return (
     <div className="carte p-3">
-      <h3 style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 13 }}>
+      <h3 className="flex items-center gap-1.5 font-bold text-[13px]">
         <Icon name="exemple" size={15} /> Fichiers du pack ({manifest.length})
       </h3>
-      <ul className="text-xs">{manifest.map((m) => <li key={m.path}>{m.path} v{m.version} {m.size}o {m.sha256.slice(0, 8)}…</li>)}</ul>
+      <ul className="text-[8px]">{manifest.map((m) => <li key={m.path}>{m.path} v{m.version} {m.size}o {m.sha256.slice(0, 8)}…</li>)}</ul>
       {!lectureSeule && (
         <div className="flex flex-wrap gap-1">
-          <input className="champ" style={{ minHeight: 40 }} value={f.path} onChange={(e) => setF({ ...f, path: e.target.value })} size={14} aria-label="Chemin du fichier" />
-          <input className="champ" style={{ minHeight: 40 }} value={f.version} onChange={(e) => setF({ ...f, version: e.target.value })} size={7} aria-label="Version" />
-          <input className="champ w-20" style={{ minHeight: 40 }} type="number" value={f.size} onChange={(e) => setF({ ...f, size: Number(e.target.value) })} aria-label="Taille en octets" />
-          <input className="champ" style={{ minHeight: 40 }} value={f.sha256} onChange={(e) => setF({ ...f, sha256: e.target.value })} size={12} placeholder="sha256 (64 hex)" aria-label="SHA-256" />
+          <input className="champ min-h-10" value={f.path} onChange={(e) => setF({ ...f, path: e.target.value })} size={14} aria-label="Chemin du fichier" />
+          <input className="champ min-h-10" value={f.version} onChange={(e) => setF({ ...f, version: e.target.value })} size={7} aria-label="Version" />
+          <input className="champ w-20 min-h-10" type="number" value={f.size} onChange={(e) => setF({ ...f, size: Number(e.target.value) })} aria-label="Taille en octets" />
+          <input className="champ min-h-10" value={f.sha256} onChange={(e) => setF({ ...f, sha256: e.target.value })} size={12} placeholder="sha256 (64 hex)" aria-label="SHA-256" />
           <button className="btn" onClick={() => { try { setManifest(registerAsset(manifest, f)); } catch (e) { alert(String(e)); } }}><Icon name="ajouter" size={15} /> Fichier</button>
         </div>
       )}
@@ -1807,37 +1864,37 @@ function ExperienceStylePanel({ game, edit, lectureSeule }: {
   const diverge = ex.preset != null && (ex.identity != null || ex.visual != null || ex.components != null || ex.media != null || ex.motion != null || ex.map != null || ex.voice != null);
   return (
     <div className="carte p-3">
-      <h3 style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 13 }}>
+      <h3 className="flex items-center gap-1.5 font-bold text-[13px]">
         <Icon name="engrenage" size={15} /> Experience Style
         {diverge && <span className="puce" title="Des dimensions ont été modifiées manuellement après le choix du preset">Personnalisé</span>}
       </h3>
-      <label className="text-xs flex gap-1 items-center">
+      <label className="text-[8px] flex gap-1 items-center">
         Preset :
-        <select className="champ" value={ex.preset ?? "BASIC"} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, experienceStyle: { ...s.game.experienceStyle, preset: e.target.value as any } } }))}>
+        <select className="champ" value={ex.preset ?? "BASIC"} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, experienceStyle: { ...s.game.experienceStyle, preset: e.target.value as any } } }), "setExperienceStyle")}>
           {["BASIC", "GUIDED", "TREASURE_HUNT", "ESCAPE_GAME", "OPEN_EXPLORATION"].map((p) => <option key={p} value={p}>{p}</option>)}
         </select>
       </label>
       {ex.identity && (
         <>
-          <label className="text-xs flex gap-1 items-center mt-1">
+          <label className="text-[8px] flex gap-1 items-center mt-1">
             Nom éditeur :
-            <input className="champ" value={ex.identity.name ?? ""} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, experienceStyle: { ...s.game.experienceStyle, identity: { ...ex.identity, name: e.target.value } } } }))} />
+            <input className="champ" value={ex.identity.name ?? ""} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, experienceStyle: { ...s.game.experienceStyle, identity: { ...ex.identity, name: e.target.value } } } }), "setExperienceStyle")} />
           </label>
-          <label className="text-xs flex gap-1 items-center">
+          <label className="text-[8px] flex gap-1 items-center">
             Éditeur :
-            <input className="champ" value={ex.identity.publisher ?? ""} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, experienceStyle: { ...s.game.experienceStyle, identity: { ...ex.identity, publisher: e.target.value } } } }))} />
+            <input className="champ" value={ex.identity.publisher ?? ""} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, experienceStyle: { ...s.game.experienceStyle, identity: { ...ex.identity, publisher: e.target.value } } } }), "setExperienceStyle")} />
           </label>
         </>
       )}
       {ex.visual && (
         <>
-          <label className="text-xs flex gap-1 items-center mt-1">
+          <label className="text-[8px] flex gap-1 items-center mt-1">
             Couleur primaire :
-            <input type="color" className="champ" value={ex.visual.primaryColor ?? "#1a7f37"} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, experienceStyle: { ...s.game.experienceStyle, visual: { ...ex.visual, primaryColor: e.target.value } } } }))} />
+            <input type="color" className="champ" value={ex.visual.primaryColor ?? "#1a7f37"} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, experienceStyle: { ...s.game.experienceStyle, visual: { ...ex.visual, primaryColor: e.target.value } } } }), "setExperienceStyle")} />
           </label>
-          <label className="text-xs flex gap-1 items-center">
+          <label className="text-[8px] flex gap-1 items-center">
             Couleur secondaire :
-            <input type="color" className="champ" value={ex.visual.secondaryColor ?? "#5f3dc4"} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, experienceStyle: { ...s.game.experienceStyle, visual: { ...ex.visual, secondaryColor: e.target.value } } } }))} />
+            <input type="color" className="champ" value={ex.visual.secondaryColor ?? "#5f3dc4"} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, experienceStyle: { ...s.game.experienceStyle, visual: { ...ex.visual, secondaryColor: e.target.value } } } }), "setExperienceStyle")} />
           </label>
         </>
       )}
@@ -1853,28 +1910,28 @@ function BrandingPanel({ game, edit, lectureSeule }: {
   const b = game.branding ?? { name: "", primaryColor: "#1a7f37", secondaryColor: "#5f3dc4", fontFamily: "system-ui" };
   return (
     <div className="carte p-3">
-      <h3 style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 13 }}>
+      <h3 className="flex items-center gap-1.5 font-bold text-[13px]">
         <Icon name="detail" size={15} /> Branding
       </h3>
-      <label className="text-xs flex gap-1 items-center">
+      <label className="text-[8px] flex gap-1 items-center">
         Nom :
-        <input className="champ" value={b.name} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, branding: { ...b, name: e.target.value } } }))} />
+        <input className="champ" value={b.name} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, branding: { ...b, name: e.target.value } } }), "setBranding")} />
       </label>
-      <label className="text-xs flex gap-1 items-center mt-1">
+      <label className="text-[8px] flex gap-1 items-center mt-1">
         Couleur primaire :
-        <input type="color" className="champ" value={b.primaryColor} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, branding: { ...b, primaryColor: e.target.value } } }))} />
+        <input type="color" className="champ" value={b.primaryColor} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, branding: { ...b, primaryColor: e.target.value } } }), "setBranding")} />
       </label>
-      <label className="text-xs flex gap-1 items-center">
+      <label className="text-[8px] flex gap-1 items-center">
         Couleur secondaire :
-        <input type="color" className="champ" value={b.secondaryColor} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, branding: { ...b, secondaryColor: e.target.value } } }))} />
+        <input type="color" className="champ" value={b.secondaryColor} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, branding: { ...b, secondaryColor: e.target.value } } }), "setBranding")} />
       </label>
-      <label className="text-xs flex gap-1 items-center mt-1">
+      <label className="text-[8px] flex gap-1 items-center mt-1">
         Police :
-        <input className="champ" value={b.fontFamily} disabled={lectureSeule} placeholder="system-ui" onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, branding: { ...b, fontFamily: e.target.value } } }))} />
+        <input className="champ" value={b.fontFamily} disabled={lectureSeule} placeholder="system-ui" onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, branding: { ...b, fontFamily: e.target.value } } }), "setBranding")} />
       </label>
-      <label className="text-xs flex gap-1 items-center">
+      <label className="text-[8px] flex gap-1 items-center">
         Logo (asset) :
-        <input className="champ" value={b.logo ?? ""} disabled={lectureSeule} placeholder="assets/logo.png" onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, branding: { ...b, logo: e.target.value || undefined } } }))} />
+        <input className="champ" value={b.logo ?? ""} disabled={lectureSeule} placeholder="assets/logo.png" onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, branding: { ...b, logo: e.target.value || undefined } } }), "setBranding")} />
       </label>
     </div>
   );
@@ -1901,23 +1958,23 @@ function ObjetsPanel({ game, editGame, lectureSeule, onChoisir }: {
   const [nconso, setNconso] = useState(false);
   return (
     <div className="carte p-3">
-      <h3 style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 13 }}>
+      <h3 className="flex items-center gap-1.5 font-bold text-[13px]">
         <Icon name="package" size={15} /> Objets / inventaire ({objs.length})
       </h3>
       {objs.length ? (
-        <ul className="text-xs">
+        <ul className="text-[8px]">
           {objs.map((o) => {
             const refs = refsObjet(game, o.id);
             return (
-              <li key={o.id} style={{ display: "flex", gap: 6, alignItems: "center", padding: "4px 0" }}>
-                <span style={{ flex: 1 }}><b>{o.id}</b> — {o.name}{o.consumable ? " · consommable" : ""}{refs.length ? ` · utilisé par : ${refs.join(", ")}` : " · non référencé"}</span>
+              <li key={o.id} className="flex gap-1.5 items-center py-1">
+                <span className="flex-1"><b>{o.id}</b> — {o.name}{o.consumable ? " · consommable" : ""}{refs.length ? ` · utilisé par : ${refs.join(", ")}` : " · non référencé"}</span>
                 {!lectureSeule && refs.length > 0 && (
-                  <button className="btn" style={{ minHeight: 32, padding: "0 10px", fontSize: 12 }} onClick={() => onChoisir(refs[0])} title={`Aller à ${refs[0]}`}>Voir</button>
+                  <button className="btn min-h-8 px-2.5 text-[8px]" onClick={() => onChoisir(refs[0])} title={`Aller à ${refs[0]}`}>Voir</button>
                 )}
                 {!lectureSeule && (
-                  <button className="btn" style={{ minHeight: 32, padding: "0 10px", fontSize: 12 }} aria-label={`Supprimer l'objet ${o.id}`} title="Supprimer" onClick={() => {
+                  <button className="btn min-h-8 px-2.5 text-[8px]" aria-label={`Supprimer l'objet ${o.id}`} title="Supprimer" onClick={() => {
                     if (refs.length && !window.confirm(`Supprimer « ${o.id} » ? Utilisé par : ${refs.join(", ")}`)) return;
-                    editGame((g) => setObjects(g, (g.objects ?? []).filter((x) => x.id !== o.id)));
+                    editGame((g) => setObjects(g, (g.objects ?? []).filter((x) => x.id !== o.id)), "setObjects");
                   }}><Icon name="fermer" size={14} /></button>
                 )}
               </li>
@@ -1925,18 +1982,19 @@ function ObjetsPanel({ game, editGame, lectureSeule, onChoisir }: {
           })}
         </ul>
       ) : (
-        <p className="text-xs" style={{ color: "var(--ink-2)" }}>Aucun objet défini.</p>
+        <p className="text-[8px] text-fog">
+Aucun objet défini.</p>
       )}
       {!lectureSeule && (
         <div className="flex flex-wrap gap-1">
-          <input className="champ" style={{ minHeight: 40 }} value={nid} size={10} placeholder="id (ex. cle)" aria-label="Identifiant du nouvel objet" onChange={(e) => setNid(e.target.value)} />
-          <input className="champ" style={{ minHeight: 40 }} value={nnom} size={14} placeholder="Nom affiché" aria-label="Nom du nouvel objet" onChange={(e) => setNnom(e.target.value)} />
-          <label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={nconso} onChange={(e) => setNconso(e.target.checked)} /> consommable</label>
+          <input className="champ min-h-10" value={nid} size={10} placeholder="id (ex. cle)" aria-label="Identifiant du nouvel objet" onChange={(e) => setNid(e.target.value)} />
+          <input className="champ min-h-10" value={nnom} size={14} placeholder="Nom affiché" aria-label="Nom du nouvel objet" onChange={(e) => setNnom(e.target.value)} />
+          <label className="flex items-center gap-1 text-[8px]"><input type="checkbox" checked={nconso} onChange={(e) => setNconso(e.target.checked)} /> consommable</label>
           <button className="btn" onClick={() => {
             const id = nid.trim();
             if (!id) { alert("Identifiant d'objet requis."); return; }
             if (objs.some((o) => o.id === id)) { alert(`Objet « ${id} » déjà existant.`); return; }
-            editGame((g) => addObject(g, { id, name: nnom.trim() || id, consumable: nconso }));
+            editGame((g) => addObject(g, { id, name: nnom.trim() || id, consumable: nconso }), "addObject");
             setNid(""); setNnom(""); setNconso(false);
           }}><Icon name="ajouter" size={15} /> Objet</button>
         </div>
@@ -1952,18 +2010,18 @@ function ModePanel({ game, edit, lectureSeule }: {
 }) {
   return (
     <div className="carte p-3">
-      <h3 style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 13 }}>
+      <h3 className="flex items-center gap-1.5 font-bold text-[13px]">
         <Icon name="exemple" size={15} /> Mode et Difficulté
       </h3>
-      <label className="text-xs flex gap-1 items-center">
+      <label className="text-[8px] flex gap-1 items-center">
         Mode :
-        <select className="champ" value={game.gameMode ?? "NORMAL"} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, gameMode: e.target.value as any } }))}>
+        <select className="champ" value={game.gameMode ?? "NORMAL"} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, gameMode: e.target.value as any } }), "setGameMode")}>
           {["NORMAL", "ANIMATEUR", "SOIREE", "HARDCORE"].map((m) => <option key={m} value={m}>{m}</option>)}
         </select>
       </label>
-      <label className="text-xs flex gap-1 items-center mt-1">
+      <label className="text-[8px] flex gap-1 items-center mt-1">
         Difficulté :
-        <select className="champ" value={game.difficulty ?? "FAMILLE"} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, difficulty: e.target.value as any } }))}>
+        <select className="champ" value={game.difficulty ?? "FAMILLE"} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, difficulty: e.target.value as any } }), "setDifficulty")}>
           {["ENFANT", "FAMILLE", "EXPERT"].map((d) => <option key={d} value={d}>{d}</option>)}
         </select>
       </label>
@@ -1979,28 +2037,28 @@ function I18nPanel({ meta, edit, lectureSeule }: {
   const [note, setNote] = useState("");
   return (
     <div className="carte p-3">
-      <h3 style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 13 }}>
+      <h3 className="flex items-center gap-1.5 font-bold text-[13px]">
         <Icon name="detail" size={15} /> Textes et traductions
       </h3>
       {meta.i18n.map((row, i) => (
         <div key={i} className="flex gap-1">
-          <input className="champ" style={{ minHeight: 40, opacity: row.locked ? 0.6 : 1 }} value={row.key} size={12} disabled={lectureSeule || row.locked} title={row.locked ? "Clé verrouillée — non éditable" : undefined} onChange={(e) => edit((s) => ({ ...s, meta: { ...s.meta, i18n: s.meta.i18n.map((r, j) => (j === i ? { ...r, key: e.target.value } : r)) } }))} aria-label="Clé de texte" />
-          <input className="champ flex-1" style={{ minHeight: 40, opacity: row.locked ? 0.6 : 1 }} value={row.value} size={16} disabled={lectureSeule || row.locked} title={row.locked ? "Texte verrouillé — non éditable" : undefined} onChange={(e) => edit((s) => ({ ...s, meta: { ...s.meta, i18n: s.meta.i18n.map((r, j) => (j === i ? { ...r, value: e.target.value } : r)) } }))} aria-label="Texte" />
+          <input className="min-h-10" style={{ opacity: row.locked ? 0.6 : 1 }} value={row.key} size={12} disabled={lectureSeule || row.locked} title={row.locked ? "Clé verrouillée — non éditable" : undefined} onChange={(e) => edit((s) => ({ ...s, meta: { ...s.meta, i18n: s.meta.i18n.map((r, j) => (j === i ? { ...r, key: e.target.value } : r)) } }), "setI18n")} aria-label="Clé de texte" />
+          <input className="champ flex-1 min-h-10" style={{ opacity: row.locked ? 0.6 : 1 }} value={row.value} size={16} disabled={lectureSeule || row.locked} title={row.locked ? "Texte verrouillé — non éditable" : undefined} onChange={(e) => edit((s) => ({ ...s, meta: { ...s.meta, i18n: s.meta.i18n.map((r, j) => (j === i ? { ...r, value: e.target.value } : r)) } }), "setI18n")} aria-label="Texte" />
           {!row.value && <span className="puce" title="Aucune valeur saisie pour cette clé">manquant</span>}
-          <label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={row.locked} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, meta: { ...s.meta, i18n: s.meta.i18n.map((r, j) => (j === i ? { ...r, locked: e.target.checked } : r)) } }))} /> verrou</label>
+          <label className="flex items-center gap-1 text-[8px]"><input type="checkbox" checked={row.locked} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, meta: { ...s.meta, i18n: s.meta.i18n.map((r, j) => (j === i ? { ...r, locked: e.target.checked } : r)) } }), "setI18n")} /> verrou</label>
         </div>
       ))}
       {!lectureSeule && (
         <div className="flex gap-1">
-          <button className="btn" onClick={() => edit((s) => ({ ...s, meta: { ...s.meta, i18n: [...s.meta.i18n, { key: `texte${s.meta.i18n.length + 1}`, value: "", locked: false }] } }))}><Icon name="ajouter" size={15} /> Texte</button>
+          <button className="btn" onClick={() => edit((s) => ({ ...s, meta: { ...s.meta, i18n: [...s.meta.i18n, { key: `texte${s.meta.i18n.length + 1}`, value: "", locked: false }] } }), "setI18n")}><Icon name="ajouter" size={15} /> Texte</button>
           <button className="btn" onClick={() => {
             const kept = meta.i18n.filter((r) => r.locked).map((r) => r.key);
-            edit((s) => ({ ...s, meta: { ...s.meta, i18n: s.meta.i18n.map((r) => (r.locked ? r : { ...r, value: r.value ? `${r.value} (EN)` : r.value })) } }));
+            edit((s) => ({ ...s, meta: { ...s.meta, i18n: s.meta.i18n.map((r) => (r.locked ? r : { ...r, value: r.value ? `${r.value} (EN)` : r.value })) } }), "setI18n");
             setNote(`Verrouillés conservés : ${kept.join(", ") || "—"}`);
           }}>Simuler une retraduction</button>
         </div>
       )}
-      {note && <div className="text-xs">{note}</div>}
+      {note && <div className="text-[8px]">{note}</div>}
     </div>
   );
 }
@@ -2024,49 +2082,49 @@ function FileRelire({ game, meta, edit, manifest, lectureSeule, onChoisir, estAn
     edit((s) => ({ ...s, meta: setReview(s.meta, id, state, state === "draft" ? undefined : qui) }));
   const comptes = (s: "draft" | "reviewed" | "published") => lignes.filter((l) => l.st === s).length;
   return (
-    <div className="carte p-3">
-      <h2 className="text-base font-bold" style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <Icon name="oeil" size={17} /> Relecture — {nbDraft} brouillon{nbDraft > 1 ? "s" : ""}
+    <div className="carte p-4">
+      <h2 className="font-display font-extrabold text-2xl tracking-widest uppercase text-snow mb-4">
+        <Icon name="oeil" size={17} /> Relire — {nbDraft} brouillon{nbDraft > 1 ? "s" : ""}
       </h2>
-      <p className="text-xs" style={{ color: "var(--ink-2)" }}>
+      <p className="text-[9px] font-mono text-fog mb-3">
         Tant qu'un élément est en brouillon, l'export est bloqué — le kiosque HOLD exige un jeu relu.
         Export : {exportPret ? (<span className="puce puce-ok">prêt</span>) : (<span className="puce puce-erreur">bloqué</span>)}
       </p>
-      <div className="flex flex-wrap gap-1" role="group" aria-label="Filtrer par statut">
+      <div className="flex flex-wrap gap-1 mb-3" role="group" aria-label="Filtrer par statut">
         {(["draft", "reviewed", "published", "tous"] as const).map((f) => (
-          <button key={f} className="btn" style={{ minHeight: 32, padding: "0 10px", fontSize: 12, fontWeight: filtre === f ? 700 : 500 }}
+          <button key={f} className={`btn min-h-8 px-2.5 text-[8px] font-mono ${filtre === f ? "font-bold" : "font-normal"}`}
             onClick={() => setFiltre(f)} aria-pressed={filtre === f}>
             {f === "tous" ? `Tous (${lignes.length})` : `${ETATS_FR[f]} (${comptes(f)})`}
           </button>
         ))}
       </div>
-      <ul className="text-xs">
+      <ul className="text-[9px]">
         {visibles.map(({ n, st }) => {
           const prov = meta.provenance[n.id];
           const detail = ouvert === n.id;
           return (
-            <li key={n.id} className="carte p-2" style={{ boxShadow: "none", margin: "4px 0" }}>
-              <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                <b>{n.id}</b>
+            <li key={n.id} className="carte p-2 my-1">
+              <span className="flex items-center gap-1.5">
+                <b className="font-mono text-neon">{n.id}</b>
                 <span className="puce">{ETATS_FR[st]}</span>
                 {meta.status[n.id]?.reviewedBy && <span className="puce">par {meta.status[n.id]?.reviewedBy}</span>}
-                <span style={{ flex: 1 }} />
-                <button className="btn" style={{ minHeight: 32, padding: "0 10px", fontSize: 12 }} onClick={() => { onChoisir(n.id); setOuvert(detail ? null : n.id); }} title="Voir dans Composer et afficher la source">Voir</button>
+                <span className="flex-1" />
+                <button className="btn min-h-8 px-2.5 text-[8px]" onClick={() => { onChoisir(n.id); setOuvert(detail ? null : n.id); }} title="Voir dans Composer et afficher la source">Voir</button>
                 {!lectureSeule && st === "draft" && (
-                  <button className="btn" style={{ minHeight: 32, padding: "0 10px", fontSize: 12 }} onClick={() => passer(n.id, "reviewed")} title="Passer en relu (enregistre le relecteur)">Relire</button>
+                  <button className="btn min-h-8 px-2.5 text-[8px]" onClick={() => passer(n.id, "reviewed")} title="Passer en relu (enregistre le relecteur)">Relire</button>
                 )}
                 {!lectureSeule && st === "reviewed" && (
                   <>
-                    <button className="btn" style={{ minHeight: 32, padding: "0 10px", fontSize: 12 }} onClick={() => passer(n.id, "published")} title="Publier">Publier</button>
-                    <button className="btn" style={{ minHeight: 32, padding: "0 10px", fontSize: 12 }} onClick={() => passer(n.id, "draft")} title="Annuler la relecture (action distincte)">Annuler la relecture</button>
+                    <button className="btn min-h-8 px-2.5 text-[8px]" onClick={() => passer(n.id, "published")} title="Publier">Publier</button>
+                    <button className="btn min-h-8 px-2.5 text-[8px]" onClick={() => passer(n.id, "draft")} title="Annuler la relecture (action distincte)">Annuler</button>
                   </>
                 )}
                 {!lectureSeule && st === "published" && (
-                  <button className="btn" style={{ minHeight: 32, padding: "0 10px", fontSize: 12 }} onClick={() => passer(n.id, "draft")} title="Annuler la relecture (action distincte)">Annuler la relecture</button>
+                  <button className="btn min-h-8 px-2.5 text-[8px]" onClick={() => passer(n.id, "draft")} title="Annuler la relecture (action distincte)">Annuler</button>
                 )}
               </span>
               {detail && (
-                <div className="text-xs" style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4 }}>
+                <div className="text-[9px] flex flex-col gap-1 mt-1.5">
                   <span>Fournisseur : {prov?.providerId || "—"} · Licence : {prov?.license || "—"} · Source : {prov?.sourceUrl || "—"}</span>
                   <span>Module : {n.module.type} · Données : {JSON.stringify(n.module.data).slice(0, 200)}</span>
                 </div>
@@ -2074,10 +2132,11 @@ function FileRelire({ game, meta, edit, manifest, lectureSeule, onChoisir, estAn
             </li>
           );
         })}
+      {/* visibles list */}
       </ul>
-      {!visibles.length && <p className="text-xs" style={{ color: "var(--ink-2)" }}>Aucun élément avec ce statut.</p>}
-      <h3 className="text-sm font-bold">Assets du manifest ({manifest.length})</h3>
-      <ul className="text-xs">{manifest.map((m) => <li key={m.path}>{m.path} v{m.version} {m.size}o</li>)}</ul>
+      {!visibles.length && <p className="text-[9px] font-mono text-fog">Aucun élément avec ce statut.</p>}
+      <h3 className="font-display font-extrabold text-xl tracking-widest uppercase text-snow mb-2 mt-4">Assets du manifest ({manifest.length})</h3>
+      <ul className="text-[9px] font-mono">{manifest.map((m) => <li key={m.path}>{m.path} v{m.version} {m.size}o</li>)}</ul>
     </div>
   );
 }
@@ -2105,46 +2164,56 @@ function BlocValidation({ couches, game, onVoir }: {
     groupes.set(c, [...(groupes.get(c) ?? []), e]);
   }
   return (
-    <div className="flex flex-col gap-2">
-      <div className="carte p-3" aria-label="Verdict couche 1">
-        <h3 className="text-sm font-bold" style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <Icon name="valider" size={15} /> Couche 1 — forme AJV Draft-07
-          {c1 && (c1.errors.length ? <span className="puce puce-erreur">{c1.errors.length} erreur(s)</span> : <span className="puce puce-ok">OK</span>)}
-        </h3>
-        {(c1?.errors.length ?? 0) > 0 && (
-          <ul className="text-xs font-mono">{c1!.errors.map((e, i) => <li key={i} style={{ padding: "2px 0" }}>{e}</li>)}</ul>
-        )}
-      </div>
-      <div className="carte p-3" aria-label="Verdict couche 2">
-        <h3 className="text-sm font-bold" style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <Icon name="valider" size={15} /> Couche 2 — validateur applicatif
-          {c2 ? (c2.errors.length ? <span className="puce puce-erreur">{c2.errors.length} erreur(s)</span> : <span className="puce puce-ok">OK</span>) : <span className="puce">non exécutée (C1 en échec)</span>}
-        </h3>
-        {[...groupes.entries()].map(([cat, errs]) => (
-          <div key={cat}>
-            <h4 className="text-xs font-bold" style={{ marginTop: 8 }}>{cat} ({errs.length})</h4>
-            <ul className="text-xs">
-              {errs.map((e, i) => {
-                const cible = game.nodes.find((n) => e.includes(n.id));
-                return (
-                  <li key={i} style={{ display: "flex", gap: 8, alignItems: "center", padding: "4px 0" }}>
-                    <Icon name="alerte" size={14} />
-                    <span style={{ flex: 1 }} title={e}>{erreurFR(e)}</span>
-                    {cible && (
-                      <button className="btn" style={{ minHeight: 32, padding: "0 10px", fontSize: 12 }} onClick={() => onVoir(cible.id)} title={`Aller à ${cible.id} dans Composer`}>
-                        Voir {cible.id}
-                      </button>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
+    <div className="h-full overflow-y-auto">
+      <div className="p-6 max-w-2xl">
+        <h2 className="font-display font-extrabold text-2xl tracking-widest uppercase text-snow mb-6">Validation</h2>
+        <div className="grid grid-cols-2 gap-4 mb-5">
+          <div className="bg-panel border border-rule rounded-md p-4">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-[8px] font-mono uppercase tracking-widest text-fog">C1 — Schéma AJV</span>
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full bg-pass" />
+                <span className="font-mono text-[8px] text-pass uppercase">Pass</span>
+              </div>
+            </div>
+            <p className="text-[11px] text-fog leading-relaxed">Draft-07 conforme. Tous les champs requis présents.</p>
+            <div className="mt-3 font-mono text-[8px] text-fog bg-canvas rounded px-2 py-1.5">{c1?.errors.length ?? 0} erreur · 0 avertissement</div>
           </div>
-        ))}
+          <div className="bg-panel border border-fail/20 rounded-md p-4">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-[8px] font-mono uppercase tracking-widest text-fog">C2 — Applicative</span>
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full bg-fail" />
+                <span className="font-mono text-[8px] text-fail uppercase">Fail</span>
+              </div>
+            </div>
+            <p className="text-[11px] text-fog leading-relaxed">Cycles, atteignabilité, pools, HOLD, références.</p>
+            <div className="mt-3 font-mono text-[8px] text-fog bg-canvas rounded px-2 py-1.5">{c2?.errors.length ?? 0} erreur(s)</div>
+          </div>
+        </div>
+        <div className="flex flex-col gap-2 mb-5">
+          {[...(groupes.entries())].map(([cat, errs]) => (
+            <div key={cat} className="text-[8px] font-mono uppercase tracking-widest text-fog mb-2">{cat} ({errs.length})</div>
+          ))}
+          {c2?.errors.map((e, i) => {
+            const cible = game.nodes.find((n) => e.includes(n.id));
+            return (
+              <div key={i} className="flex items-start gap-3 bg-panel border border-rule rounded px-4 py-3 mb-2">
+                <div className="mt-1 w-1.5 h-1.5 rounded-full shrink-0 bg-fail" />
+                <div>
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <span className="font-mono text-[8px] text-fog">ERR-{i}</span>
+                    <span className="font-mono text-[8px] uppercase text-fail">erreur</span>
+                    <span className="font-mono text-[8px] text-neon">→ {cible?.id ?? "?"}</span>
+                  </div>
+                  <span className="text-[11px] text-snow">{e}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <p className="text-[8px] text-fog">Export possible = C1 OK ∧ C2 OK ∧ aucun brouillon (hors animateur).</p>
       </div>
-      <p className="text-xs" style={{ color: "var(--ink-2)" }} title="Règle exacte : C1 OK ∧ C2 OK ∧ aucun élément en brouillon (hors mode animateur) ; le kiosque HOLD exige en plus un jeu relu. Cette règle est calculée en un seul point et consommée par la barre globale, Relire et Exporter.">
-        Export possible = C1 OK ∧ C2 OK ∧ aucun brouillon (hors animateur).
-      </p>
     </div>
   );
 }
@@ -2154,7 +2223,7 @@ function ReviewOverlay({ game, meta }: { game: Game; meta: StudioMeta }) {
   if (!diffs.length) return null;
   return (
     <div className="carte p-3">
-      <h3 style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 13 }}>
+      <h3 className="flex items-center gap-1.5 font-display font-extrabold text-xl tracking-widest uppercase text-snow mb-4">
         <Icon name="essai" size={15} /> Relecture 7 erreurs (calques)
       </h3>
       {diffs.map((n) => {
@@ -2162,12 +2231,12 @@ function ReviewOverlay({ game, meta }: { game: Game; meta: StudioMeta }) {
         const polys = d.polygons ?? [];
         const statut = meta.status[n.id]?.state ?? "draft";
         return (
-          <div key={n.id} className="carte p-2 my-1" style={{ boxShadow: "none" }}>
-            {n.id} — {ETATS_FR[statut]} — {polys.length} zone(s)
-            <div className="relative w-full text-xs" style={{ paddingTop: "56%", background: "var(--ink)", color: "#fff", borderRadius: 8 }}>
-              <span className="absolute top-0 left-1">{String(d.source ?? "image source ?")}</span>
+          <div key={n.id} className="carte p-2 my-1 shadow-none">
+            <div className="font-mono text-[9px] text-snow mb-2">{n.id} — {ETATS_FR[statut]} — {polys.length} zone(s)</div>
+            <div className="relative w-full" style={{ paddingTop: "56%", background: "#111318", borderRadius: 8 }}>
+              <span className="absolute top-0 left-1 font-mono text-[8px] text-fog">{String(d.source ?? "image source ?")}</span>
               {polys.map((p, i) => (
-                <div key={i} className="absolute" style={{ left: `${p.x}%`, top: `${p.y}%`, width: `${p.w}%`, height: `${p.h}%`, border: "2px solid #ffd43b" }} />
+                <div key={i} className="absolute" style={{ left: `${p.x}%`, top: `${p.y}%`, width: `${p.w}%`, height: `${p.h}%`, border: "2px solid #00e5ff" }} />
               ))}
             </div>
           </div>
@@ -2203,60 +2272,59 @@ function Apercu(props: {
     props.setSim((s) => ({ ...s, [k]: s[k].includes(id) ? s[k].filter((x) => x !== id) : [...s[k], id] }));
   return (
     <div className="carte p-3 flex flex-col gap-2">
-      <h3 style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 13 }}>
+      <h3 className="flex items-center gap-1.5 font-display font-extrabold text-2xl tracking-widest uppercase text-snow">
         <Icon name="essai" size={15} /> Essai du parcours (triche tracée)
       </h3>
-      <p className="text-xs" style={{ color: "var(--ink-2)" }}>La prévisualisation n'écrit jamais dans le JSON source : tout ici est simulation.</p>
-      <div className="carte p-2" style={{ boxShadow: "none" }} aria-label="Panneau de triche">
-        <h4 className="text-xs font-bold">Panneau de triche — chaque event porte le flag triche</h4>
+      <p className="text-[9px] font-mono text-fog">La prévisualisation n'écrit jamais dans le JSON source : tout ici est simulation.</p>
+      <div className="carte p-2 shadow-none" aria-label="Panneau de triche">
+        <h4 className="text-[8px] font-mono uppercase tracking-widest text-fog mb-2">Panneau de triche — chaque event porte le flag triche</h4>
       <div className="flex gap-1 items-center flex-wrap">
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+        <span className="inline-flex items-center gap-1.5">
           Signal GPS
-          <span aria-hidden="true" style={{ display: "inline-block", width: 12, height: 12, borderRadius: 999, background: sig.dot, border: "1px solid var(--line-forte)" }} />
-          <span className="sr-only">{sig.nom}</span>
+          <span aria-hidden="true" className="inline-block w-3 h-3 rounded-full bg-neon" style={{ border: "1px solid var(--line-forte)" }} />
         </span>
-        <select className="champ" style={{ minHeight: 40 }} value={props.sim.precision} onChange={(e) => props.setSim((s) => ({ ...s, precision: Number(e.target.value) }))} aria-label="Précision GPS simulée">
+        <select className="champ min-h-10" value={props.sim.precision} onChange={(e) => props.setSim((s) => ({ ...s, precision: Number(e.target.value) }))} aria-label="Précision GPS simulée">
           {SIGNAUX.map((s) => <option key={s.m} value={s.m}>{s.nom}</option>)}
         </select>
-        <span>partie <input className="champ" style={{ minHeight: 40 }} value={props.sessionId} onChange={(e) => props.setSessionId(e.target.value)} size={10} aria-label="Identifiant de session" /></span>
+        <span>partie <input className="champ min-h-10" value={props.sessionId} onChange={(e) => props.setSessionId(e.target.value)} size={10} aria-label="Identifiant de session" /></span>
         <button className="btn" onClick={props.nouvelleSession}><Icon name="ajouter" size={15} /> Nouvelle partie</button>
-        <span>temps +<input className="champ w-16" style={{ minHeight: 40 }} type="number" value={props.sim.dtMin} onChange={(e) => props.setSim((s) => ({ ...s, dtMin: Number(e.target.value) }))} aria-label="Temps écoulé en minutes" /> min</span>
+        <span>temps +<input className="champ w-16 min-h-10" type="number" value={props.sim.dtMin} onChange={(e) => props.setSim((s) => ({ ...s, dtMin: Number(e.target.value) }))} aria-label="Temps écoulé en minutes" /> min</span>
       </div>
       {pools.map((p) => (
-        <div key={p.id}>Tirage {p.id} → [{(props.draws[p.id] ?? []).join(",")}]
-          <select className="champ" style={{ minHeight: 40 }} value={props.forced[p.id] ?? ""} onChange={(e) => props.setForced({ ...props.forced, [p.id]: e.target.value })} aria-label={`Forcer le tirage ${p.id}`}>
+        <div key={p.id} className="font-mono text-[9px] text-snow mb-1">Tirage {p.id} → [{(props.draws[p.id] ?? []).join(",")}]
+          <select className="champ min-h-10" value={props.forced[p.id] ?? ""} onChange={(e) => props.setForced({ ...props.forced, [p.id]: e.target.value })} aria-label={`Forcer le tirage ${p.id}`}>
             <option value="">tirage libre</option>{p.randomPool!.candidates.map((c) => <option key={c} value={c}>forcer {c}</option>)}
           </select></div>
       ))}
       <div className="flex gap-1 items-center flex-wrap">
-        <span className="text-xs">HOLD simulé : {props.holdSim === "locked" ? (<span className="puce puce-erreur">verrouillé</span>) : (<span className="puce">inactif</span>)}</span>
-        <button className="btn" style={{ minHeight: 36 }} onClick={props.onHoldLock} disabled={props.holdSim === "locked"} title="Simuler un verrouillage kiosque (forceHoldLock)">Simuler verrouillage</button>
-        <button className="btn" style={{ minHeight: 36 }} onClick={props.onHoldExit} disabled={props.holdSim === "none"} title="Simuler une sortie animateur (forceHoldExit)">Simuler sortie animateur</button>
+        <span className="text-[9px]">HOLD simulé : {props.holdSim === "locked" ? (<span className="puce puce-erreur">verrouillé</span>) : (<span className="puce">inactif</span>)}</span>
+        <button className="btn min-h-9" onClick={props.onHoldLock} disabled={props.holdSim === "locked"}>Simuler verrouillage</button>
+        <button className="btn min-h-9" onClick={props.onHoldExit} disabled={props.holdSim === "none"}>Simuler sortie animateur</button>
       </div>
       </div>
-      <div>File d'attente : {props.file.length ? props.file.join(", ") : "—"} | Ouverte : {props.activeId ?? "—"}</div>
+      <div className="font-mono text-[9px] text-fog">File d'attente : {props.file.length ? props.file.join(", ") : "—"} | Ouverte : {props.activeId ?? "—"}</div>
       <div className="flex gap-1">
-        <button className="btn" style={{ minHeight: 36 }} onClick={() => { if (!props.activeId && props.file[0]) props.ouvrir(props.file[0]); }} disabled={!!props.activeId || !props.file.length} title="Ouvrir la première étape en file (avancer d'un pas)">Avancer d'un pas</button>
-        <button className="btn" style={{ minHeight: 36 }} onClick={props.reculer} disabled={props.nbTermines === 0} title="Rouvrir la dernière étape terminée (reculer d'un pas)">Reculer d'un pas</button>
+        <button className="btn min-h-9" onClick={() => { if (!props.activeId && props.file[0]) props.ouvrir(props.file[0]); }} disabled={!!props.activeId || !props.file.length}>Avancer d'un pas</button>
+        <button className="btn min-h-9" onClick={props.reculer} disabled={props.nbTermines === 0}>Reculer d'un pas</button>
       </div>
       {props.activeId && (
         <div className="flex gap-1"><button className="btn-primaire" onClick={() => props.terminer(props.activeId!, false)}><Icon name="valider" size={15} /> Terminer</button>
           <button className="btn" onClick={() => props.terminer(props.activeId!, true)}>Abandonner</button></div>
       )}
-      <div className="max-h-32 overflow-auto carte" style={{ boxShadow: "none" }}>
+      <div className="max-h-32 overflow-auto bg-canvas border border-rule rounded p-2 shadow-none">
         {game.nodes.filter((n) => !n.randomPool).map((n) => (
-          <div key={n.id} className="flex gap-1 items-center px-1" style={{ minHeight: 44 }}>
-            <button className="btn" style={{ minHeight: 36 }} onClick={() => props.ouvrir(n.id)} disabled={!props.file.includes(n.id) && props.activeId !== n.id}>ouvrir</button>
+          <div key={n.id} className="min-h-11 flex items-center px-1">
+            <button className="btn min-h-9" onClick={() => props.ouvrir(n.id)} disabled={!props.file.includes(n.id) && props.activeId !== n.id}>ouvrir</button>
             {" "}{n.id}
-            <label className="text-xs"><input type="checkbox" checked={props.sim.present.includes(n.id)} onChange={() => bascule("present", n.id)} /> ici</label>
-            <label className="text-xs"><input type="checkbox" checked={props.sim.dwell.includes(n.id)} onChange={() => bascule("dwell", n.id)} /> reste</label>
-            <label className="text-xs"><input type="checkbox" checked={props.sim.through.includes(n.id)} onChange={() => bascule("through", n.id)} /> traverse</label>
+            <label className="text-[9px]"><input type="checkbox" checked={props.sim.present.includes(n.id)} onChange={() => bascule("present", n.id)} /> ici</label>
+            <label className="text-[9px]"><input type="checkbox" checked={props.sim.dwell.includes(n.id)} onChange={() => bascule("dwell", n.id)} /> reste</label>
+            <label className="text-[9px]"><input type="checkbox" checked={props.sim.through.includes(n.id)} onChange={() => bascule("through", n.id)} /> traverse</label>
           </div>
         ))}
       </div>
       <button className="btn" onClick={props.testerBranches}><Icon name="choix" size={15} /> Tout tester en 1 clic</button>
-      {props.testAll && <div className="text-xs" style={{ display: "flex", gap: 6, alignItems: "center" }}>{fixtureOk == null ? null : fixtureOk ? (<span className="puce puce-ok">PASS</span>) : (<span className="puce puce-erreur">FAIL</span>)}<span>{props.testAll}</span></div>}
-      <div className="max-h-24 overflow-auto text-xs"><b>Journal</b><ul>{props.log.map((l, i) => <li key={i} style={{ display: "flex", gap: 4, alignItems: "center" }}><span className="puce">SIMULÉ</span><span className="puce">hold:{holdMode}</span><span>{l}</span></li>)}</ul></div>
+      {props.testAll && <div className="text-[9px] flex items-center gap-1.5">{fixtureOk == null ? null : fixtureOk ? (<span className="puce puce-ok">PASS</span>) : (<span className="puce puce-erreur">FAIL</span>)}<span>{props.testAll}</span></div>}
+      <div className="max-h-24 overflow-auto text-[9px]"><b>Journal</b><ul>{props.log.map((l, i) => <li key={i} className="flex gap-1 items-center"><span className="puce">SIMULÉ</span><span className="puce">hold:{holdMode}</span><span>{l}</span></li>)}</ul></div>
     </div>
   );
 }

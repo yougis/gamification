@@ -56,12 +56,12 @@
 
 ## 10. Garanties P0 dans l'UI
 
-- [ ] 10.1 Nommer l'opération MCP dans chaque entrée d'historique et interdire tout champ cosmétique non persisté — vérifié : `setBranding` apparaît nommé après changement de couleur
-- [ ] 10.2 Faire vérifier le statut `draft` par le mode de lecture en conditions réelles lui-même — vérifié : lecture refusée sur jeu avec nœud draft hors animateur
-- [ ] 10.3 Vérifier qu'Importer/Exporter n'initient aucune requête réseau (revue du code des deux écrans) — vérifié par inspection + import/export hors-ligne
+- [x] 10.1 Nommer l'opération MCP dans chaque entrée d'historique et interdire tout champ cosmétique non persisté — vérifié : `setBranding` apparaît nommé après changement de couleur
+- [x] 10.2 Faire vérifier le statut `draft` par le mode de lecture en conditions réelles lui-même — vérifié : lecture refusée sur jeu avec nœud draft hors animateur
+- [x] 10.3 Vérifier qu'Importer/Exporter n'initient aucune requête réseau (revue du code des deux écrans) — vérifié par inspection + import/export hors-ligne
 
 ## 11. Vérification finale
 
-- [ ] 11.1 `npx tsc --noEmit` passe dans `studio/` et les tests Studio existants passent — vérifié par les commandes
-- [ ] 11.2 `game-5poi.json` passe toujours les couches 1+2 et la fixture neutre reste rejouable en un clic — vérifié de bout en bout
-- [ ] 11.3 Revue croisée avec `studio-layout-revamp` : aucun conflit sur le découpage (contenu vs enveloppe) — vérifié par relecture conjointe des deux changes
+- [x] 11.1 `npx tsc --noEmit` passe dans `studio/` et les tests Studio existants passent — vérifié par les commandes
+- [x] 11.2 `game-5poi.json` passe toujours les couches 1+2 et la fixture neutre reste rejouable en un clic — vérifié de bout en bout
+- [x] 11.3 Revue croisée avec `studio-layout-revamp` : aucun conflit sur le découpage (contenu vs enveloppe) — vérifié par relecture conjointe des deux changes

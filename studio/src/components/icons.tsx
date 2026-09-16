@@ -241,8 +241,7 @@ export function Icon({
       strokeLinejoin="round"
       aria-hidden="true"
       focusable="false"
-      className={className}
-      style={{ flex: "none", verticalAlign: "-3px" }}
+className={`${className ?? ""} shrink-0`} style={{ verticalAlign: "-3px" }}
     >
       {PATHS[name]}
     </svg>

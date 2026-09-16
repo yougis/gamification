@@ -43,22 +43,11 @@ export default function Splitter({
         e.preventDefault();
         onFin?.();
       }}
-      style={{
-        flex: "0 0 auto",
-        width: 16,
-        minHeight: 44,
-        alignSelf: "stretch",
-        cursor: "col-resize",
-        touchAction: "none",
-        borderRadius: 6,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-      onMouseEnter={(e) => { e.currentTarget.style.background = "var(--surface-3)"; }}
-      onMouseLeave={(e) => { if (!trace.current.actif) e.currentTarget.style.background = "transparent"; }}
-    >
-      <span aria-hidden="true" style={{ width: 3, height: 40, borderRadius: 2, background: "var(--line-forte)" }} />
+className="shrink-0 grow-0 w-4 min-h-11 self-stretch cursor-col-resize touch-manipulation rounded-md flex items-center justify-center"
+       onMouseEnter={(e) => { e.currentTarget.style.background = "var(--surface-3)"; }}
+       onMouseLeave={(e) => { if (!trace.current.actif) e.currentTarget.style.background = "transparent"; }}
+     >
+       <span aria-hidden="true" className="rounded-sm" style={{ width: 3, height: 40, background: "var(--line-forte)" }} />
     </div>
   );
 }

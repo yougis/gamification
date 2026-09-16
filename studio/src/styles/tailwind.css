@@ -1,2 +1,37 @@
 @import 'tailwindcss' source(none);
 @source '../**/*.{js,ts,jsx,tsx}';
+
+@theme {
+  --color-canvas: #08090b;
+  --color-panel: #111318;
+  --color-pane2: #181c24;
+  --color-rule: #1e2228;
+  --color-neon: #00e5ff;
+  --color-caution: #f59e0b;
+  --color-pass: #10b981;
+  --color-fail: #ef4444;
+  --color-snow: #e8eaed;
+  --color-fog: #6b7280;
+  --color-dim: #374151;
+  --color-accent: #00e5ff;
+  --color-accent-fonce: #00b8d4;
+  --color-accent-douce: #00e5ff15;
+  --color-tirage: #5f3dc4;
+  --color-tirage-douce: #5f3dc415;
+  --color-fin: #8a5a00;
+  --color-fin-douce: #8a5a0015;
+  --color-alerte: #b42318;
+  --color-alerte-douce: #b4231815;
+  --color-line: #1e2228;
+  --color-line-forte: #2a3040;
+  --color-focus: #0b5fff;
+  --color-surface: #111318;
+  --color-surface-2: #08090b;
+  --color-surface-3: #181c24;
+
+  --font-display: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  --radius-s: 6px;
+  --radius-m: 10px;
+  --radius-l: 14px;
+}

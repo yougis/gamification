@@ -143,6 +143,109 @@ export function addSecoursCode(game: Game, nodeId: string): Game {
     return { ...game, nodes };
 }
 
+// --- Node CRUD MCP operations (change studio-node-crud) ---
+
+/** Supprime un noeud et nettoie toutes les references qui pointaient vers lui. */
+export function removeNode(game: Game, nodeId: string): Game {
+  const target = game.nodes.find((n) => n.id === nodeId);
+  if (!target) return game;
+  // Refus si c'est le seul isEnding
+  if (target.isEnding) {
+    const endings = game.nodes.filter((n) => n.isEnding);
+    if (endings.length <= 1) {
+      throw new Error("Impossible de supprimer le seul noeud de fin du jeu");
+    }
+  }
+  const nodeIds = new Set(game.nodes.map((n) => n.id));
+  const remaining = game.nodes.filter((n) => n.id !== nodeId);
+  // Nettoyage des references dans les autres noeuds
+  const cleaned = remaining.map((n) => {
+    // Conditions
+    const requires = n.activation.requires
+      .filter((c) => {
+        if (c.type === "NODE_COMPLETED" && c.nodeId === nodeId) return false;
+        if (c.type === "POOL_DRAWN" && c.poolNodeId === nodeId) return false;
+        if (c.type === "TIMER" && c.anchorNodeId === nodeId) return false;
+        return true;
+      });
+    // Effects
+    const effects = (n.effects ?? []).filter((e) => {
+      if ((e.type === "REVEAL_NODE" || e.type === "UNLOCK_NODE") && e.nodeId === nodeId) return false;
+      return true;
+    });
+    // Discovery sourceNode
+    const discovery = n.discovery?.sourceNode === nodeId
+      ? { ...n.discovery, sourceNode: undefined as string | undefined }
+      : n.discovery;
+    return {
+      ...n,
+      activation: { ...n.activation, requires },
+      effects: effects.length > 0 ? effects : n.effects,
+      discovery,
+    };
+  });
+  return { ...game, nodes: cleaned };
+}
+
+/** Renomme un noeud et propage le changement dans toutes les references. */
+export function renameNode(game: Game, oldId: string, newId: string): Game {
+  if (!newId || !newId.trim()) throw new Error("L'ID ne peut pas etre vide");
+  if (oldId === newId) return game;
+  if (game.nodes.some((n) => n.id === newId)) {
+    throw new Error(`Cet ID est deja utilise : ${newId}`);
+  }
+  if (!game.nodes.some((n) => n.id === oldId)) {
+    throw new Error(`Noeud inexistant : ${oldId}`);
+  }
+  const nodes = game.nodes.map((n) => {
+    // Le noeud cible : changer son id
+    if (n.id === oldId) return { ...n, id: newId };
+    // Les autres noeuds : propager la reference
+    const requires = n.activation.requires.map((c) => {
+      if (c.type === "NODE_COMPLETED" && c.nodeId === oldId) return { ...c, nodeId: newId };
+      if (c.type === "POOL_DRAWN" && c.poolNodeId === oldId) return { ...c, poolNodeId: newId };
+      if (c.type === "TIMER" && c.anchorNodeId === oldId) return { ...c, anchorNodeId: newId };
+      return c;
+    });
+    const effects = (n.effects ?? []).map((e) => {
+      if ((e.type === "REVEAL_NODE" || e.type === "UNLOCK_NODE") && e.nodeId === oldId) return { ...e, nodeId: newId };
+      return e;
+    });
+    const discovery = n.discovery?.sourceNode === oldId
+      ? { ...n.discovery, sourceNode: newId }
+      : n.discovery;
+    const randomPool = n.randomPool
+      ? { ...n.randomPool, candidates: n.randomPool.candidates.map((c) => c === oldId ? newId : c) }
+      : n.randomPool;
+    return {
+      ...n,
+      activation: { ...n.activation, requires },
+      effects: effects.length > 0 ? effects : n.effects,
+      discovery,
+      randomPool,
+    };
+  });
+  return { ...game, nodes };
+}
+
+/** Duplique un noeud (sans ses aretes) avec un ID genere. */
+export function duplicateNode(game: Game, nodeId: string): Game {
+  const source = game.nodes.find((n) => n.id === nodeId);
+  if (!source) throw new Error(`Noeud inexistant : ${nodeId}`);
+  // Generer un ID unique
+  let newId = `${nodeId}-copy`;
+  let counter = 2;
+  while (game.nodes.some((n) => n.id === newId)) {
+    newId = `${nodeId}-copy-${counter}`;
+    counter++;
+  }
+  const clone: GameNode = {
+    ...JSON.parse(JSON.stringify(source)),
+    id: newId,
+  };
+  return { ...game, nodes: [...game.nodes, clone] };
+}
+
 // --- Progression MCP operations (tache 5.1) ---
 export function setDiscovery(game: Game, nodeId: string, discovery: Discovery): Game {
   return {

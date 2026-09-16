@@ -53,6 +53,8 @@ projet :
   geoplay-studio-authoring, geoplay-runtime-engine, geoplay-module-registry,
   geoplay-offline-pack) sont les outils de l'agent. Ils ne sont pas modifies
   mais leur integration est documentee dans les profils de documentation.
+- Pour le developpement des runtime et modules IOS et Android approche "base Kotlin 
+  + modules natifs ciblés" (kmp-native-boundary) est l'outil de l'agent
 
 ## Profils de parties prenantes
 
@@ -98,4 +100,5 @@ Les skills suivants sont disponibles pour l'agent :
 - `openspec-sync-specs` — Synchroniser les specs
 - `openspec-update-change` — Mettre a jour un change
 - `openspec-explore` — Explorer des ideas
+- `kmp-native-boundary` - développer le  runtime Player (android et Ios) avec de modules parfois natifs.
 - `impeccable` — Amelioration d'interface

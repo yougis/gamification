@@ -1,94 +1,91 @@
-/* Thème Studio — sobre, clair, lisible en plein soleil.
-   Sobre = neutres + un seul accent vert ; jamais de couleur seule
+/* Thème Studio — sombre, sobre, lisible en plein soleil.
+   Sobre = neutres + un seul accent cyan ; jamais de couleur seule
    (toujours icône + libellé + texte). Cibles >= 44px, focus visible. */
 :root {
-   --couleur-accent: #1a7f37;
-   --couleur-accent-fonce: #116329;
-   --couleur-accent-douce: #dff3e5;
-   --couleur-alerte: #b42318;
-   --couleur-alerte-douce: #fdecea;
-   --couleur-tirage: #5f3dc4;
-   --couleur-tirage-douce: #ede9fe;
-   --couleur-fin: #8a5a00;
-   --couleur-fin-douce: #fff4d6;
+    --couleur-accent: #00e5ff;
+    --couleur-accent-fonce: #00b8d4;
+    --couleur-accent-douce: #00e5ff15;
+    --couleur-alerte: #f59e0b;
+    --couleur-alerte-douce: #f59e0b15;
+    --couleur-tirage: #5f3dc4;
+    --couleur-tirage-douce: #5f3dc415;
+    --couleur-fin: #8a5a00;
+    --couleur-fin-douce: #8a5a0015;
 
-   --surface: #ffffff;
-   --surface-2: #f2f4f6;
-   --surface-3: #e8ebee;
-   --ink: #13171c;
-   --ink-2: #4b5563;
-   --ink-3: #6b7280;
-   --line: #d7dce1;
-   --line-forte: #b9c1ca;
-   --focus: #0b5fff;
+    --surface: #111318;
+    --surface-2: #08090b;
+    --surface-3: #181c24;
+    --ink: #e8eaed;
+    --ink-2: #c0c6d0;
+    --ink-3: #6b7280;
+    --line: #1e2228;
+    --line-forte: #2a3040;
+    --focus: #0b5fff;
 
-   --rayon-s: 6px;
-   --rayon-m: 10px;
-   --rayon-l: 14px;
-   --ombre: 0 1px 2px rgb(19 23 28 / 0.08), 0 4px 14px rgb(19 23 28 / 0.08);
-   --ombre-forte: 0 2px 4px rgb(19 23 28 / 0.12), 0 10px 28px rgb(19 23 28 / 0.14);
+    --rayon-s: 6px;
+    --rayon-m: 10px;
+    --rayon-l: 14px;
+    --ombre: 0 1px 2px rgb(0 0 0 / 0.3), 0 4px 14px rgb(0 0 0 / 0.3);
+    --ombre-forte: 0 2px 4px rgb(0 0 0 / 0.4), 0 10px 28px rgb(0 0 0 / 0.4);
 
-   /* Typographie */
-   --font-display: 28px;
-   --font-title: 18px;
-   --font-text: 14px;
-   --font-micro: 12px;
-   --font-studio: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
-   --font-line-height: 1.5;
+    /* Typographie */
+    --font-display: 28px;
+    --font-title: 18px;
+    --font-text: 14px;
+    --font-micro: 12px;
+    --font-studio: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+    --font-line-height: 1.5;
 
-   /* Densité */
-   --space-xs: 4px;
-   --space-sm: 8px;
-   --space-md: 16px;
-   --space-lg: 24px;
-   --space-xl: 32px;
-   --min-touch: 44px;
+    /* Densité */
+    --space-xs: 4px;
+    --space-sm: 8px;
+    --space-md: 16px;
+    --space-lg: 24px;
+    --space-xl: 32px;
+    --min-touch: 44px;
 
-   /* Statuts */
-   --status-draft: var(--ink-3);
-   --status-draft-bg: var(--surface-2);
-   --status-reviewed: var(--couleur-tirage);
-   --status-reviewed-bg: var(--couleur-tirage-douce);
-   --status-published: var(--couleur-accent);
-   --status-published-bg: var(--couleur-accent-douce);
+    /* Statuts */
+    --status-draft: var(--ink-3);
+    --status-draft-bg: var(--surface-3);
+    --status-reviewed: var(--couleur-accent);
+    --status-reviewed-bg: var(--couleur-accent-douce);
+    --status-published: var(--couleur-tirage);
+    --status-published-bg: var(--couleur-tirage-douce);
 }
 
 /* Thème Victorien — Sherlock Holmes : burgundy, or, sépia. */
 .theme-victorian {
-   --couleur-accent: #8B0000;
-   --couleur-accent-fonce: #5C0000;
-   --couleur-accent-douce: #ffd6d6;
-   --couleur-alerte: #8a5a00;
-   --couleur-alerte-douce: #fff4d6;
-   --couleur-tirage: #DAA520;
-   --couleur-tirage-douce: #fff8dc;
-   --couleur-fin: #8B0000;
-   --couleur-fin-douce: #ffd6d6;
-
-   --surface: #faf5eb;
-   --surface-2: #f0e8d8;
-   --surface-3: #e5d9c4;
-   --ink: #2c1810;
-   --ink-2: #6b4423;
-   --ink-3: #8b6b4a;
-   --line: #c4a882;
-   --line-forte: #a08060;
-
-   --font-display: 26px;
-   --font-title: 17px;
-   --font-text: 13px;
-   --font-micro: 11px;
-   --font-studio: Georgia, "Times New Roman", serif;
-   --font-mono: "SF Mono", Menlo, Consolas, monospace;
-   --font-line-height: 1.6;
-
-   --status-draft: var(--ink-3);
-   --status-draft-bg: var(--surface-2);
-   --status-reviewed: var(--couleur-tirage);
-   --status-reviewed-bg: var(--couleur-tirage-douce);
-   --status-published: var(--couleur-accent);
-   --status-published-bg: var(--couleur-accent-douce);
+    --couleur-accent: #8B0000;
+    --couleur-accent-fonce: #5C0000;
+    --couleur-accent-douce: #ffd6d6;
+    --couleur-alerte: #8a5a00;
+    --couleur-alerte-douce: #fff4d6;
+    --couleur-tirage: #DAA520;
+    --couleur-tirage-douce: #fff8dc;
+    --couleur-fin: #8B0000;
+    --couleur-fin-douce: #ffd6d6;
+    --surface: #faf5eb;
+    --surface-2: #f0e8d8;
+    --surface-3: #e5d9c4;
+    --ink: #2c1810;
+    --ink-2: #6b4423;
+    --ink-3: #8b6b4a;
+    --line: #c4a882;
+    --line-forte: #a08060;
+    --font-display: 26px;
+    --font-title: 17px;
+    --font-text: 13px;
+    --font-micro: 11px;
+    --font-studio: Georgia, "Times New Roman", serif;
+    --font-mono: "SF Mono", Menlo, Consolas, monospace;
+    --font-line-height: 1.6;
+    --status-draft: var(--ink-3);
+    --status-draft-bg: var(--surface-2);
+    --status-reviewed: var(--couleur-tirage);
+    --status-reviewed-bg: var(--couleur-tirage-douce);
+    --status-published: var(--couleur-accent);
+    --status-published-bg: var(--couleur-accent-douce);
 }
 
 html {
@@ -96,12 +93,12 @@ html {
 }
 
 body {
-   font-family: var(--font-studio);
-   font-size: var(--font-text);
-   line-height: var(--font-line-height);
-   background: var(--surface-2);
-   color: var(--ink);
-   font-variant-numeric: tabular-nums;
+    font-family: var(--font-studio);
+    font-size: var(--font-micro);
+    line-height: var(--font-line-height);
+    background: var(--surface-2);
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
 }
 
 ::selection {
@@ -132,157 +129,161 @@ button {
 
 /* Boutons sobres : une seule forme, un seul vocabulaire. */
 .btn {
-   display: inline-flex;
-   align-items: center;
-   gap: var(--space-sm);
-   min-height: var(--min-touch);
-   padding: 0 var(--space-md);
-   border: 1px solid var(--line-forte);
-   border-radius: var(--rayon-m);
-   background: var(--surface);
-   color: var(--ink);
-   font-weight: 600;
-   line-height: var(--font-line-height);
-   cursor: pointer;
-   white-space: nowrap;
-   font-size: var(--font-text);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-sm);
+    min-height: var(--min-touch);
+    padding: 0 var(--space-md);
+    border: 1px solid var(--line-forte);
+    border-radius: var(--rayon-m);
+    background: var(--surface-3);
+    color: var(--ink-2);
+    font-weight: 600;
+    line-height: var(--font-line-height);
+    cursor: pointer;
+    white-space: nowrap;
+    font-size: var(--font-micro);
 }
 .btn:hover {
-   background: var(--surface-2);
-   border-color: var(--ink-3);
+    background: var(--surface);
+    border-color: var(--ink);
+    color: var(--ink);
 }
 .btn:active {
-   background: var(--surface-3);
+    background: var(--surface-2);
 }
 .btn:disabled {
-   opacity: 0.55;
-   cursor: not-allowed;
+    opacity: 0.55;
+    cursor: not-allowed;
 }
 
 .btn-primaire {
-   display: inline-flex;
-   align-items: center;
-   gap: var(--space-sm);
-   min-height: var(--min-touch);
-   padding: 0 var(--space-md);
-   background: var(--couleur-accent);
-   color: #fff;
-   font-weight: 700;
-   border: 1px solid var(--couleur-accent-fonce);
-   border-radius: var(--rayon-m);
-   cursor: pointer;
-   white-space: nowrap;
-   font-size: var(--font-text);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-sm);
+    min-height: var(--min-touch);
+    padding: 0 var(--space-md);
+    background: var(--couleur-accent);
+    color: var(--surface-2);
+    font-weight: 700;
+    border: 1px solid var(--couleur-accent-fonce);
+    border-radius: var(--rayon-m);
+    cursor: pointer;
+    white-space: nowrap;
+    font-size: var(--font-micro);
 }
 .btn-primaire:hover {
-   background: var(--couleur-accent-fonce);
+    background: var(--couleur-accent-fonce);
 }
 .btn-primaire:disabled {
-   background: #8aa895;
-   border-color: #8aa895;
-   cursor: not-allowed;
+    background: var(--ink-3);
+    border-color: var(--ink-3);
+    cursor: not-allowed;
 }
 
 .btn-danger {
-   display: inline-flex;
-   align-items: center;
-   gap: var(--space-sm);
-   min-height: var(--min-touch);
-   padding: 0 var(--space-sm);
-   border-radius: var(--rayon-m);
-   border: 1px solid var(--couleur-alerte);
-   background: var(--surface);
-   color: var(--couleur-alerte);
-   font-weight: 600;
-   cursor: pointer;
-   font-size: var(--font-text);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-sm);
+    min-height: var(--min-touch);
+    padding: 0 var(--space-sm);
+    border-radius: var(--rayon-m);
+    border: 1px solid var(--couleur-alerte);
+    background: transparent;
+    color: var(--couleur-alerte);
+    font-weight: 600;
+    cursor: pointer;
+    font-size: var(--font-micro);
+}
+.btn-danger:hover {
+    background: var(--couleur-alerte-douce);
 }
 
 .champ {
-   min-height: var(--min-touch);
-   border: 1px solid var(--line-forte);
-   border-radius: 8px;
-   background: var(--surface);
-   color: var(--ink);
-   padding: var(--space-xs) var(--space-sm);
-   font: inherit;
-   font-size: var(--font-text);
+    min-height: var(--min-touch);
+    border: 1px solid var(--line-forte);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--ink);
+    padding: var(--space-xs) var(--space-sm);
+    font: inherit;
+    font-size: var(--font-micro);
 }
 .champ::placeholder {
-   color: var(--ink-2);
-   opacity: 1;
+    color: var(--ink-3);
+    opacity: 1;
 }
 select.champ {
-   padding-right: 28px;
+    padding-right: 28px;
 }
 
 /* Pastilles sobres : couleur + texte, jamais couleur seule. */
 .puce {
-   display: inline-flex;
-   align-items: center;
-   gap: 6px;
-   min-height: var(--min-touch);
-   padding: var(--space-xs) var(--space-sm);
-   border-radius: 999px;
-   border: 1px solid var(--line);
-   background: var(--surface);
-   color: var(--ink-2);
-   font-size: var(--font-micro);
-   font-weight: 600;
-   line-height: var(--font-line-height);
-   white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: var(--min-touch);
+    padding: var(--space-xs) var(--space-sm);
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--surface-3);
+    color: var(--ink-2);
+    font-size: var(--font-micro);
+    font-weight: 600;
+    line-height: var(--font-line-height);
+    white-space: nowrap;
 }
 .puce .point {
-   width: 8px;
-   height: 8px;
-   border-radius: 999px;
-   background: currentcolor;
-   flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: currentcolor;
+    flex: none;
 }
 .puce-ok {
-   background: var(--couleur-accent-douce);
-   border-color: var(--couleur-accent);
-   color: var(--couleur-accent-fonce);
+    background: var(--couleur-accent-douce);
+    border-color: var(--couleur-accent);
+    color: var(--couleur-accent);
 }
 .puce-erreur {
-   background: var(--couleur-alerte-douce);
-   border-color: var(--couleur-alerte);
-   color: var(--couleur-alerte);
+    background: var(--couleur-alerte-douce);
+    border-color: var(--couleur-alerte);
+    color: var(--couleur-alerte);
 }
 .puce-tirage {
-   background: var(--couleur-tirage-douce);
-   border-color: var(--couleur-tirage);
-   color: var(--couleur-tirage);
+    background: var(--couleur-tirage-douce);
+    border-color: var(--couleur-tirage);
+    color: var(--couleur-tirage);
 }
 .puce-fin {
-   background: var(--couleur-fin-douce);
-   border-color: var(--couleur-fin);
-   color: var(--couleur-fin);
+    background: var(--couleur-fin-douce);
+    border-color: var(--couleur-fin);
+    color: var(--couleur-fin);
 }
 /* Statuts de relecture */
 .puce-statut-draft {
-   background: var(--status-draft-bg);
-   border-color: var(--status-draft);
-   color: var(--status-draft);
+    background: var(--status-draft-bg);
+    border-color: var(--status-draft);
+    color: var(--status-draft);
 }
 .puce-statut-reviewed {
-   background: var(--status-reviewed-bg);
-   border-color: var(--status-reviewed);
-   color: var(--status-reviewed);
+    background: var(--status-reviewed-bg);
+    border-color: var(--status-reviewed);
+    color: var(--status-reviewed);
 }
 .puce-statut-published {
-   background: var(--status-published-bg);
-   border-color: var(--status-published);
-   color: var(--status-published);
+    background: var(--status-published-bg);
+    border-color: var(--status-published);
+    color: var(--status-published);
 }
 
 /* Cartes sobres : un seul niveau, pas de cartes imbriquées. */
 .carte {
-   background: var(--surface);
-   border: 1px solid var(--line);
-   border-radius: var(--rayon-l);
-   box-shadow: var(--ombre);
-   padding: var(--space-md);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--rayon-l);
+    box-shadow: var(--ombre);
+    padding: var(--space-md);
 }
 
 /* Scrollbars discrètes, caret et sélection thématisés. */
@@ -296,61 +297,40 @@ select {
   caret-color: var(--couleur-accent-fonce);
 }
 
-/* ReactFlow sobre : nœuds lisibles, arêtes fines, focus clavier. */
-.studio-flow .react-flow__node {
-   border-radius: var(--rayon-l);
-   font-size: var(--font-text);
+/* ReactFlow : chrome Studio (contrôles, minimap, fond), nœuds et arêtes au rendu par défaut. */
+.studio-flow .react-flow__controls {
+    border-radius: var(--rayon-m);
+    overflow: hidden;
+    box-shadow: var(--ombre);
+    background: var(--surface);
+    border: 1px solid var(--line);
 }
-.studio-flow .react-flow__edge-text {
-   font-size: var(--font-micro);
-   font-weight: 600;
-   font-family: var(--font-mono);
+.studio-flow .react-flow__minimap {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--rayon-m);
+}
+.studio-flow .react-flow__attribution {
+    display: none;
+}
+.studio-flow .react-flow__background {
+    background: var(--surface-2);
 }
 .studio-flow .react-flow__controls {
-   border-radius: var(--rayon-m);
-   overflow: hidden;
-   box-shadow: var(--ombre);
+    border-radius: var(--rayon-m);
+    overflow: hidden;
+    box-shadow: var(--ombre);
 }
-
-/* Nœuds ReactFlow : rail par type via borderLeft, statut visuel par couleur de fond. */
-.studio-flow .react-flow__node {
-   position: relative;
+/* Arêtes ReactFlow dans le thème sombre */
+.studio-flow .react-flow__edge-path {
+    stroke: var(--line-forte);
 }
-.studio-flow .react-flow__edge-text {
-   font-size: var(--font-micro);
-   font-weight: 600;
-   font-family: var(--font-mono);
+.studio-flow .react-flow__edge-selected {
+    stroke: var(--couleur-accent);
 }
-.studio-flow .react-flow__controls {
-   border-radius: var(--rayon-m);
-   overflow: hidden;
-   box-shadow: var(--ombre);
-}
-.studio-flow .react-flow__node .statut-puce {
-   position: absolute;
-   top: 4px;
-   right: 4px;
-   width: 8px;
-   height: 8px;
-   border-radius: 999px;
-   border: 1px solid var(--line);
-}
-.studio-flow .react-flow__node .statut-puce[data-etat="draft"] { background: #6b7280; }
-.studio-flow .react-flow__node .statut-puce[data-etat="reviewed"] { background: #5f3dc4; }
-.studio-flow .react-flow__node .statut-puce[data-etat="published"] { background: #1a7f37; }
-.studio-flow .react-flow__node .statut-puce::after {
-   content: attr(data-etat);
-   position: absolute;
-   width: 1px;
-   height: 1px;
-   overflow: hidden;
-   clip: rect(0,0,0,0);
-   white-space: nowrap;
-}
-
 /* Étapes du workflow : l'étape courante se lit au texte + anneau, pas à la couleur. */
 .etape-courante {
-   box-shadow: 0 0 0 3px var(--surface), 0 0 0 5px var(--focus);
+    box-shadow: 0 0 0 3px var(--surface), 0 0 0 5px var(--focus);
 }
 
 @media (prefers-reduced-motion: reduce) {

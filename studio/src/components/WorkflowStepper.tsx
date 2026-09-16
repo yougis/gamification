@@ -33,7 +33,7 @@ export function WorkflowStepper({
 }) {
   return (
     <nav aria-label="Étapes de création" className="w-full">
-      <ol className="flex items-stretch gap-1 overflow-x-auto py-1" style={{ listStyle: "none", margin: 0, paddingLeft: 0 }}>
+      <ol className="flex items-stretch gap-1 overflow-x-auto py-1 list-none m-0 pl-0">
         {ETAPES.map((e, i) => {
           const estCourante = e.id === courant;
           const estFaite = fait[e.id];
@@ -42,59 +42,44 @@ export function WorkflowStepper({
           if (e.id === 3 && nbBrouillons > 0) badge = `${nbBrouillons} brouillon${nbBrouillons > 1 ? "s" : ""}`;
           if (e.id === 4 && nbErreurs > 0) badge = `${nbErreurs} problème${nbErreurs > 1 ? "s" : ""}`;
           return (
-            <li key={e.id} className="flex items-stretch" style={{ flex: "1 1 0", minWidth: 132 }}>
+            <li key={e.id} className="flex items-stretch flex-1 min-w-[132px]">
               <button
                 type="button"
                 onClick={() => onAller(e.id)}
                 aria-current={estCourante ? "step" : undefined}
                 title={`${e.nom} — ${e.aide}`}
-                className={estCourante ? "etape-courante" : undefined}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  width: "100%",
-                  minHeight: 48,
-                  padding: "6px 10px",
-                  borderRadius: 10,
-                  border: estCourante ? "2px solid var(--focus)" : "1px solid var(--line)",
-                  background: estCourante ? "var(--surface)" : "var(--surface-2)",
-                  fontWeight: estCourante ? 700 : 600,
-                  cursor: "pointer",
-                  textAlign: "left",
-                }}
+className={`${estCourante ? "etape-courante" : ""} flex items-center gap-2 w-full min-h-12 rounded-lg cursor-pointer text-left font-semibold px-2.5 py-1.5`}
+                 style={{
+                   border: estCourante ? "2px solid var(--focus)" : "1px solid var(--line)",
+                   background: estCourante ? "var(--surface)" : "var(--surface-2)",
+                   fontWeight: estCourante ? 700 : 600,
+                 }}
               >
-                <span
-                  aria-hidden="true"
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    width: 28,
-                    height: 28,
-                    borderRadius: 999,
-                    border: "1px solid var(--line-forte)",
-                    background: estFaite ? "var(--couleur-accent-douce)" : "var(--surface)",
-                    color: estFaite ? "var(--couleur-accent-fonce)" : "var(--ink-2)",
-                    fontWeight: 700,
-                    fontSize: 13,
-                    flex: "none",
-                  }}
-                >
+<span
+                   aria-hidden="true"
+                   className="inline-flex items-center justify-center rounded-full shrink-0 font-bold text-[9px]"
+                   style={{
+                     width: 28,
+                     height: 28,
+                     border: "1px solid var(--line-forte)",
+                     background: estFaite ? "var(--couleur-accent-douce)" : "var(--surface)",
+                     color: estFaite ? "var(--couleur-accent-fonce)" : "var(--ink-2)",
+                   }}
+                 >
                   {estFaite && !estCourante ? <Icon name="ok" size={15} /> : <span>{i + 1}</span>}
                 </span>
-                <span style={{ minWidth: 0 }}>
-                  <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
-                    <Icon name={e.icone} size={15} />
-                    {e.nom}
-                  </span>
-                  <span style={{ display: "block", fontSize: 11, color: bloque || badge ? "var(--couleur-alerte)" : "var(--ink-2)", fontWeight: 400 }}>
-                    {bloque ? "Bloqué : corriger d'abord" : (badge ?? e.aide)}
-                  </span>
-                </span>
+<span className="min-w-0">
+                   <span className="flex items-center gap-1.5 text-[9px]">
+                     <Icon name={e.icone} size={15} />
+                     {e.nom}
+                   </span>
+                   <span className="block text-[11px] font-normal" style={{ color: bloque || badge ? "var(--couleur-alerte)" : "var(--ink-2)" }}>
+                     {bloque ? "Bloqué : corriger d'abord" : (badge ?? e.aide)}
+                   </span>
+                 </span>
               </button>
               {i < ETAPES.length - 1 && (
-                <span aria-hidden="true" style={{ alignSelf: "center", padding: "0 2px", color: "var(--line-forte)", display: "inline-flex" }}>
+                <span aria-hidden="true" className="self-center px-0.5 text-forte inline-flex">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                     <path d="M9 5.5 15.5 12 9 18.5" />
                   </svg>

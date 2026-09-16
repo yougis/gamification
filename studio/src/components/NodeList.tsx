@@ -61,13 +61,13 @@ export function NodeList({
 
   return (
     <section aria-label="Liste des étapes" className="carte flex min-h-0 flex-1 flex-col overflow-hidden">
-      <header className="flex flex-col gap-2 border-b p-2" style={{ borderColor: "var(--line)" }}>
+      <header className="flex flex-col gap-2 border-b border-rule p-2">
         <div className="flex items-center gap-2">
           <Icon name="liste" size={16} />
-          <h2 className="text-sm font-bold">Étapes ({elements.length}/{game.nodes.length})</h2>
+          <h2 className="text-[9px] font-bold">Étapes ({elements.length}/{game.nodes.length})</h2>
           <span className="flex-1" />
           {!lectureSeule && (
-            <span className="text-xs" style={{ color: "var(--ink-2)" }}>
+            <span className="text-[8px] text-fog">
               Clic = modifier à droite
             </span>
           )}
@@ -80,8 +80,7 @@ export function NodeList({
             <span className="sr-only">Rechercher une étape</span>
             <Icon name="recherche" size={15} />
             <input
-              className="champ min-w-0 flex-1"
-              style={{ minHeight: 40 }}
+className="champ min-w-0 flex-1 min-h-10"
               value={recherche}
               onChange={(e) => setRecherche(e.target.value)}
               placeholder="Rechercher (nom, quiz, lieu…)"
@@ -90,7 +89,7 @@ export function NodeList({
           </label>
           <label>
             <span className="sr-only">Filtrer la liste</span>
-            <select className="champ" style={{ minHeight: 40 }} value={filtre} onChange={(e) => setFiltre(e.target.value as FiltreListe)}>
+            <select className="champ min-h-10" value={filtre} onChange={(e) => setFiltre(e.target.value as FiltreListe)}>
               <option value="tous">Toutes</option>
               <option value="etapes">Étapes de jeu</option>
               <option value="tirages">Tirages</option>
@@ -103,9 +102,9 @@ export function NodeList({
       </header>
       <div className="min-h-0 flex-1 overflow-auto p-1" role="listbox" aria-label="Étapes du jeu" aria-activedescendant={sel ? `liste-${sel}` : undefined}>
         {game.nodes.length === 0 && (
-          <div className="p-4 text-sm">
+          <div className="p-4 text-[9px]">
             <p className="font-semibold">Le graphe est vide.</p>
-            <p style={{ color: "var(--ink-2)" }}>
+            <p className="text-fog">
               {lectureSeule
                 ? "Rien à relire pour l'instant."
                 : "Ajoute une Étape, un Lieu GPS, un Tirage ou une Fin depuis la palette, puis relie les étapes entre elles."}
@@ -113,7 +112,7 @@ export function NodeList({
           </div>
         )}
         {game.nodes.length > 0 && elements.length === 0 && (
-          <p className="p-4 text-sm" style={{ color: "var(--ink-2)" }}>
+          <p className="p-4 text-[9px] text-fog">
             Aucune étape ne correspond à « {recherche} ». Essaie un autre mot ou un autre filtre.
           </p>
         )}
@@ -133,50 +132,36 @@ export function NodeList({
               role="option"
               aria-selected={choisi}
               onClick={() => onChoisir(n.id)}
-              className={choisi ? "etape-courante" : undefined}
-              style={{
-                display: "flex",
-                gap: 10,
-                width: "100%",
-                textAlign: "left",
-                alignItems: "flex-start",
-                padding: "10px",
-                margin: "2px 0",
-                borderRadius: 10,
-                border: choisi ? "2px solid var(--focus)" : enErreur ? "1px solid var(--couleur-alerte)" : "1px solid var(--line)",
-                background: choisi ? "var(--surface)" : "var(--surface-2)",
-                cursor: "pointer",
-                minHeight: 56,
-              }}
+className={`${choisi ? "etape-courante" : ""} flex items-start gap-2.5 w-full min-h-14 rounded-lg cursor-pointer text-left p-2.5 my-0.5 font-normal`}
+               style={{
+                 border: choisi ? "2px solid var(--focus)" : enErreur ? "1px solid var(--couleur-alerte)" : "1px solid var(--line)",
+                 background: choisi ? "var(--surface)" : "var(--surface-2)",
+               }}
             >
-              <span
-                aria-hidden="true"
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  width: 36,
-                  height: 36,
-                  borderRadius: 10,
-                  flex: "none",
-                  border: "1px solid var(--line)",
-                  background: n.isEnding
-                    ? "var(--couleur-fin-douce)"
-                    : n.module.type === "RANDOM_POOL"
-                      ? "var(--couleur-tirage-douce)"
-                      : "var(--surface)",
-                  color: n.isEnding
-                    ? "var(--couleur-fin)"
-                    : n.module.type === "RANDOM_POOL"
-                      ? "var(--couleur-tirage)"
-                      : "var(--ink-2)",
-                }}
+<span
+                 aria-hidden="true"
+                 className="inline-flex items-center justify-center rounded-lg shrink-0"
+                 style={{
+                   width: 36,
+                   height: 36,
+                   border: "1px solid var(--line)",
+                   background: n.isEnding
+                     ? "var(--couleur-fin-douce)"
+                     : n.module.type === "RANDOM_POOL"
+                       ? "var(--couleur-tirage-douce)"
+                       : "var(--surface)",
+                   color: n.isEnding
+                     ? "var(--couleur-fin)"
+                     : n.module.type === "RANDOM_POOL"
+                       ? "var(--couleur-tirage)"
+                       : "var(--ink-2)",
+                 }}
               >
                 <Icon name={n.isEnding ? "fin" : (ICONE_TYPE[n.module.type] ?? "etape")} size={18} />
               </span>
-              <span style={{ minWidth: 0, flex: 1 }}>
-                <span style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                  <strong style={{ fontSize: 13 }}>{n.id}</strong>
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-1.5 flex-wrap">
+                  <strong className="text-[9px]">{n.id}</strong>
                   {n.isEnding && (
                     <span className="puce puce-fin">
                       <Icon name="fin" size={12} /> Fin
@@ -198,7 +183,7 @@ export function NodeList({
                     </span>
                   )}
                 </span>
-                <span style={{ display: "block", fontSize: 12, color: "var(--ink-2)", overflow: "hidden", textOverflow: "ellipsis" }}>
+                <span className="block text-[8px] text-fog overflow-hidden text-ellipsis">
                   {MODULES_FR[n.module.type]?.nom ?? n.module.type}
                   {declencheurs ? ` · ${declencheurs}` : ""}
                   {` · ${ETATS_FR[statut] ?? statut}`}
