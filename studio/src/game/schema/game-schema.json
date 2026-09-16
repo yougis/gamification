@@ -61,7 +61,26 @@
             "components": {"type": "object"},
             "media": {"type": "object"},
             "motion": {"type": "object"},
-            "map": {"type": "object"},
+        "map": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "provider": {"type": "string"},
+            "bbox": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "minLat": {"type": "number", "minimum": -90, "maximum": 90},
+                "minLng": {"type": "number", "minimum": -180, "maximum": 180},
+                "maxLat": {"type": "number", "minimum": -90, "maximum": 90},
+                "maxLng": {"type": "number", "minimum": -180, "maximum": 180}
+              }
+            },
+            "minZoom": {"type": "number", "minimum": 0, "maximum": 22},
+            "maxZoom": {"type": "number", "minimum": 0, "maximum": 22},
+            "attribution": {"type": "string"}
+          }
+        },
             "voice": {"type": "object"}
           }
         },
@@ -72,10 +91,49 @@
         "difficulty": {
           "type": "string",
           "enum": ["ENFANT", "FAMILLE", "EXPERT"]
-        }
+        },
+        "indoorPlans": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "name", "floor", "image", "origin", "scale", "sizeMeters"],
+            "additionalProperties": false,
+            "properties": {
+              "id": {"type": "string", "minLength": 1},
+              "name": {"type": "string"},
+              "floor": {"type": "integer"},
+              "image": {"type": "string"},
+              "origin": {
+                "type": "object",
+                "required": ["lat", "lng"],
+                "additionalProperties": false,
+                "properties": {
+                  "lat": {"type": "number", "minimum": -90, "maximum": 90},
+                  "lng": {"type": "number", "minimum": -180, "maximum": 180}
+                }
+              },
+              "scale": {"type": "number", "exclusiveMinimum": 0},
+              "sizeMeters": {
+                "type": "object",
+                "required": ["w", "h"],
+                "additionalProperties": false,
+                "properties": {
+                  "w": {"type": "number", "exclusiveMinimum": 0},
+                  "h": {"type": "number", "exclusiveMinimum": 0}
+                }
+              }
+            }
+          }
+        },
+        "tileStrategy": {
+          "type": "string",
+          "enum": ["fixed", "viewport", "radius", "none"]
+        },
+        "tileRadiusMeters": {"type": "number", "exclusiveMinimum": 0}
       },
       "allOf": [
-        {"if": {"required": ["holdMode"], "properties": {"holdMode": {"enum": ["guidedAccess", "screenPinning", "lockTask"]}}}, "then": {"required": ["holdExit"]}}
+        {"if": {"required": ["holdMode"], "properties": {"holdMode": {"enum": ["guidedAccess", "screenPinning", "lockTask"]}}}, "then": {"required": ["holdExit"]}},
+        {"if": {"required": ["tileStrategy"], "properties": {"tileStrategy": {"const": "radius"}}}, "then": {"required": ["tileRadiusMeters"]}}
       ]
     },
     "nodes": {
@@ -152,10 +210,14 @@
             "mode": {"type": "string", "enum": ["VISIBLE_NOW", "MAP", "ON_COMPLETED", "ON_CLUE", "ON_ITEM", "ON_PUZZLE", "ON_PROXIMITY", "ON_TIME"]},
             "sourceNode": {"type": "string", "minLength": 1},
             "clueId": {"type": "string", "minLength": 1},
+            "itemId": {"type": "string", "minLength": 1},
             "lat": {"type": "number"},
             "lng": {"type": "number"},
             "radiusMeters": {"type": "number", "exclusiveMinimum": 0}
-          }
+          },
+          "allOf": [
+            {"if": {"properties": {"mode": {"const": "ON_ITEM"}}}, "then": {"required": ["itemId"]}}
+          ]
         },
         "effects": {
           "type": "array",
@@ -163,6 +225,16 @@
         "inventoryRef": {
           "type": "array",
           "items": {"type": "string", "minLength": 1}
+        },
+        "position": {
+          "type": "object",
+          "required": ["planId", "x", "y"],
+          "additionalProperties": false,
+          "properties": {
+            "planId": {"type": "string", "minLength": 1},
+            "x": {"type": "number"},
+            "y": {"type": "number"}
+          }
         }
       },
       "allOf": [

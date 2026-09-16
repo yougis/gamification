@@ -143,6 +143,44 @@ export function validateLayer2(game: Game): LayerReport {
     }
   }
 
+  // Task 4.1: global.preset obsolète.
+  const gAny = game.global as Record<string, unknown> | undefined;
+  if (gAny?.preset !== undefined) {
+    errors.push(`C2 global.preset est obsolète, utilisez global.experienceStyle.preset`);
+  }
+
+  // Task 4.2: Exclusion mutuelle map ↔ indoorPlans.
+  const hasMap = gAny?.map && typeof gAny.map === "object" && Object.keys(gAny.map).length > 0;
+  const hasIndoor = Array.isArray(gAny?.indoorPlans) && gAny.indoorPlans.length > 0;
+  if (hasMap && hasIndoor) {
+    errors.push(`C2 global.map et global.indoorPlans sont mutuellement exclusifs`);
+  }
+
+  // Task 4.3: planId validation — tout position.planId doit exister dans indoorPlans.
+  const planIds = new Set<string>(
+    Array.isArray(gAny?.indoorPlans) ? (gAny.indoorPlans as Array<{id: string}>).map((p) => p.id) : [],
+  );
+  for (const n of game.nodes) {
+    if (n.position?.planId && !planIds.has(n.position.planId)) {
+      errors.push(`C2 ${n.id} : position.planId "${n.position.planId}" inexistant dans indoorPlans`);
+    }
+  }
+
+  // Task 4.5: Warning nœud indoor + GEOFENCE.
+  for (const n of game.nodes) {
+    if (n.position) {
+      const hasGEOFENCE = n.activation.requires.some((c) => c.type === "GEOFENCE");
+      if (hasGEOFENCE) {
+        errors.push(`C2 ${n.id} : nœud indoor avec condition GEOFENCE (incohérent, GPS indisponible en intérieur)`);
+      }
+    }
+  }
+
+  // Task 4.7: Warning tileStrategy:none avec global.map présent.
+  if (gAny?.tileStrategy === "none" && hasMap) {
+    errors.push(`C2 global.tileStrategy "none" avec global.map configuré (pas de tuiles affichées)`);
+  }
+
   // Cycles (aretes allowCycle:true ignorees).
   const WHITE = 0, GRAY = 1, BLACK = 2;
   const color = new Map<string, number>();
@@ -263,6 +301,9 @@ export function validateLayer2(game: Game): LayerReport {
       if (c.type === "CLUE_RESOLVED" && c.clueId && !clues.has(c.clueId)) {
         errors.push(`C2 ${n.id} : CLUE_RESOLVED clueId=${c.clueId} inexistant`);
       }
+      if (c.type === "TIMER" && c.anchor === "NODE_COMPLETION" && c.anchorNodeId && !byId.has(c.anchorNodeId)) {
+        errors.push(`C2 ${n.id} : TIMER anchorNodeId=${c.anchorNodeId} inexistant`);
+      }
     }
     if (n.discovery) {
       if (n.discovery.mode === "ON_ITEM" && n.discovery.itemId && !items.has(n.discovery.itemId)) {
@@ -270,6 +311,9 @@ export function validateLayer2(game: Game): LayerReport {
       }
       if (n.discovery.mode === "ON_CLUE" && n.discovery.clueId && !clues.has(n.discovery.clueId)) {
         errors.push(`C2 ${n.id} : discovery ON_CLUE clueId=${n.discovery.clueId} inexistant`);
+      }
+      if (n.discovery.mode === "ON_COMPLETED" && n.discovery.sourceNode && !byId.has(n.discovery.sourceNode)) {
+        errors.push(`C2 ${n.id} : discovery ON_COMPLETED sourceNode=${n.discovery.sourceNode} inexistant`);
       }
       if (n.discovery.mode === "ON_PUZZLE" && n.discovery.sourceNode && !byId.has(n.discovery.sourceNode)) {
         errors.push(`C2 ${n.id} : discovery ON_PUZZLE sourceNode=${n.discovery.sourceNode} inexistant`);

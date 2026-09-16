@@ -4,7 +4,6 @@ import {
   Background,
   Controls,
   MiniMap,
-  Panel,
   applyNodeChanges,
   type Edge,
   type Node,
@@ -16,7 +15,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import { validateGame, deadEnds } from "./game/validate";
 import { evaluate, drawPool, type Sim } from "./game/evaluate";
-import { composeNodes, setActivation, registerAsset, exportPackFull, canExport, addSecoursCode, importGame, addObject, setObjects, setReview, type ManifestFile } from "./game/mcp";
+import { composeNodes, setActivation, registerAsset, exportPackFull, canExport, addSecoursCode, importGame, addObject, setObjects, setReview, removeNode, renameNode, duplicateNode, type ManifestFile } from "./game/mcp";
 import { emptyMeta, type Condition, type Game, type GameNode, type Predicate, type StudioMeta, type ExperienceStyle, type Branding, type GameMode, type Difficulty } from "./game/types";
 import {
   MODULES_FR, CONDITIONS_FR, FAMILLES, PRESETS_RAYON, MILIEUX, ETATS_FR,
@@ -32,7 +31,7 @@ const TYPES_MODULE = ["INFO", ...Object.keys(registre), "RANDOM_POOL"];
 const LAYOUT_DEFAUT = {
   droite: 400,
   liste: 340,
-  repliees: { graphe: false, liste: false, detail: false, essai: false },
+  repliees: { graphe: false, liste: false, detail: false },
 };
 type SectionPliable = keyof typeof LAYOUT_DEFAUT.repliees;
 
@@ -44,12 +43,13 @@ const SECTION_PAR_ETAPE: Record<EtapeWorkflow, string> = {
   2: "detail",
   3: "liste",
   4: "validation",
-  5: "essai",
+  5: "detail",
 };
 import { Icon, type IconName } from "./components/icons";
 import Splitter from "./components/Splitter";
 import { WorkflowStepper, type EtapeWorkflow } from "./components/WorkflowStepper";
 import { NodeList } from "./components/NodeList";
+import MapView from "./components/MapView";
 
 type Snap = { game: Game; meta: StudioMeta };
 // Entrée d'historique : l'instantané + l'opération MCP nommée qui l'a produit
@@ -63,7 +63,14 @@ const jeuVide = (): Game => ({
   minEngineVersion: "1.0.0",
   branding: { name: "", primaryColor: "#1a7f37", secondaryColor: "#5f3dc4", fontFamily: "system-ui" },
   global: { gpsRadiusMeters: 30, navigationModel: "BASIC", presentation: ["MAP"], gameMode: "NORMAL", difficulty: "FAMILLE", experienceStyle: { preset: "BASIC" } },
-  nodes: [],
+  nodes: [
+    {
+      id: "start",
+      module: { type: "INFO", data: {} },
+      activation: { requires: [] },
+      discovery: { mode: "VISIBLE_NOW" },
+    },
+  ],
 });
 
 const init: State = { past: [], present: { game: jeuVide(), meta: emptyMeta() }, future: [] };
@@ -123,7 +130,7 @@ const effectRevealNodes = (n: GameNode): string[] =>
 const iconeCondition = (type: string): "zone" | "apres" | "delai" | "tiree" | "animateur" | "package" | "engrenage" | "detail" =>
   type === "GEOFENCE" ? "zone" : type === "NODE_COMPLETED" ? "apres" : type === "TIMER" ? "delai" : type === "POOL_DRAWN" ? "tiree" : type === "PROXIMITY_MASTER" ? "animateur" : type === "ITEM_REQUIRED" || type === "ITEM_USED" ? "package" : type === "CODE_INPUT" || type === "CLUE_RESOLVED" ? "engrenage" : "detail";
 
-type Onglet = "graphe" | "liste" | "detail" | "essai";
+type Onglet = "graphe" | "liste" | "detail";
 
 // Écrans du Studio (spec studio-onepage-spec) : navigation sur un état partagé,
 // sans état par écran (hors simulateur de Prévisualiser).
@@ -161,6 +168,12 @@ export default function App() {
   const [detailCouches, setDetailCouches] = useState<{ layer: number; errors: string[] }[]>([]);
   // Calque transverse superposé (null = fermé) : i18n ou difficultés/modes.
   const [calque, setCalque] = useState<null | "i18n" | "modes">(null);
+  // Mode carte : true = MapView (geo/indoor), false = graphe ReactFlow
+  const [mapMode, setMapMode] = useState(false);
+  // Thème sombre/clair, persisté dans localStorage.
+  const [theme, setTheme] = useState<"dark" | "light">(() => {
+    try { return (localStorage.getItem("studio-theme") as "dark" | "light") ?? "dark"; } catch { return "dark"; }
+  });
   const [exportOk, setExportOk] = useState(false);
   const [etroite, setEtroite] = useState(false);
   // --- prévisualisation ---
@@ -239,7 +252,6 @@ export default function App() {
           graphe: p.repliees?.graphe === true,
           liste: p.repliees?.liste === true,
           detail: p.repliees?.detail === true,
-          essai: p.repliees?.essai === true,
         },
       };
     } catch {
@@ -253,6 +265,10 @@ export default function App() {
       /* stockage indisponible : mise en page en mémoire seulement */
     }
   }, [mep]);
+  useEffect(() => {
+    document.documentElement.classList.toggle("theme-light", theme === "light");
+    try { localStorage.setItem("studio-theme", theme); } catch { /* ok */ }
+  }, [theme]);
   const basculerSection = (s: SectionPliable) => {
     setMolette(null);
     setMep((m) => ({ ...m, repliees: { ...m.repliees, [s]: !m.repliees[s] } }));
@@ -262,6 +278,8 @@ export default function App() {
   const basculerMolette = (s: SectionPliable) => setMolette((m) => (m === s ? null : s));
   // Instance ReactFlow pour « Recentrer » (fitView à la demande).
   const rfRef = useRef<ReactFlowInstance | null>(null);
+  // Input fichier caché pour l'import par clic (écran Importer).
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   // Section surlignée après un drill-down (anneau temporaire, sans décalage de mise en page).
   const [sectionSurlignee, setSectionSurlignee] = useState<string | null>(null);
   const surlignageTimer = useRef<number | undefined>(undefined);
@@ -336,9 +354,10 @@ export default function App() {
   }, [brut, game.nodes, impasses]);
 
 // Nœuds au rendu par défaut ReactFlow (change studio-graph-selection, option base pure) :
-// boîtes de largeur uniforme, libellés concis, liens bas→haut. Les champs internes
-// ReactFlow (measured, dragging) sont préservés d'un rendu à l'autre via completsRef :
-// sans eux, un drag voit un nœud « non initialisé » (warning 015 + saccades).
+// boîtes de largeur uniforme, libellés concis, liens bas→haut. `measured` est préservé
+// d'un rendu à l'autre via completsRef : sans lui, un drag voit un nœud « non initialisé »
+// (warning 015). `dragging` n'est PAS préservé : ReactFlow le gère en interne et une
+// valeur périmérée dans les props désynchronise le drag.
 const noeudsRef = useRef<Node[]>([]);
 const completsRef = useRef(new Map<string, Node>());
 const noeuds: Node[] = useMemo(
@@ -354,7 +373,7 @@ const noeuds: Node[] = useMemo(
     }));
     const fusionnes = frais.map((f) => {
       const p = completsRef.current.get(f.id);
-      return p ? { ...f, measured: p.measured, dragging: p.dragging } : f;
+      return p?.measured ? { ...f, measured: p.measured } : f;
     });
     noeudsRef.current = fusionnes;
     return fusionnes;
@@ -817,22 +836,44 @@ const noeuds: Node[] = useMemo(
   }, [nbEtapes]);
 
   const zoneGraphe = (
-    <div className="carte studio-flow relative flex-1 overflow-hidden min-h-[320px]">
-      <ReactFlow nodes={noeuds} edges={aretes} onNodesChange={onNodesChange} onConnect={onConnect} onNodeClick={(_, n) => choisirNoeud(n.id)} onSelectionChange={onSelectionChange} multiSelectionKeyCode="Shift" onInit={(instance) => { rfRef.current = instance; }} minZoom={0.3} maxZoom={2} nodesConnectable={!relecture} nodesDraggable={!relecture} elementsSelectable className="w-full h-full">
-        <Background gap={22} />
-        <Controls showInteractive={false} />
-        <MiniMap pannable zoomable className="rounded-lg" aria-label="Mini-carte du graphe" />
-        <Panel position="top-left">
-          <span className="puce">
-            <Icon name="graphe" size={13} /> {nbEtapes} étape{nbEtapes > 1 ? "s" : ""} · glisser pour relier
-          </span>
-          <input className="champ min-h-8 mt-1" value={recherche} size={14}
-            placeholder="Rechercher (nom, type) — Entrée"
-            aria-label="Rechercher un nœud par nom ou type"
-            onChange={(e) => setRecherche(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") allerRecherche(); }} />
-        </Panel>
-      </ReactFlow>
+    <div className="flex flex-col flex-1 overflow-hidden min-h-[320px]">
+      {/* Barre de toggle始终可见 */}
+      <div className="flex items-center gap-2 px-2 py-1 border-b border-rule bg-surface">
+        <button className={`btn text-[8px] ${!mapMode ? "btn-active" : ""}`} onClick={() => setMapMode(false)}
+          title="Graphe d'étapes">
+          <Icon name="graphe" size={15} /> Graphe
+        </button>
+        <button className={`btn text-[8px] ${mapMode ? "btn-active" : ""}`} onClick={() => setMapMode(true)}
+          title="Carte interactive">
+          <Icon name="lieu" size={15} /> Carte
+        </button>
+        {!mapMode && (
+          <>
+            <span className="puce text-[8px]">
+              <Icon name="graphe" size={13} /> {nbEtapes} étape{nbEtapes > 1 ? "s" : ""}
+            </span>
+            <input className="champ min-h-8" value={recherche} size={14}
+              placeholder="Rechercher — Entrée"
+              aria-label="Rechercher un nœud par nom ou type"
+              onChange={(e) => setRecherche(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") allerRecherche(); }} />
+          </>
+        )}
+      </div>
+      {mapMode ? (
+        <div className="carte studio-flow relative flex-1 overflow-hidden">
+          <MapView game={game} sel={sel} onSelect={(id) => choisirNoeud(id)}
+            onGameChange={(updater) => editGame(updater, "setNodePosition")} />
+        </div>
+      ) : (
+        <div className="carte studio-flow relative flex-1 overflow-hidden">
+          <ReactFlow nodes={noeuds} edges={aretes} onNodesChange={onNodesChange} onConnect={onConnect} onNodeClick={(_, n) => choisirNoeud(n.id)} onSelectionChange={onSelectionChange} multiSelectionKeyCode="Shift" onInit={(instance) => { rfRef.current = instance; }} minZoom={0.3} maxZoom={2} nodesConnectable={!relecture} nodesDraggable={!relecture} elementsSelectable className="w-full h-full">
+            <Background gap={22} />
+            <Controls showInteractive={false} />
+            <MiniMap pannable zoomable className="rounded-lg" aria-label="Mini-carte du graphe" />
+          </ReactFlow>
+        </div>
+      )}
     </div>
   );
 
@@ -908,30 +949,11 @@ const noeuds: Node[] = useMemo(
         <button className="btn min-h-8 px-2 text-[8px]" onClick={() => basculerSection("liste")} title="Replier la liste">Replier</button>
         <button className="btn min-h-8 px-2 text-[8px]" onClick={() => { setMep((m) => ({ ...m, liste: 340 })); setMolette(null); }} title="Restaurer la largeur par défaut de la liste">Largeur 340</button>
       </div>
-    )} />
+    )} onSupprimer={!relecture ? (id) => editGame((g) => removeNode(g, id), "removeNode") : undefined} />
   ), [game, st.present.meta.status, impasses, sel, erreursParNoeud, relecture, molette, choisirNoeud]);
   const listeSimple = useMemo(() => (
-    <NodeList game={game} statuts={st.present.meta.status} impasses={impasses} sel={sel} onChoisir={choisirNoeud} erreursParNoeud={erreursParNoeud} lectureSeule={relecture} />
+    <NodeList game={game} statuts={st.present.meta.status} impasses={impasses} sel={sel} onChoisir={choisirNoeud} erreursParNoeud={erreursParNoeud} lectureSeule={relecture} onSupprimer={!relecture ? (id) => editGame((g) => removeNode(g, id), "removeNode") : undefined} />
   ), [game, st.present.meta.status, impasses, sel, erreursParNoeud, relecture, choisirNoeud]);
-
-  const essai = (
-    <aside className="carte min-h-0 overflow-auto p-2 min-w-0" aria-label="Essai et relecture">
-      <ManifestForm manifest={manifest} setManifest={setManifest} lectureSeule={relecture} />
-      <ModePanel game={game} edit={edit} lectureSeule={relecture} />
-      <ExperienceStylePanel game={game} edit={edit} lectureSeule={relecture} />
-      <BrandingPanel game={game} edit={edit} lectureSeule={relecture} />
-      <I18nPanel meta={st.present.meta} edit={edit} lectureSeule={relecture} />
-      <ReviewOverlay game={game} meta={st.present.meta} />
-      <Apercu
-        game={game} sim={sim} setSim={setSim} file={file} activeId={activeId}
-        ouvrir={ouvrir} terminer={terminer} draws={draws} forced={forced} setForced={setForced}
-        log={log} testAll={testAll} testerBranches={testerBranches} sessionId={sessionId}
-        setSessionId={setSessionId} nouvelleSession={nouvelleSession}
-        reculer={reculerSim} nbTermines={Object.keys(done).length}
-        holdSim={holdSim} onHoldLock={forcerHoldLock} onHoldExit={forcerHoldExit}
-      />
-    </aside>
-  );
 
   // Contenus des écrans (spec studio-onepage-spec) : tous branchés sur le même
   // état { game, meta } + historique, sans état par écran (hors simulateur).
@@ -944,8 +966,18 @@ const noeuds: Node[] = useMemo(
             className={`border-2 border-dashed rounded-md flex flex-col items-center justify-center gap-3 py-16 mb-6 transition-colors ${true ? 'border-neon bg-neon/5' : 'border-rule hover:border-fog/40 cursor-pointer'}`}
             onDragOver={(e) => { e.preventDefault(); }}
             onDragLeave={() => {}}
-            onDrop={() => {}}
+            onDrop={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const f = e.dataTransfer.files?.[0];
+              if (f) void importerFichier(f);
+            }}
+            onClick={() => fileInputRef.current?.click()}
+            role="button"
+            aria-label="Déposer ou choisir un fichier JSON de jeu"
           >
+            <input ref={fileInputRef} type="file" accept=".json,application/json" className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) void importerFichier(f); e.target.value = ""; }} />
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 15V3M8.5 11.5 12 15l3.5-3.5"/>
               <path d="M4 17v1a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-1"/>
@@ -1036,51 +1068,19 @@ const noeuds: Node[] = useMemo(
         </div>
       )}
       {ecran === "previsualiser" && (
-        <div className="h-full overflow-y-auto">
-          <div className="p-6 max-w-2xl">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="font-display font-extrabold text-2xl tracking-widest uppercase text-snow">Prévisualiser</h2>
-              <button onClick={() => {}} className="text-[8px] font-mono uppercase tracking-wider px-3 py-1.5 border border-rule rounded text-fog hover:border-neon/40 hover:text-neon transition-colors">↺ Rejouer fixture</button>
-            </div>
-            <div className="bg-panel border border-rule rounded-md p-5 mb-4">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-0.5 h-8 rounded-full" style={{ background: "#00e5ff" }} />
-                <div>
-                  <div className="text-[8px] font-mono uppercase tracking-widest mb-0.5" style={{ color: "#00e5ff" }}>QUIZ</div>
-                  <div className="text-[9px] font-semibold text-snow">Introduction</div>
-                </div>
-                <div className="ml-auto font-mono text-[8px] text-fog">étape 1/4</div>
-                <span className="font-mono text-[8px] uppercase px-1.5 py-0.5 bg-caution/10 border border-caution/20 text-caution rounded-sm">bypass</span>
-              </div>
-              <div className="grid grid-cols-3 gap-3 mb-4">
-                {[
-                  { l: 'Événement', v: 'ACTIVATE' },
-                  { l: 'Entrée',    v: 'OR(START) → true' },
-                  { l: 'Sortie',    v: 'Nœud activé' },
-                ].map(r => (
-                  <div key={r.l}>
-                    <div className="text-[8px] font-mono uppercase tracking-widest text-fog mb-1">{r.l}</div>
-                    <div className="font-mono text-[9px] text-snow bg-canvas rounded px-2 py-1.5">{r.v}</div>
-                  </div>
-                ))}
-              </div>
-              <div className="flex gap-2">
-                <button className="px-4 py-1.5 text-[8px] font-mono uppercase tracking-wider border border-rule rounded text-fog hover:border-fog disabled:opacity-30 transition-colors">← Précédent</button>
-                <button className="px-4 py-1.5 text-[8px] font-mono uppercase tracking-wider border border-neon/30 rounded text-neon hover:bg-neon/10 disabled:opacity-30 transition-colors">Suivant →</button>
-                <button className="ml-auto px-3 py-1.5 text-[8px] font-mono uppercase tracking-wider border border-rule rounded text-fog hover:border-caution/40 hover:text-caution transition-colors">Bypass capteur</button>
-              </div>
-            </div>
-            <div className="text-[8px] font-mono uppercase tracking-widest text-fog mb-2">Trace de simulation</div>
-            <div className="bg-canvas border border-rule rounded p-3 space-y-1">
-              {[1, 2, 3, 4].map((i) => (
-                <div key={i} className={`flex gap-2 font-mono text-[9px] ${i <= 2 ? 'text-snow' : 'text-fog'}`}>
-                  <span className="text-dim select-none w-5 shrink-0">{String(i).padStart(2, '0')}</span>
-                  <span style={{ color: "#00e5ff" }}>[START]</span>
-                  <span>INIT</span>
-                </div>
-              ))}
-            </div>
+        <div className="h-full overflow-y-auto p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="font-display font-extrabold text-2xl tracking-widest uppercase text-snow">Prévisualiser</h2>
+            <button onClick={testerBranches} className="text-[8px] font-mono uppercase tracking-wider px-3 py-1.5 border border-rule rounded text-fog hover:border-neon/40 hover:text-neon transition-colors">↺ Rejouer fixture</button>
           </div>
+          <Apercu
+            game={game} sim={sim} setSim={setSim} file={file} activeId={activeId}
+            ouvrir={ouvrir} terminer={terminer} draws={draws} forced={forced} setForced={setForced}
+            log={log} testAll={testAll} testerBranches={testerBranches} sessionId={sessionId}
+            setSessionId={setSessionId} nouvelleSession={nouvelleSession}
+            reculer={reculerSim} nbTermines={Object.keys(done).length}
+            holdSim={holdSim} onHoldLock={forcerHoldLock} onHoldExit={forcerHoldExit}
+          />
         </div>
       )}
       {ecran === "exporter" && (
@@ -1185,12 +1185,26 @@ const noeuds: Node[] = useMemo(
           {ECRANS.find(n => n.id === ecran)?.nom ?? "Studio"}
         </span>
         <div className="h-3 w-px bg-rule" />
+        <input
+          type="text"
+          value={game.branding?.name ?? ""}
+          onChange={(e) => edit((s) => ({ ...s, branding: { ...s.branding, name: e.target.value } }), "setBranding")}
+          placeholder="Nom du jeu"
+          disabled={relecture}
+          className="bg-transparent border-b border-rule text-snow font-display text-[10px] tracking-wide w-40 outline-none focus:border-snow placeholder:text-fog/40 disabled:opacity-40"
+        />
+        <div className="h-3 w-px bg-rule" />
         <div className="flex items-center gap-4 font-mono text-[8px] text-fog">
           <span><span className="text-snow">{game.nodes.length}</span> nœuds</span>
           <span><span className="text-caution">{nbBrouillons}</span> draft</span>
           <span><span className="text-pass">{game.nodes.length - nbBrouillons}</span> reviewed</span>
         </div>
         <div className="ml-auto flex items-center gap-1.5">
+          <button
+            className="px-2.5 py-1 text-[7px] font-mono uppercase tracking-wider border border-rule rounded text-fog hover:text-snow transition-colors"
+            onClick={() => setTheme((t) => t === "dark" ? "light" : "dark")}
+            aria-label={theme === "dark" ? "Basculer en mode clair" : "Basculer en mode sombre"}
+          ><Icon name={theme === "dark" ? "soleil" : "lune"} size={13} /></button>
           <button className="px-2.5 py-1 text-[7px] font-mono uppercase tracking-wider border border-rule rounded text-fog hover:text-snow transition-colors" disabled={!st.past.length || relecture} onClick={() => dispatch({ t: "undo" })}>Undo</button>
           <button className="px-2.5 py-1 text-[7px] font-mono uppercase tracking-wider border border-rule rounded text-fog hover:text-snow transition-colors" disabled={!st.future.length || relecture} onClick={() => dispatch({ t: "redo" })}>Redo</button>
           <button disabled={bloqueExport && !animateur}
@@ -1365,30 +1379,6 @@ HOLD est un mode système : il se configure dans Configuration globale, pas ici.
               {detail}
             </div>
           )}
-          {mep.repliees.essai ? (
-            <div className="carte flex shrink-0 items-center gap-2 p-2" aria-label="Essai replié">
-              <button className="btn min-h-8 px-2.5 text-[8px]" onClick={() => basculerSection("essai")} title="Déplier l'essai">
-                Essai
-              </button>
-            </div>
-          ) : (
-            <div id="section-essai" className="flex flex-col gap-1" style={surlignage("essai")}>
-              <div className="flex justify-end gap-1">
-                <button className="btn min-h-8 px-2.5" onClick={() => basculerMolette("essai")} title="Réglages de l'essai" aria-label="Réglages de l'essai" aria-expanded={molette === "essai"}>
-                  <Icon name="engrenage" size={15} />
-                </button>
-                <button className="btn min-h-8 px-2.5 text-[8px]" onClick={() => basculerSection("essai")} title="Replier l'essai">
-                  Replier
-                </button>
-              </div>
-              {molette === "essai" && (
-                <div className="flex gap-2" role="dialog" aria-label="Réglages de l'essai">
-                  <button className="btn min-h-8 px-2.5 text-[8px]" onClick={() => basculerSection("essai")} title="Replier l'essai">Replier</button>
-                </div>
-              )}
-              {essai}
-            </div>
-          )}
         </div>
         </>) : (
         <main className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-auto p-3" aria-label="Écran courant">
@@ -1412,7 +1402,6 @@ HOLD est un mode système : il se configure dans Configuration globale, pas ici.
                 listeSimple
               )}
               {onglet === "detail" && detail}
-              {onglet === "essai" && essai}
             </div>
           ) : (
             <>{ecranCourant}</>
@@ -1428,8 +1417,7 @@ HOLD est un mode système : il se configure dans Configuration globale, pas ici.
                   { id: "graphe", nom: "Graphe", icone: "graphe" },
                   { id: "liste", nom: "Liste", icone: "liste" },
                   { id: "detail", nom: "Détail", icone: "detail" },
-                  { id: "essai", nom: "Essai", icone: "essai" },
-                ] as { id: Onglet; nom: string; icone: "graphe" | "liste" | "detail" | "essai" }[]
+                ] as { id: Onglet; nom: string; icone: "graphe" | "liste" | "detail" }[]
               ).map((o) => (
                 <button
                   key={o.id}
@@ -1524,9 +1512,84 @@ function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauT
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-2">
-        <h3 className="font-bold">{node.id}</h3>
+        <h3 className="font-bold">
+          {lectureSeule ? (
+            node.id
+          ) : (
+            <input
+              className="champ font-bold"
+              value={node.id}
+              size={Math.max(4, node.id.length + 2)}
+              aria-label="Identifiant du nœud"
+              onChange={(e) => {
+                const newId = e.target.value.trim();
+                if (newId && newId !== node.id) {
+                  editGame(
+                    (g) => renameNode(g, node.id, newId),
+                    "renameNode"
+                  );
+                }
+              }}
+            />
+          )}
+        </h3>
         <span className="puce"><Icon name="statut" size={12} /> {ETATS_FR[st]}</span>
         {node.isEnding && <span className="puce puce-fin"><Icon name="fin" size={12} /> Fin</span>}
+        {!lectureSeule && (
+          <>
+            <button
+              className="btn min-h-8 px-2.5 text-[8px]"
+              onClick={() => {
+                editGame(
+                  (g) => duplicateNode(g, node.id),
+                  "duplicateNode"
+                );
+              }}
+              title="Dupliquer ce nœud"
+            >
+              <Icon name="ajouter" size={15} /> Dupliquer
+            </button>
+            <button
+              className="btn min-h-8 px-2.5 text-[8px]"
+              onClick={() => {
+                const refs: string[] = [];
+                for (const n of game.nodes) {
+                  if (n.id === node.id) continue;
+                  for (const c of n.activation.requires) {
+                    if ((c.type === "NODE_COMPLETED" && c.nodeId === node.id) ||
+                        (c.type === "POOL_DRAWN" && c.poolNodeId === node.id) ||
+                        (c.type === "TIMER" && c.anchorNodeId === node.id)) {
+                      refs.push(`${n.id} (condition ${c.type})`);
+                    }
+                  }
+                  for (const e of (n.effects ?? [])) {
+                    if ((e.type === "REVEAL_NODE" || e.type === "UNLOCK_NODE") && e.nodeId === node.id) {
+                      refs.push(`${n.id} (effet ${e.type})`);
+                    }
+                  }
+                  if (n.discovery?.sourceNode === node.id) {
+                    refs.push(`${n.id} (discovery)`);
+                  }
+                  if (n.randomPool?.candidates.includes(node.id)) {
+                    refs.push(`${n.id} (pool candidat)`);
+                  }
+                }
+                const msg = refs.length > 0
+                  ? `Supprimer « ${node.id} » ?\n\nRéférencé par :\n${refs.map((r) => `• ${r}`).join("\n")}`
+                  : `Supprimer le nœud « ${node.id} » ?`;
+                if (window.confirm(msg)) {
+                  editGame(
+                    (g) => removeNode(g, node.id),
+                    "removeNode"
+                  );
+                }
+              }}
+              title="Supprimer ce nœud"
+            >
+              <Icon name="fermer" size={15} /> Supprimer
+            </button>
+          </>
+        )}
       </div>
       <fieldset disabled={lectureSeule} className="contents">
       <Famille titre={FAMILLES[0].titre} aide={FAMILLES[0].aide}>
@@ -1750,6 +1813,35 @@ function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauT
           </div>
         ))}
         <span className="text-[8px] text-fog">InventoryRef = objets liés à ce nœud (donnés, requis). Vide si aucun objet.</span>
+      </Famille>
+      <Famille titre={FAMILLES[8].titre} aide={FAMILLES[8].aide}>
+        {node.position ? (
+          <div className="flex flex-col gap-1">
+            <span className="text-[8px]">Plan : {node.position.planId} · x: {node.position.x.toFixed(1)} · y: {node.position.y.toFixed(1)}</span>
+            <span className="text-[8px] text-fog">Cliquez sur le plan pour repositionner, ou glissez le marqueur.</span>
+          </div>
+        ) : (() => {
+          const geoCond = node.activation.requires.find((c) => c.type === "GEOFENCE");
+          return (
+            <div className="flex flex-col gap-1">
+              {geoCond ? (
+                <>
+                  <label className="flex items-center gap-1">
+                    Lat <input className="champ w-24" type="number" step="any" value={geoCond.lat ?? ""}
+                      onChange={(e) => editGame((g) => ({ ...g, nodes: g.nodes.map((n) => n.id === node.id ? { ...n, activation: { ...n.activation, requires: n.activation.requires.map((c) => c.type === "GEOFENCE" ? { ...c, lat: Number(e.target.value) } : c) } } : n) }), "setNodePosition")} />
+                  </label>
+                  <label className="flex items-center gap-1">
+                    Lng <input className="champ w-24" type="number" step="any" value={geoCond.lng ?? ""}
+                      onChange={(e) => editGame((g) => ({ ...g, nodes: g.nodes.map((n) => n.id === node.id ? { ...n, activation: { ...n.activation, requires: n.activation.requires.map((c) => c.type === "GEOFENCE" ? { ...c, lng: Number(e.target.value) } : c) } } : n) }), "setNodePosition")} />
+                  </label>
+                  <span className="text-[8px] text-fog">Ou glissez le marqueur directement sur la carte.</span>
+                </>
+              ) : (
+                <span className="text-[8px] text-fog">Aucune position définie. Ajoutez une condition GEOFENCE ou utilisez la carte pour placer ce nœud.</span>
+              )}
+            </div>
+          );
+        })()}
       </Famille>
       </fieldset>
     </div>

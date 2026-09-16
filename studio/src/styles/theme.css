@@ -54,6 +54,29 @@
     --status-published-bg: var(--couleur-tirage-douce);
 }
 
+/* Thème Clair — fonds clairs, textes sombres, accents conservés. */
+.theme-light {
+    --surface: #f8f9fa;
+    --surface-2: #ffffff;
+    --surface-3: #e9ecef;
+    --ink: #212529;
+    --ink-2: #495057;
+    --ink-3: #868e96;
+    --line: #dee2e6;
+    --line-forte: #adb5bd;
+    --focus: #0b5fff;
+
+    --ombre: 0 1px 3px rgb(0 0 0 / 0.08), 0 4px 12px rgb(0 0 0 / 0.06);
+    --ombre-forte: 0 2px 6px rgb(0 0 0 / 0.1), 0 8px 24px rgb(0 0 0 / 0.08);
+
+    --status-draft: var(--ink-3);
+    --status-draft-bg: var(--surface-3);
+    --status-reviewed: var(--couleur-accent);
+    --status-reviewed-bg: var(--couleur-accent-douce);
+    --status-published: var(--couleur-tirage);
+    --status-published-bg: var(--couleur-tirage-douce);
+}
+
 /* Thème Victorien — Sherlock Holmes : burgundy, or, sépia. */
 .theme-victorian {
     --couleur-accent: #8B0000;

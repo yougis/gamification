@@ -7,6 +7,7 @@ import { useMemo, useState } from "react";
 import { Icon } from "./icons";
 import { CONDITIONS_FR, ETATS_FR, MODULES_FR } from "../game/i18n-ui";
 import type { Game } from "../game/types";
+import { removeNode } from "../game/mcp";
 
 export type FiltreListe = "tous" | "etapes" | "tirages" | "fins" | "impasses" | "brouillons";
 
@@ -31,6 +32,7 @@ export function NodeList({
   boutonPlier,
   boutonMolette,
   panneauMolette,
+  onSupprimer,
 }: {
   game: Game;
   statuts: Record<string, { state: string }>;
@@ -42,6 +44,7 @@ export function NodeList({
   boutonPlier?: React.ReactNode;
   boutonMolette?: React.ReactNode;
   panneauMolette?: React.ReactNode;
+  onSupprimer?: (id: string) => void;
 }) {
   const [recherche, setRecherche] = useState("");
   const [filtre, setFiltre] = useState<FiltreListe>("tous");
@@ -189,6 +192,42 @@ className={`${choisi ? "etape-courante" : ""} flex items-start gap-2.5 w-full mi
                   {` · ${ETATS_FR[statut] ?? statut}`}
                 </span>
               </span>
+              {!lectureSeule && onSupprimer && (
+                <button
+                  className="shrink-0 p-1 rounded hover:bg-fail/20 text-fog hover:text-fail"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const refs: string[] = [];
+                    for (const other of game.nodes) {
+                      if (other.id === n.id) continue;
+                      for (const c of other.activation.requires) {
+                        if ((c.type === "NODE_COMPLETED" && c.nodeId === n.id) ||
+                            (c.type === "POOL_DRAWN" && c.poolNodeId === n.id) ||
+                            (c.type === "TIMER" && c.anchorNodeId === n.id)) {
+                          refs.push(`${other.id} (${c.type})`);
+                        }
+                      }
+                      for (const eff of (other.effects ?? [])) {
+                        if ((eff.type === "REVEAL_NODE" || eff.type === "UNLOCK_NODE") && eff.nodeId === n.id) {
+                          refs.push(`${other.id} (${eff.type})`);
+                        }
+                      }
+                      if (other.discovery?.sourceNode === n.id) refs.push(`${other.id} (discovery)`);
+                      if (other.randomPool?.candidates.includes(n.id)) refs.push(`${other.id} (pool)`);
+                    }
+                    const msg = refs.length > 0
+                      ? `Supprimer « ${n.id} » ?\n\nRéférencé par :\n${refs.map((r) => `• ${r}`).join("\n")}`
+                      : `Supprimer le nœud « ${n.id} » ?`;
+                    if (window.confirm(msg)) {
+                      onSupprimer(n.id);
+                    }
+                  }}
+                  title={`Supprimer ${n.id}`}
+                  aria-label={`Supprimer le nœud ${n.id}`}
+                >
+                  <Icon name="fermer" size={14} />
+                </button>
+              )}
             </button>
           );
         })}

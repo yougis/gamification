@@ -78,7 +78,34 @@ export interface GameNode {
   discovery?: Discovery;
   effects?: Effect[];
   inventoryRef?: string[];
+  position?: NodePosition;
 }
+
+// --- Indoor plan types (change studio-map-view) ---
+
+export interface IndoorPlan {
+  id: string;
+  name: string;
+  floor: number;
+  image: string;
+  origin: { lat: number; lng: number };
+  scale: number; // pixels per meter
+  sizeMeters: { w: number; h: number };
+}
+
+export interface NodePosition {
+  planId: string;
+  x: number; // meters from origin
+  y: number; // meters from origin
+}
+
+export interface CalibrationState {
+  pointA?: { x: number; y: number };
+  pointB?: { x: number; y: number };
+  distanceMeters?: number;
+}
+
+export type TileStrategy = "fixed" | "viewport" | "radius" | "none";
 
 export type HoldMode = "none" | "guidedAccess" | "screenPinning" | "lockTask";
 export type HoldExitMethod = "adminPin" | "adminGesture" | "adminQR" | "animateurCode";
@@ -136,6 +163,7 @@ export interface Game {
     experienceStyle?: ExperienceStyle;
     gameMode?: "NORMAL" | "ANIMATEUR" | "SOIREE" | "HARDCORE";
     difficulty?: "ENFANT" | "FAMILLE" | "EXPERT";
+    indoorPlans?: IndoorPlan[];
   };
   nodes: GameNode[];
   objects?: { id: string; name: string; icon?: string; description?: string; consumable?: boolean; stackable?: boolean }[];

@@ -35,6 +35,7 @@ export const FAMILLES = [
   { id: "decouverte", titre: "6 · Découverte", aide: "Comment l'étape devient connue du joueur" },
   { id: "effets", titre: "7 · Effets", aide: "Ce que l'étape produit à la complétion" },
   { id: "inventaire", titre: "8 · Inventaire", aide: "Objets requis ou référencés" },
+  { id: "position", titre: "9 · Position", aide: "Emplacement sur la carte ou le plan" },
 ] as const;
 
 // Préréglages de rayon (demande UX) : valeurs indicatives, modifiables, stockées dans le JSON.

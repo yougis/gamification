@@ -1,7 +1,7 @@
 // Outils MCP du Studio (spike) : meme schema des deux cotes, rien ne sort sans validation.
 import { validateGame } from "./validate";
 import { sha256Hex, type ManifestFile } from "./pack";
-import type { Game, GameNode, ReviewStatus, StudioMeta, HoldMode, HoldExit, NavigationModel, Discovery, Effect, GameObject, ExperienceStyle, Branding, GameMode, Difficulty } from "./types";
+import type { Game, GameNode, ReviewStatus, StudioMeta, HoldMode, HoldExit, NavigationModel, Discovery, Effect, GameObject, ExperienceStyle, Branding, GameMode, Difficulty, NodePosition } from "./types";
 
 export type { ManifestFile };
 const sha256hex = sha256Hex;
@@ -55,7 +55,21 @@ export async function importGame(file: File): Promise<Game> {
   if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as Game).nodes)) {
     throw new Error(`Fichier invalide : ${file.name} ne contient pas un jeu GeoPlay (nodes[] manquant)`);
   }
-  return parsed as Game;
+  const game = parsed as Game;
+  if (game.nodes.length === 0) {
+    return {
+      ...game,
+      nodes: [
+        {
+          id: "start",
+          module: { type: "INFO", data: {} },
+          activation: { requires: [] },
+          discovery: { mode: "VISIBLE_NOW" },
+        },
+      ],
+    };
+  }
+  return game;
 }
 
 export interface ExportResult {
@@ -396,4 +410,92 @@ export async function exportPackFull(
     ? files
     : [...files, { path: "game.json", version: game.schemaVersion, size: gameJson.length, sha256: await sha256hex(gameJson) }];
   return { ok: true, errors: [], gameJson, manifest: { files: withGame } };
+}
+
+// --- Map/Indoor MCP operations (change studio-map-view) ---
+
+/** Extract lat/lng from a GEOFENCE condition. */
+function extractLatLng(c: Game["nodes"][0]["activation"]["requires"][number]): { lat: number; lng: number } | null {
+  if (c.type === "GEOFENCE" && typeof c.lat === "number" && typeof c.lng === "number") {
+    return { lat: c.lat, lng: c.lng };
+  }
+  return null;
+}
+
+/** Haversine distance in meters between two lat/lng points. */
+function haversine(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const R = 6371_000;
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
+  const sinLat = Math.sin(dLat / 2);
+  const sinLng = Math.sin(dLng / 2);
+  const h = sinLat * sinLat + Math.cos((a.lat * Math.PI) / 180) * Math.cos((b.lat * Math.PI) / 180) * sinLng * sinLng;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+/** Convert meters of latitude to degrees. */
+function metersToLatDeg(m: number): number {
+  return m / 111_320;
+}
+
+/** Convert meters of longitude to degrees at a given latitude. */
+function metersToLngDeg(m: number, atLat: number): number {
+  return m / (111_320 * Math.cos((atLat * Math.PI) / 180));
+}
+
+/** Compute bounding box from all GEOFENCE positions + 200m buffer. */
+export function computeBbox(game: Game): { minLat: number; minLng: number; maxLat: number; maxLng: number } | null {
+  const bufferM = 200;
+  const points: { lat: number; lng: number }[] = [];
+  for (const node of game.nodes) {
+    for (const c of node.activation.requires) {
+      const ll = extractLatLng(c);
+      if (ll) points.push(ll);
+    }
+  }
+  if (points.length === 0) return null;
+  let minLat = Infinity, minLng = Infinity, maxLat = -Infinity, maxLng = -Infinity;
+  for (const p of points) {
+    if (p.lat < minLat) minLat = p.lat;
+    if (p.lng < minLng) minLng = p.lng;
+    if (p.lat > maxLat) maxLat = p.lat;
+    if (p.lng > maxLng) maxLng = p.lng;
+  }
+  const centerLat = (minLat + maxLat) / 2;
+  return {
+    minLat: minLat - metersToLatDeg(bufferM),
+    minLng: minLng - metersToLngDeg(bufferM, centerLat),
+    maxLat: maxLat + metersToLatDeg(bufferM),
+    maxLng: maxLng + metersToLngDeg(bufferM, centerLat),
+  };
+}
+
+/** Set node position (indoor plan coordinates). */
+export function setNodePosition(game: Game, nodeId: string, position: NodePosition): Game {
+  return {
+    ...game,
+    nodes: game.nodes.map((n) => (n.id === nodeId ? { ...n, position } : n)),
+  };
+}
+
+/** Detect pairs of geofences that overlap (distance < sum of radii). */
+export function detectGeofenceOverlaps(game: Game): Array<{ a: string; b: string }> {
+  const geos: { id: string; lat: number; lng: number; r: number }[] = [];
+  for (const node of game.nodes) {
+    for (const c of node.activation.requires) {
+      if (c.type === "GEOFENCE" && typeof c.lat === "number" && typeof c.lng === "number" && typeof c.radiusMeters === "number") {
+        geos.push({ id: node.id, lat: c.lat, lng: c.lng, r: c.radiusMeters });
+      }
+    }
+  }
+  const overlaps: Array<{ a: string; b: string }> = [];
+  for (let i = 0; i < geos.length; i++) {
+    for (let j = i + 1; j < geos.length; j++) {
+      const dist = haversine(geos[i], geos[j]);
+      if (dist < geos[i].r + geos[j].r) {
+        overlaps.push({ a: geos[i].id, b: geos[j].id });
+      }
+    }
+  }
+  return overlaps;
 }

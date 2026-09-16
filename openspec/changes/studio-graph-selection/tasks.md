@@ -41,3 +41,5 @@
 
 - [x] 8.1 Supprimer les styles inline des nœuds (fonds, rails, ombres, outlines), convertir les pilules JSX en libellés texte simples, retirer marqueurs/couleurs/pointillés/`labelStyle`/`labelBgStyle` des arêtes, retirer les surcharges `.studio-flow` sur nœuds et textes d'arêtes (chrome contrôles/minimap/fond conservé) ; vérifier un rendu défaut ReactFlow et que `tsc --noEmit` + `vite build` passent
 - [x] 8.2 Vérifier que les statuts `draft` restent visibles et bloquants hors canvas (liste des étapes, écran Relire, export bloqué) ; consigner le résultat
+- [x] 8.3 Corriger la régression du dépôt dans Importer : `onDrop` câblé à `importerFichier` avec `stopPropagation`, input fichier caché pour le clic (remplace le `onDrop={() => {}}` restant de la refonte visuelle) ; vérifier `tsc --noEmit` + `vite build`
+- [x] 8.4 Corriger le drag bloqué : ne plus préserver `dragging` dans les props (ReactFlow le gère en interne, valeur périmérée = désynchronisation), ne garder que `measured` ; vérifier `tsc --noEmit` + `vite build` et consigner si le drag redevient possible
