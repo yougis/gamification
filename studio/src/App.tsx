@@ -37,7 +37,7 @@ type SectionPliable = keyof typeof LAYOUT_DEFAUT.repliees;
 
 // Drill-down workflow → section (change studio-layout-revamp) :
 // 1 Graphe → graphe, 2 Épreuves → détail, 3 Relecture → liste,
-// 4 Validation → pied/rapport, 5 Export → essai (manifest avant export).
+// 4 Validation → pied/rapport, 5 Export → prévisualiser (manifest avant export).
 const SECTION_PAR_ETAPE: Record<EtapeWorkflow, string> = {
   1: "graphe",
   2: "detail",
@@ -74,6 +74,42 @@ const jeuVide = (): Game => ({
 });
 
 const init: State = { past: [], present: { game: jeuVide(), meta: emptyMeta() }, future: [] };
+
+// Brouillon local (change studio-persistence-theme-fix) : le jeu en cours
+// d'édition survit au rechargement via `geoplay-draft-v1`. Seul le Snap
+// présent est persisté (ni passé/futur d'undo, ni positions, ni sélection).
+const CLE_BROUILLON = "geoplay-draft-v1";
+
+const lireBrouillon = (): Snap | null => {
+  try {
+    const raw = localStorage.getItem(CLE_BROUILLON);
+    if (!raw) return null;
+    const p = JSON.parse(raw) as Partial<Snap>;
+    if (!p || typeof p !== "object") return null;
+    if (!p.game || typeof p.game !== "object" || !Array.isArray(p.game.nodes)) return null;
+    if (!p.meta || typeof p.meta !== "object") return null;
+    return { game: p.game as Game, meta: p.meta as StudioMeta };
+  } catch {
+    return null; // clé absente, corrompue ou stockage indisponible : jeu vide
+  }
+};
+
+// Écriture immédiate (import, effacement) ; l'écriture continue passe par
+// l'effet débouncé. Retourne false si le stockage est indisponible/plein.
+const sauvegarderBrouillon = (snap: Snap): boolean => {
+  try {
+    localStorage.setItem(CLE_BROUILLON, JSON.stringify(snap));
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+// Initialiseur paresseux du reducer : restaure le brouillon s'il existe.
+const initDraft = (): State => {
+  const b = lireBrouillon();
+  return b ? { past: [], present: b, future: [] } : init;
+};
 
 type Action = { t: "set"; snap: Snap; op: string } | { t: "undo" } | { t: "redo" };
 
@@ -147,7 +183,7 @@ const ECRANS: { id: Ecran; nom: string; icone: IconName }[] = [
 ];
 
 export default function App() {
-  const [st, dispatch] = useReducer(reduce, init);
+  const [st, dispatch] = useReducer(reduce, undefined, initDraft);
   const { game } = st.present;
   const [sel, setSel] = useState<string | null>(null);
   // Sélection multiple (Shift+clic, native ReactFlow) + recherche dans le graphe.
@@ -269,6 +305,15 @@ export default function App() {
     document.documentElement.classList.toggle("theme-light", theme === "light");
     try { localStorage.setItem("studio-theme", theme); } catch { /* ok */ }
   }, [theme]);
+  // Autosave du brouillon (change studio-persistence-theme-fix) : écriture
+  // débouncée ~500 ms après chaque modification. Ne touche jamais au JSON exporté.
+  const [sauvegardeIndispo, setSauvegardeIndispo] = useState(false);
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      setSauvegardeIndispo(!sauvegarderBrouillon(st.present));
+    }, 500);
+    return () => window.clearTimeout(t);
+  }, [st.present]);
   const basculerSection = (s: SectionPliable) => {
     setMolette(null);
     setMep((m) => ({ ...m, repliees: { ...m.repliees, [s]: !m.repliees[s] } }));
@@ -288,7 +333,7 @@ export default function App() {
   const allerEtape = (e: EtapeWorkflow) => {
     setEtapeWorkflow(e);
     const cible = SECTION_PAR_ETAPE[e];
-    const pliable = (["graphe", "detail", "liste", "essai"] as const).includes(cible as SectionPliable)
+    const pliable = (["graphe", "detail", "liste"] as const).includes(cible as SectionPliable)
       ? (cible as SectionPliable)
       : null;
     if (pliable) setMep((m) => ({ ...m, repliees: { ...m.repliees, [pliable]: false } }));
@@ -309,6 +354,21 @@ export default function App() {
     } catch {
       /* ignore */
     }
+  };
+  // Efface le brouillon local et repart sur un jeu vide (change
+  // studio-persistence-theme-fix). Sert aussi de « nouveau jeu ».
+  const effacerBrouillon = () => {
+    if (relecture) return;
+    if (!window.confirm("Effacer le brouillon local et repartir sur un jeu vide ?")) return;
+    try {
+      localStorage.removeItem(CLE_BROUILLON);
+    } catch {
+      /* ignore */
+    }
+    dispatch({ t: "set", snap: { game: jeuVide(), meta: emptyMeta() }, op: "effacerBrouillon" });
+    setSel(null);
+    setSelMulti([]);
+    setExportOk(false);
   };
 
   useEffect(() => {
@@ -688,6 +748,8 @@ const noeuds: Node[] = useMemo(
         return;
       }
       edit((s) => ({ game: g, meta: emptyMeta() }), "importer");
+      // Remplace le brouillon sans attendre le debounce (fermeture d'onglet immédiate).
+      setSauvegardeIndispo(!sauvegarderBrouillon({ game: g, meta: emptyMeta() }));
       setSel(null);
       nouvelleSession();
       setImportEchoue(null);
@@ -796,27 +858,8 @@ const noeuds: Node[] = useMemo(
     rfRef.current?.setCenter(p.x, p.y, { zoom: 1, duration: 300 });
   };
 
-  const palette = (
-    <nav className="flex flex-col gap-2" aria-label="Ajouter une étape">
-      <span className="text-[8px] font-bold uppercase text-fog">Ajouter</span>
-      {relecture && (
-        <p className="puce whitespace-normal">
-          <Icon name="statut" size={13} /> Relecture : ajout désactivé sur petit écran
-        </p>
-      )}
-      <button className="btn justify-start" onClick={() => ajouterEtape("etape")} disabled={relecture} title="Créer une étape Quiz / jeu">
-        <Icon name="etape" size={17} /> Étape de jeu
-      </button>
-      <button className="btn justify-start" onClick={() => ajouterEtape("lieu")} disabled={relecture} title="Créer un lieu avec zone GPS">
-        <Icon name="lieu" size={17} /> Lieu GPS
-      </button>
-      <button className="btn justify-start" onClick={() => ajouterEtape("tirage")} disabled={relecture} title="Créer un tirage au sort parmi des étapes">
-        <Icon name="tirage" size={17} /> Tirage au sort
-      </button>
-      <button className="btn justify-start" onClick={() => ajouterEtape("fin")} disabled={relecture} title="Créer l'étape de fin du jeu">
-        <Icon name="fin" size={17} /> Fin du jeu
-      </button>
-      <span className="text-[8px] text-fog">Glisse un lien d'une étape à l'autre pour « après l'étape… ».</span>
+  const resetLayout = (
+    <nav className="flex flex-col gap-2" aria-label="Réglages du graphe">
       <button className="btn justify-start" onClick={reinitialiserMiseEnPage} title="Restaurer les largeurs et le menu par défaut">
         <Icon name="retablir" size={15} /> Mise en page par défaut
       </button>
@@ -867,10 +910,10 @@ const noeuds: Node[] = useMemo(
         </div>
       ) : (
         <div className="carte studio-flow relative flex-1 overflow-hidden">
-          <ReactFlow nodes={noeuds} edges={aretes} onNodesChange={onNodesChange} onConnect={onConnect} onNodeClick={(_, n) => choisirNoeud(n.id)} onSelectionChange={onSelectionChange} multiSelectionKeyCode="Shift" onInit={(instance) => { rfRef.current = instance; }} minZoom={0.3} maxZoom={2} nodesConnectable={!relecture} nodesDraggable={!relecture} elementsSelectable className="w-full h-full">
-            <Background gap={22} />
+          <ReactFlow nodes={noeuds} edges={aretes} onNodesChange={onNodesChange} onConnect={onConnect} onNodeClick={(_, n) => choisirNoeud(n.id)} onSelectionChange={onSelectionChange} multiSelectionKeyCode="Shift" onInit={(instance) => { rfRef.current = instance; }} minZoom={0.3} maxZoom={2} nodesConnectable={!relecture} nodesDraggable={!relecture} elementsSelectable colorMode={theme} className="w-full h-full">
+            <Background gap={22} color={theme === "light" ? "#dee2e6" : "#1e2228"} />
             <Controls showInteractive={false} />
-            <MiniMap pannable zoomable className="rounded-lg" aria-label="Mini-carte du graphe" />
+            <MiniMap pannable zoomable nodeColor={theme === "light" ? "#adb5bd" : "#6b7280"} className="rounded-lg" aria-label="Mini-carte du graphe" />
           </ReactFlow>
         </div>
       )}
@@ -944,16 +987,50 @@ const noeuds: Node[] = useMemo(
   // Listes mémoïsées (change studio-graph-selection) : mêmes dépendances de données
   // que le détail, pour ne pas re-rendre à chaque frame de drag.
   const liste = useMemo(() => (
-    <NodeList game={game} statuts={st.present.meta.status} impasses={impasses} sel={sel} onChoisir={choisirNoeud} erreursParNoeud={erreursParNoeud} lectureSeule={relecture} boutonPlier={<button className="btn min-h-8 px-2 text-[8px]" onClick={() => basculerSection("liste")} title="Replier la liste">Replier</button>} boutonMolette={<button className="btn min-h-8 px-2" onClick={() => basculerMolette("liste")} title="Réglages de la liste" aria-label="Réglages de la liste" aria-expanded={molette === "liste"}><Icon name="engrenage" size={14} /></button>} panneauMolette={molette === "liste" && (
-      <div className="flex gap-2 px-2 pb-2" role="dialog" aria-label="Réglages de la liste">
-        <button className="btn min-h-8 px-2 text-[8px]" onClick={() => basculerSection("liste")} title="Replier la liste">Replier</button>
-        <button className="btn min-h-8 px-2 text-[8px]" onClick={() => { setMep((m) => ({ ...m, liste: 340 })); setMolette(null); }} title="Restaurer la largeur par défaut de la liste">Largeur 340</button>
+    <div className="flex flex-col min-h-0">
+      <div className="flex items-center gap-1 px-2 py-1 border-b border-rule">
+        <span className="text-[8px] font-bold uppercase text-fog mr-1">Ajouter</span>
+        <button className="btn min-h-8 px-2 text-[8px]" onClick={() => ajouterEtape("etape")} disabled={relecture} title="Créer une étape Quiz / jeu" aria-label="Étape de jeu">
+          <Icon name="etape" size={14} /> Étape
+        </button>
+        <button className="btn min-h-8 px-2 text-[8px]" onClick={() => ajouterEtape("lieu")} disabled={relecture} title="Créer un lieu avec zone GPS" aria-label="Lieu GPS">
+          <Icon name="lieu" size={14} /> Lieu
+        </button>
+        <button className="btn min-h-8 px-2 text-[8px]" onClick={() => ajouterEtape("tirage")} disabled={relecture} title="Créer un tirage au sort parmi des étapes" aria-label="Tirage au sort">
+          <Icon name="tirage" size={14} /> Tirage
+        </button>
+        <button className="btn min-h-8 px-2 text-[8px]" onClick={() => ajouterEtape("fin")} disabled={relecture} title="Créer l'étape de fin du jeu" aria-label="Fin du jeu">
+          <Icon name="fin" size={14} /> Fin
+        </button>
       </div>
-    )} onSupprimer={!relecture ? (id) => editGame((g) => removeNode(g, id), "removeNode") : undefined} />
-  ), [game, st.present.meta.status, impasses, sel, erreursParNoeud, relecture, molette, choisirNoeud]);
+      <NodeList game={game} statuts={st.present.meta.status} impasses={impasses} sel={sel} onChoisir={choisirNoeud} erreursParNoeud={erreursParNoeud} lectureSeule={relecture} boutonPlier={<button className="btn min-h-8 px-2 text-[8px]" onClick={() => basculerSection("liste")} title="Replier la liste">Replier</button>} boutonMolette={<button className="btn min-h-8 px-2" onClick={() => basculerMolette("liste")} title="Réglages de la liste" aria-label="Réglages de la liste" aria-expanded={molette === "liste"}><Icon name="engrenage" size={14} /></button>} panneauMolette={molette === "liste" && (
+        <div className="flex gap-2 px-2 pb-2" role="dialog" aria-label="Réglages de la liste">
+          <button className="btn min-h-8 px-2 text-[8px]" onClick={() => basculerSection("liste")} title="Replier la liste">Replier</button>
+          <button className="btn min-h-8 px-2 text-[8px]" onClick={() => { setMep((m) => ({ ...m, liste: 340 })); setMolette(null); }} title="Restaurer la largeur par défaut de la liste">Largeur 340</button>
+        </div>
+      )} onSupprimer={!relecture ? (id) => editGame((g) => removeNode(g, id), "removeNode") : undefined} />
+    </div>
+  ), [game, st.present.meta.status, impasses, sel, erreursParNoeud, relecture, molette, choisirNoeud, ajouterEtape]);
   const listeSimple = useMemo(() => (
-    <NodeList game={game} statuts={st.present.meta.status} impasses={impasses} sel={sel} onChoisir={choisirNoeud} erreursParNoeud={erreursParNoeud} lectureSeule={relecture} onSupprimer={!relecture ? (id) => editGame((g) => removeNode(g, id), "removeNode") : undefined} />
-  ), [game, st.present.meta.status, impasses, sel, erreursParNoeud, relecture, choisirNoeud]);
+    <div className="flex flex-col min-h-0">
+      <div className="flex items-center gap-1 px-2 py-1 border-b border-rule">
+        <span className="text-[8px] font-bold uppercase text-fog mr-1">Ajouter</span>
+        <button className="btn min-h-8 px-2 text-[8px]" onClick={() => ajouterEtape("etape")} disabled={relecture} title="Créer une étape Quiz / jeu" aria-label="Étape de jeu">
+          <Icon name="etape" size={14} /> Étape
+        </button>
+        <button className="btn min-h-8 px-2 text-[8px]" onClick={() => ajouterEtape("lieu")} disabled={relecture} title="Créer un lieu avec zone GPS" aria-label="Lieu GPS">
+          <Icon name="lieu" size={14} /> Lieu
+        </button>
+        <button className="btn min-h-8 px-2 text-[8px]" onClick={() => ajouterEtape("tirage")} disabled={relecture} title="Créer un tirage au sort parmi des étapes" aria-label="Tirage au sort">
+          <Icon name="tirage" size={14} /> Tirage
+        </button>
+        <button className="btn min-h-8 px-2 text-[8px]" onClick={() => ajouterEtape("fin")} disabled={relecture} title="Créer l'étape de fin du jeu" aria-label="Fin du jeu">
+          <Icon name="fin" size={14} /> Fin
+        </button>
+      </div>
+      <NodeList game={game} statuts={st.present.meta.status} impasses={impasses} sel={sel} onChoisir={choisirNoeud} erreursParNoeud={erreursParNoeud} lectureSeule={relecture} onSupprimer={!relecture ? (id) => editGame((g) => removeNode(g, id), "removeNode") : undefined} />
+    </div>
+  ), [game, st.present.meta.status, impasses, sel, erreursParNoeud, relecture, choisirNoeud, ajouterEtape]);
 
   // Contenus des écrans (spec studio-onepage-spec) : tous branchés sur le même
   // état { game, meta } + historique, sans état par écran (hors simulateur).
@@ -1007,6 +1084,13 @@ const noeuds: Node[] = useMemo(
             ) : (
               <p className="text-[9px] font-mono text-fog">Aucun import enregistré sur cet appareil.</p>
             )}
+          </div>
+          <div className="mt-4 border-t border-rule pt-3">
+            <div className="text-[8px] font-mono uppercase tracking-widest text-fog mb-2">Brouillon local</div>
+            <p className="text-[9px] font-mono text-fog mb-2">Le jeu en cours est sauvegardé automatiquement dans ce navigateur.</p>
+            <button className="btn-danger min-h-8 px-2.5 text-[8px]" onClick={effacerBrouillon} disabled={relecture} title="Supprimer la sauvegarde locale et repartir sur un jeu vide">
+              Effacer le brouillon
+            </button>
           </div>
         </div>
       )}
@@ -1212,6 +1296,11 @@ const noeuds: Node[] = useMemo(
             onClick={exporter}>Exporter</button>
         </div>
       </header>
+      {sauvegardeIndispo && (
+        <div className="shrink-0 border-b border-caution/40 bg-caution/10 px-5 py-1.5 font-mono text-[8px] text-caution" role="alert">
+          Sauvegarde locale indisponible — vos modifications seront perdues au rechargement.
+        </div>
+      )}
       {calque && (
         <div className="carte fixed top-16 right-3 z-50 w-[380px] max-w-[calc(100vw-24px)] max-h-[80vh] overflow-auto p-3" role="dialog" aria-label={calque === "i18n" ? "Calque traductions" : "Calque difficultés et modes"}>
           <div className="flex justify-end mb-2">
@@ -1394,7 +1483,7 @@ HOLD est un mode système : il se configure dans Configuration globale, pas ici.
             <div className="flex min-h-0 flex-1 flex-col gap-2">
               {onglet === "graphe" && (
                 <div className="flex min-h-0 flex-1 flex-col gap-2">
-                  <div className="carte shrink-0 p-2">{palette}</div>
+                  <div className="carte shrink-0 p-2">{resetLayout}</div>
                   <div className="flex min-h-0 flex-1 flex-col">{zoneGraphe}</div>
                 </div>
               )}
@@ -1463,15 +1552,13 @@ HOLD est un mode système : il se configure dans Configuration globale, pas ici.
   );
 }
 
-function Famille({ titre, aide, children }: { titre: string; aide: string; children: React.ReactNode }) {
+function Famille({ id, icone, titre, aide, active, children }: { id: string; icone: IconName; titre: string; aide: string; active: boolean; children: React.ReactNode }) {
+  if (!active) return null;
   return (
-    <details open className="carte p-0">
-      <summary className="cursor-pointer px-3 min-h-11 flex items-center font-semibold">{titre}</summary>
-      <div className="px-3 pb-3 flex flex-col gap-2">
-        <span className="text-[8px] text-fog">{aide}</span>
-        {children}
-      </div>
-    </details>
+    <div id={`famille-${id}`} className="flex flex-col gap-1 px-3 pb-3" role="region" aria-label={titre}>
+      <span className="text-[8px] text-fog">{aide}</span>
+      {children}
+    </div>
   );
 }
 
@@ -1483,6 +1570,7 @@ function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauT
   lectureSeule: boolean;
   onAllerConfig?: () => void;
 }) {
+  const [activeFamille, setActiveFamille] = useState<string>(FAMILLES[0].id);
   const upd = (patch: Partial<GameNode>) => editGame((g) => ({ ...g, nodes: g.nodes.map((n) => (n.id === node.id ? { ...n, ...patch } : n)) }), "modifierNoeud");
   const updDecl = (i: number, patch: Partial<Condition>) =>
     editGame((g) => ({
@@ -1510,89 +1598,118 @@ function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauT
   const st = meta.status[node.id]?.state ?? "draft";
   const milieu: Milieu = meta.milieu[node.id] ?? "exterieur";
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <h3 className="font-bold">
-          {lectureSeule ? (
-            node.id
-          ) : (
-            <input
-              className="champ font-bold"
-              value={node.id}
-              size={Math.max(4, node.id.length + 2)}
-              aria-label="Identifiant du nœud"
-              onChange={(e) => {
-                const newId = e.target.value.trim();
-                if (newId && newId !== node.id) {
-                  editGame(
-                    (g) => renameNode(g, node.id, newId),
-                    "renameNode"
-                  );
-                }
-              }}
-            />
-          )}
-        </h3>
-        <span className="puce"><Icon name="statut" size={12} /> {ETATS_FR[st]}</span>
-        {node.isEnding && <span className="puce puce-fin"><Icon name="fin" size={12} /> Fin</span>}
-        {!lectureSeule && (
-          <>
+    <div className="flex min-h-0 flex-col">
+      <div className="flex min-h-0 flex-1">
+        {/* Icon sidebar */}
+        <nav
+          className="flex flex-col gap-0.5 shrink-0 w-11 border-r border-rule overflow-y-auto py-1"
+          role="tablist"
+          aria-label="Familles d'inspection"
+          onKeyDown={(e) => {
+            const idx = FAMILLES.findIndex((f) => f.id === activeFamille);
+            if (e.key === "ArrowDown" && idx < FAMILLES.length - 1) { e.preventDefault(); setActiveFamille(FAMILLES[idx + 1].id); }
+            if (e.key === "ArrowUp" && idx > 0) { e.preventDefault(); setActiveFamille(FAMILLES[idx - 1].id); }
+          }}
+        >
+          {FAMILLES.map((fam) => (
             <button
-              className="btn min-h-8 px-2.5 text-[8px]"
-              onClick={() => {
-                editGame(
-                  (g) => duplicateNode(g, node.id),
-                  "duplicateNode"
-                );
-              }}
-              title="Dupliquer ce nœud"
+              key={fam.id}
+              role="tab"
+              aria-selected={activeFamille === fam.id}
+              aria-controls={`famille-${fam.id}`}
+              className={`flex items-center justify-center h-9 rounded transition-colors ${activeFamille === fam.id ? "bg-surface-2 text-neon" : "text-fog hover:text-snow hover:bg-surface-2/50"}`}
+              title={`${fam.titre} — ${fam.aide}`}
+              onClick={() => setActiveFamille(fam.id)}
             >
-              <Icon name="ajouter" size={15} /> Dupliquer
+              <Icon name={fam.icone} size={16} />
             </button>
-            <button
-              className="btn min-h-8 px-2.5 text-[8px]"
-              onClick={() => {
-                const refs: string[] = [];
-                for (const n of game.nodes) {
-                  if (n.id === node.id) continue;
-                  for (const c of n.activation.requires) {
-                    if ((c.type === "NODE_COMPLETED" && c.nodeId === node.id) ||
-                        (c.type === "POOL_DRAWN" && c.poolNodeId === node.id) ||
-                        (c.type === "TIMER" && c.anchorNodeId === node.id)) {
-                      refs.push(`${n.id} (condition ${c.type})`);
-                    }
-                  }
-                  for (const e of (n.effects ?? [])) {
-                    if ((e.type === "REVEAL_NODE" || e.type === "UNLOCK_NODE") && e.nodeId === node.id) {
-                      refs.push(`${n.id} (effet ${e.type})`);
-                    }
-                  }
-                  if (n.discovery?.sourceNode === node.id) {
-                    refs.push(`${n.id} (discovery)`);
-                  }
-                  if (n.randomPool?.candidates.includes(node.id)) {
-                    refs.push(`${n.id} (pool candidat)`);
-                  }
-                }
-                const msg = refs.length > 0
-                  ? `Supprimer « ${node.id} » ?\n\nRéférencé par :\n${refs.map((r) => `• ${r}`).join("\n")}`
-                  : `Supprimer le nœud « ${node.id} » ?`;
-                if (window.confirm(msg)) {
-                  editGame(
-                    (g) => removeNode(g, node.id),
-                    "removeNode"
-                  );
-                }
-              }}
-              title="Supprimer ce nœud"
-            >
-              <Icon name="fermer" size={15} /> Supprimer
-            </button>
-          </>
-        )}
-      </div>
-      <fieldset disabled={lectureSeule} className="contents">
-      <Famille titre={FAMILLES[0].titre} aide={FAMILLES[0].aide}>
+          ))}
+        </nav>
+        {/* Active family content */}
+        <div className="flex-1 overflow-y-auto min-h-0">
+          <div className="flex flex-col gap-2 p-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="font-bold">
+                {lectureSeule ? (
+                  node.id
+                ) : (
+                  <input
+                    className="champ font-bold"
+                    value={node.id}
+                    size={Math.max(4, node.id.length + 2)}
+                    aria-label="Identifiant du nœud"
+                    onChange={(e) => {
+                      const newId = e.target.value.trim();
+                      if (newId && newId !== node.id) {
+                        editGame(
+                          (g) => renameNode(g, node.id, newId),
+                          "renameNode"
+                        );
+                      }
+                    }}
+                  />
+                )}
+              </h3>
+              <span className="puce"><Icon name="statut" size={12} /> {ETATS_FR[st]}</span>
+              {node.isEnding && <span className="puce puce-fin"><Icon name="fin" size={12} /> Fin</span>}
+              {!lectureSeule && (
+                <>
+                  <button
+                    className="btn min-h-8 px-2.5 text-[8px]"
+                    onClick={() => {
+                      editGame(
+                        (g) => duplicateNode(g, node.id),
+                        "duplicateNode"
+                      );
+                    }}
+                    title="Dupliquer ce nœud"
+                  >
+                    <Icon name="ajouter" size={15} /> Dupliquer
+                  </button>
+                  <button
+                    className="btn min-h-8 px-2.5 text-[8px]"
+                    onClick={() => {
+                      const refs: string[] = [];
+                      for (const n of game.nodes) {
+                        if (n.id === node.id) continue;
+                        for (const c of n.activation.requires) {
+                          if ((c.type === "NODE_COMPLETED" && c.nodeId === node.id) ||
+                              (c.type === "POOL_DRAWN" && c.poolNodeId === node.id) ||
+                              (c.type === "TIMER" && c.anchorNodeId === node.id)) {
+                            refs.push(`${n.id} (condition ${c.type})`);
+                          }
+                        }
+                        for (const e of (n.effects ?? [])) {
+                          if ((e.type === "REVEAL_NODE" || e.type === "UNLOCK_NODE") && e.nodeId === node.id) {
+                            refs.push(`${n.id} (effet ${e.type})`);
+                          }
+                        }
+                        if (n.discovery?.sourceNode === node.id) {
+                          refs.push(`${n.id} (discovery)`);
+                        }
+                        if (n.randomPool?.candidates.includes(node.id)) {
+                          refs.push(`${n.id} (pool candidat)`);
+                        }
+                      }
+                      const msg = refs.length > 0
+                        ? `Supprimer « ${node.id} » ?\n\nRéférencé par :\n${refs.map((r) => `• ${r}`).join("\n")}`
+                        : `Supprimer le nœud « ${node.id} » ?`;
+                      if (window.confirm(msg)) {
+                        editGame(
+                          (g) => removeNode(g, node.id),
+                          "removeNode"
+                        );
+                      }
+                    }}
+                    title="Supprimer ce nœud"
+                  >
+                    <Icon name="fermer" size={15} /> Supprimer
+                  </button>
+                </>
+              )}
+            </div>
+            <fieldset disabled={lectureSeule} className="contents">
+            <Famille id={FAMILLES[0].id} icone={FAMILLES[0].icone} titre={FAMILLES[0].titre} aide={FAMILLES[0].aide} active={activeFamille === FAMILLES[0].id}>
         <label>Mini-jeu <select className="champ" value={node.module.type} onChange={(e) => upd({ module: { ...node.module, type: e.target.value } })}>
           {TYPES_MODULE.map((k) => <option key={k} value={k} title={MODULES_FR[k]?.aide}>{MODULES_FR[k]?.nom ?? k}</option>)}
         </select></label>
@@ -1654,7 +1771,7 @@ function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauT
           }} />
         </details>
       </Famille>
-      <Famille titre={FAMILLES[1].titre} aide={FAMILLES[1].aide}>
+      <Famille id={FAMILLES[1].id} icone={FAMILLES[1].icone} titre={FAMILLES[1].titre} aide={FAMILLES[1].aide} active={activeFamille === FAMILLES[1].id}>
         <label>Logique <select className="champ" value={node.activation.operator ?? ""} onChange={(e) => upd({ activation: { ...node.activation, operator: (e.target.value || undefined) as GameNode["activation"]["operator"] } })}>
           <option value="">— (1 seul déclencheur)</option>
           <option value="AND">{OPERATEURS_FR.AND}</option>
@@ -1678,7 +1795,7 @@ function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauT
           </div>
         ))}
       </Famille>
-      <Famille titre={FAMILLES[2].titre} aide={FAMILLES[2].aide}>
+      <Famille id={FAMILLES[2].id} icone={FAMILLES[2].icone} titre={FAMILLES[2].titre} aide={FAMILLES[2].aide} active={activeFamille === FAMILLES[2].id}>
         <label className="flex items-center gap-1"><input type="checkbox" checked={node.activation.latch ?? true} onChange={(e) => upd({ activation: { ...node.activation, latch: e.target.checked } })} /> Rester ouvert après passage</label>
         <label>Rejouable <select className="champ" value={node.onReentry ?? "ignore"} onChange={(e) => upd({ onReentry: e.target.value as GameNode["onReentry"] })}>
           <option value="ignore">Non (une fois)</option><option value="replay">Oui</option>
@@ -1689,7 +1806,7 @@ function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauT
         <label className="flex items-center gap-1"><input type="checkbox" checked={!!node.scoreOnReplay} onChange={(e) => upd({ scoreOnReplay: e.target.checked })} /> Les rejouées marquent des points</label>
         <label className="flex items-center gap-1 font-semibold"><input type="checkbox" checked={!!node.isEnding} onChange={(e) => upd({ isEnding: e.target.checked })} /> Fin du jeu</label>
       </Famille>
-      <Famille titre={FAMILLES[3].titre} aide={FAMILLES[3].aide}>
+      <Famille id={FAMILLES[3].id} icone={FAMILLES[3].icone} titre={FAMILLES[3].titre} aide={FAMILLES[3].aide} active={activeFamille === FAMILLES[3].id}>
         {node.module.type === "RANDOM_POOL" || node.randomPool ? (
           <div className="flex flex-col gap-1">
             <label>Nombre tiré <input className="champ w-16" type="number" min={1} value={node.randomPool?.drawCount ?? 1}
@@ -1710,7 +1827,7 @@ function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauT
           <button className="btn" onClick={() => upd({ randomPool: { candidates: [], drawCount: 1, drawTiming: "ON_POOL_ACTIVATION" } })}><Icon name="tirage" size={15} /> Transformer en tirage</button>
         )}
       </Famille>
-      <Famille titre={FAMILLES[4].titre} aide={FAMILLES[4].aide}>
+      <Famille id={FAMILLES[4].id} icone={FAMILLES[4].icone} titre={FAMILLES[4].titre} aide={FAMILLES[4].aide} active={activeFamille === FAMILLES[4].id}>
         <label>Statut <select className="champ" value={st} onChange={(e) => edit((s) => ({ ...s, meta: { ...s.meta, status: { ...s.meta.status, [node.id]: { state: e.target.value as StudioMeta["status"][string]["state"] } } } }), "definirStatut")}>
           {Object.entries(ETATS_FR).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select></label>
@@ -1739,7 +1856,7 @@ function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauT
           }} />
         </details>
       </Famille>
-      <Famille titre={FAMILLES[5].titre} aide={FAMILLES[5].aide}>
+      <Famille id={FAMILLES[5].id} icone={FAMILLES[5].icone} titre={FAMILLES[5].titre} aide={FAMILLES[5].aide} active={activeFamille === FAMILLES[5].id}>
         <label>Mode <select className="champ" value={node.discovery?.mode ?? "VISIBLE_NOW"} onChange={(e) => upd({ discovery: { ...node.discovery, mode: e.target.value as any } })}>
           {["VISIBLE_NOW", "MAP", "ON_COMPLETED", "ON_CLUE", "ON_ITEM", "ON_PUZZLE", "ON_PROXIMITY", "ON_TIME"].map((m) => <option key={m} value={m}>{m}</option>)}
         </select></label>
@@ -1767,7 +1884,7 @@ function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauT
         )}
         <span className="text-[8px] text-fog">Découverte = comment l'étape devient visible. Indépendante de l'activation.</span>
       </Famille>
-      <Famille titre={FAMILLES[6].titre} aide={FAMILLES[6].aide}>
+      <Famille id={FAMILLES[6].id} icone={FAMILLES[6].icone} titre={FAMILLES[6].titre} aide={FAMILLES[6].aide} active={activeFamille === FAMILLES[6].id}>
         {(node.effects ?? []).length === 0 && (
           <button className="btn" onClick={() => upd({ effects: [{ type: "GIVE_ITEM", itemId: "" }] })}><Icon name="ajouter" size={15} /> Ajouter un effet</button>
         )}
@@ -1796,7 +1913,7 @@ function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauT
           </div>
         ))}
       </Famille>
-      <Famille titre={FAMILLES[7].titre} aide={FAMILLES[7].aide}>
+      <Famille id={FAMILLES[7].id} icone={FAMILLES[7].icone} titre={FAMILLES[7].titre} aide={FAMILLES[7].aide} active={activeFamille === FAMILLES[7].id}>
         {(node.inventoryRef ?? []).length === 0 ? (
           <button className="btn" onClick={() => upd({ inventoryRef: [] })}><Icon name="ajouter" size={15} /> Ajouter un objet référencé</button>
         ) : null}
@@ -1814,7 +1931,7 @@ function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauT
         ))}
         <span className="text-[8px] text-fog">InventoryRef = objets liés à ce nœud (donnés, requis). Vide si aucun objet.</span>
       </Famille>
-      <Famille titre={FAMILLES[8].titre} aide={FAMILLES[8].aide}>
+      <Famille id={FAMILLES[8].id} icone={FAMILLES[8].icone} titre={FAMILLES[8].titre} aide={FAMILLES[8].aide} active={activeFamille === FAMILLES[8].id}>
         {node.position ? (
           <div className="flex flex-col gap-1">
             <span className="text-[8px]">Plan : {node.position.planId} · x: {node.position.x.toFixed(1)} · y: {node.position.y.toFixed(1)}</span>
@@ -1844,6 +1961,9 @@ function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauT
         })()}
       </Famille>
       </fieldset>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -2325,7 +2445,7 @@ function ReviewOverlay({ game, meta }: { game: Game; meta: StudioMeta }) {
         return (
           <div key={n.id} className="carte p-2 my-1 shadow-none">
             <div className="font-mono text-[9px] text-snow mb-2">{n.id} — {ETATS_FR[statut]} — {polys.length} zone(s)</div>
-            <div className="relative w-full" style={{ paddingTop: "56%", background: "#111318", borderRadius: 8 }}>
+            <div className="relative w-full" style={{ paddingTop: "56%", background: "var(--surface-2)", borderRadius: 8 }}>
               <span className="absolute top-0 left-1 font-mono text-[8px] text-fog">{String(d.source ?? "image source ?")}</span>
               {polys.map((p, i) => (
                 <div key={i} className="absolute" style={{ left: `${p.x}%`, top: `${p.y}%`, width: `${p.w}%`, height: `${p.h}%`, border: "2px solid #00e5ff" }} />

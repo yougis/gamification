@@ -27,15 +27,15 @@ export const CONDITIONS_FR: Record<string, { nom: string; aide: string }> = {
 };
 
 export const FAMILLES = [
-  { id: "epreuve", titre: "1 · L'épreuve", aide: "Ce que le joueur voit et fait" },
-  { id: "declenchement", titre: "2 · Déclenchement", aide: "Quand l'étape s'ouvre" },
-  { id: "comportement", titre: "3 · Comportement", aide: "Ce qui se passe ensuite" },
-  { id: "tirage", titre: "4 · Tirage au sort", aide: "Si c'est une étape de tirage" },
-  { id: "validation", titre: "5 · Validation", aide: "Relecture équipe avant publication" },
-  { id: "decouverte", titre: "6 · Découverte", aide: "Comment l'étape devient connue du joueur" },
-  { id: "effets", titre: "7 · Effets", aide: "Ce que l'étape produit à la complétion" },
-  { id: "inventaire", titre: "8 · Inventaire", aide: "Objets requis ou référencés" },
-  { id: "position", titre: "9 · Position", aide: "Emplacement sur la carte ou le plan" },
+  { id: "epreuve", titre: "1 · L'épreuve", aide: "Ce que le joueur voit et fait", icone: "etape" as const },
+  { id: "declenchement", titre: "2 · Déclenchement", aide: "Quand l'étape s'ouvre", icone: "zone" as const },
+  { id: "comportement", titre: "3 · Comportement", aide: "Ce qui se passe ensuite", icone: "apres" as const },
+  { id: "tirage", titre: "4 · Tirage au sort", aide: "Si c'est une étape de tirage", icone: "tirage" as const },
+  { id: "validation", titre: "5 · Validation", aide: "Relecture équipe avant publication", icone: "valider" as const },
+  { id: "decouverte", titre: "6 · Découverte", aide: "Comment l'étape devient connue du joueur", icone: "oeil" as const },
+  { id: "effets", titre: "7 · Effets", aide: "Ce que l'étape produit à la complétion", icone: "engrenage" as const },
+  { id: "inventaire", titre: "8 · Inventaire", aide: "Objets requis ou référencés", icone: "package" as const },
+  { id: "position", titre: "9 · Position", aide: "Emplacement sur la carte ou le plan", icone: "lieu" as const },
 ] as const;
 
 // Préréglages de rayon (demande UX) : valeurs indicatives, modifiables, stockées dans le JSON.

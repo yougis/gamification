@@ -35,3 +35,22 @@
   --radius-m: 10px;
   --radius-l: 14px;
 }
+
+/* Thème clair (change studio-persistence-theme-fix) : les utilitaires
+   Tailwind (bg-canvas, text-snow, border-rule, …) résolvent des valeurs
+   claires. Non préfixé = gagne sur les vars `@theme` (couches cascade).
+   Accents et statuts conservés : seul le chrome Studio bascule. */
+.theme-light {
+  --color-canvas: #ffffff;
+  --color-panel: #f8f9fa;
+  --color-pane2: #e9ecef;
+  --color-rule: #dee2e6;
+  --color-snow: #212529;
+  --color-fog: #868e96;
+  --color-dim: #6c757d;
+  --color-line: #dee2e6;
+  --color-line-forte: #adb5bd;
+  --color-surface: #f8f9fa;
+  --color-surface-2: #ffffff;
+  --color-surface-3: #e9ecef;
+}

@@ -351,6 +351,24 @@ select {
 .studio-flow .react-flow__edge-selected {
     stroke: var(--couleur-accent);
 }
+/* Nœuds et libellés ReactFlow (change studio-persistence-theme-fix) :
+   pilotés par les variables pour suivre sombre/clair. */
+.studio-flow .react-flow__node {
+    background: var(--surface);
+    color: var(--ink);
+    border: 1px solid var(--line-forte);
+    border-radius: var(--rayon-m);
+}
+.studio-flow .react-flow__node.selected {
+    border-color: var(--couleur-accent);
+    box-shadow: 0 0 0 2px var(--couleur-accent-douce);
+}
+.studio-flow .react-flow__edge-text {
+    fill: var(--ink-2);
+}
+.studio-flow .react-flow__edge-textbg {
+    fill: var(--surface-2);
+}
 /* Étapes du workflow : l'étape courante se lit au texte + anneau, pas à la couleur. */
 .etape-courante {
     box-shadow: 0 0 0 3px var(--surface), 0 0 0 5px var(--focus);

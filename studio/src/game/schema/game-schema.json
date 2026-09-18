@@ -129,7 +129,8 @@
           "type": "string",
           "enum": ["fixed", "viewport", "radius", "none"]
         },
-        "tileRadiusMeters": {"type": "number", "exclusiveMinimum": 0}
+        "tileRadiusMeters": {"type": "number", "exclusiveMinimum": 0},
+        "screen": {"$ref": "#/definitions/screen"}
       },
       "allOf": [
         {"if": {"required": ["holdMode"], "properties": {"holdMode": {"enum": ["guidedAccess", "screenPinning", "lockTask"]}}}, "then": {"required": ["holdExit"]}},
@@ -235,7 +236,8 @@
             "x": {"type": "number"},
             "y": {"type": "number"}
           }
-        }
+        },
+        "screen": {"$ref": "#/definitions/screen"}
       },
       "allOf": [
         {"if": {"required": ["onReentry"], "properties": {"onReentry": {"const": "replay"}}}, "then": {"required": ["maxReentries"]}}
@@ -355,6 +357,125 @@
         "consumable": {"type": "boolean", "default": false},
         "stackable": {"type": "boolean", "default": true}
       }
+    },
+    "screen": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "layout": {"type": "string", "minLength": 1},
+        "background": {
+          "type": "object",
+          "required": ["type", "value"],
+          "additionalProperties": false,
+          "properties": {
+            "type": {"enum": ["color", "image", "gradient"]},
+            "value": {"type": "string"},
+            "overlay": {"type": "number", "minimum": 0, "maximum": 1}
+          }
+        },
+        "zones": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "header": {"$ref": "#/definitions/zoneContent"},
+            "content": {"$ref": "#/definitions/zoneContent"},
+            "footer": {"$ref": "#/definitions/zoneContent"},
+            "overlay": {"$ref": "#/definitions/zoneContent"}
+          }
+        },
+        "transitions": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enter": {"enum": ["fade", "slide", "none"]},
+            "exit": {"enum": ["fade", "slide", "none"]}
+          }
+        }
+      }
+    },
+    "zoneContent": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "layout": {"enum": ["stack", "grid", "free"], "default": "stack"},
+        "widgets": {"type": "array", "items": {"$ref": "#/definitions/widget"}}
+      }
+    },
+    "widget": {
+      "type": "object",
+      "required": ["type"],
+      "oneOf": [
+        {
+          "required": ["type", "text"],
+          "additionalProperties": false,
+          "properties": {
+            "type": {"const": "text"},
+            "text": {"type": "string"},
+            "style": {"enum": ["heading", "subtitle", "body", "caption"]},
+            "fontSize": {"type": "number", "minimum": 0},
+            "color": {"type": "string"},
+            "align": {"enum": ["left", "center", "right"]}
+          }
+        },
+        {
+          "required": ["type", "src"],
+          "additionalProperties": false,
+          "properties": {
+            "type": {"const": "image"},
+            "src": {"type": "string", "minLength": 1},
+            "width": {"type": ["number", "string"]},
+            "height": {"type": ["number", "string"]},
+            "fit": {"enum": ["cover", "contain", "fill"]},
+            "alt": {"type": "string"}
+          }
+        },
+        {
+          "required": ["type", "label"],
+          "additionalProperties": false,
+          "properties": {
+            "type": {"const": "button"},
+            "label": {"type": "string"},
+            "action": {"type": "string"},
+            "icon": {"type": "string"},
+            "variant": {"enum": ["primary", "secondary", "ghost"]}
+          }
+        },
+        {
+          "required": ["type"],
+          "additionalProperties": false,
+          "properties": {
+            "type": {"const": "progress"},
+            "progressType": {"enum": ["steps", "score"]},
+            "showLabel": {"type": "boolean"},
+            "color": {"type": "string"}
+          }
+        },
+        {
+          "required": ["type"],
+          "additionalProperties": false,
+          "properties": {
+            "type": {"const": "module"},
+            "styles": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "backgroundColor": {"type": "string"},
+                "textColor": {"type": "string"},
+                "fontSize": {"type": "number", "minimum": 0},
+                "borderRadius": {"type": "number", "minimum": 0}
+              }
+            }
+          }
+        },
+        {
+          "required": ["type"],
+          "additionalProperties": false,
+          "properties": {
+            "type": {"const": "spacer"},
+            "height": {"type": ["number", "string"]}
+          }
+        }
+      ]
     }
   }
 }

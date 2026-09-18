@@ -79,6 +79,94 @@ export interface GameNode {
   effects?: Effect[];
   inventoryRef?: string[];
   position?: NodePosition;
+  screen?: ScreenDefinition;
+}
+
+// --- WYSIWYG screen builder types (change studio-screen-wysiwyg) ---
+
+export interface TextWidget {
+  type: "text";
+  text: string;
+  style?: "heading" | "subtitle" | "body" | "caption";
+  fontSize?: number;
+  color?: string;
+  align?: "left" | "center" | "right";
+}
+
+export interface ImageWidget {
+  type: "image";
+  src: string;
+  width?: number | string;
+  height?: number | string;
+  fit?: "cover" | "contain" | "fill";
+  alt?: string;
+}
+
+export interface ButtonWidget {
+  type: "button";
+  label: string;
+  action?: string;
+  icon?: string;
+  variant?: "primary" | "secondary" | "ghost";
+}
+
+export interface ProgressBarWidget {
+  type: "progress";
+  progressType?: "steps" | "score";
+  showLabel?: boolean;
+  color?: string;
+}
+
+export interface WidgetStyles {
+  backgroundColor?: string;
+  textColor?: string;
+  fontSize?: number;
+  borderRadius?: number;
+}
+
+export interface ModuleWidget {
+  type: "module";
+  styles?: WidgetStyles;
+}
+
+export interface SpacerWidget {
+  type: "spacer";
+  height?: number | string;
+}
+
+export type Widget =
+  | TextWidget
+  | ImageWidget
+  | ButtonWidget
+  | ProgressBarWidget
+  | ModuleWidget
+  | SpacerWidget;
+
+export type ZoneLayout = "stack" | "grid" | "free";
+
+export interface ZoneContent {
+  layout?: ZoneLayout;
+  widgets?: Widget[];
+}
+
+export type ZoneId = "header" | "content" | "footer" | "overlay";
+
+export interface ScreenBackground {
+  type: "color" | "image" | "gradient";
+  value: string;
+  overlay?: number;
+}
+
+export interface ScreenTransitions {
+  enter?: "fade" | "slide" | "none";
+  exit?: "fade" | "slide" | "none";
+}
+
+export interface ScreenDefinition {
+  layout?: string;
+  background?: ScreenBackground;
+  zones?: Partial<Record<ZoneId, ZoneContent>>;
+  transitions?: ScreenTransitions;
 }
 
 // --- Indoor plan types (change studio-map-view) ---
@@ -164,6 +252,7 @@ export interface Game {
     gameMode?: "NORMAL" | "ANIMATEUR" | "SOIREE" | "HARDCORE";
     difficulty?: "ENFANT" | "FAMILLE" | "EXPERT";
     indoorPlans?: IndoorPlan[];
+    screen?: ScreenDefinition;
   };
   nodes: GameNode[];
   objects?: { id: string; name: string; icon?: string; description?: string; consumable?: boolean; stackable?: boolean }[];
