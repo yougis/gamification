@@ -1,7 +1,7 @@
 // Outils MCP du Studio (spike) : meme schema des deux cotes, rien ne sort sans validation.
 import { validateGame } from "./validate";
 import { sha256Hex, type ManifestFile } from "./pack";
-import type { Game, GameNode, ReviewStatus, StudioMeta, HoldMode, HoldExit, NavigationModel, Discovery, Effect, GameObject, ExperienceStyle, Branding, GameMode, Difficulty, NodePosition } from "./types";
+import type { Game, GameNode, ReviewStatus, StudioMeta, HoldMode, HoldExit, NavigationModel, Discovery, Effect, GameObject, ExperienceStyle, Branding, GameMode, Difficulty, NodePosition, ScreenDefinition, ZoneContent, ZoneId, Widget, WidgetStyles, MinigameDefaults } from "./types";
 
 export type { ManifestFile };
 const sha256hex = sha256Hex;
@@ -280,6 +280,125 @@ export function setInventoryRef(game: Game, nodeId: string, inventoryRef: string
     ...game,
     nodes: game.nodes.map((n) => (n.id === nodeId ? { ...n, inventoryRef } : n))
   };
+}
+
+// --- Screen MCP operations (change studio-screen-wysiwyg) ---
+// Toute ecriture materialise node.screen a la demande : editer = le noeud
+// possede son ecran, resolveScreen() fusionne toujours le global pour le reste.
+
+export function setNodeScreen(game: Game, nodeId: string, screen: ScreenDefinition): Game {
+  return { ...game, nodes: game.nodes.map((n) => (n.id === nodeId ? { ...n, screen } : n)) };
+}
+
+export function setScreenBackground(game: Game, nodeId: string, background: ScreenDefinition["background"]): Game {
+  return {
+    ...game,
+    nodes: game.nodes.map((n) => (n.id === nodeId ? { ...n, screen: { ...(n.screen ?? {}), background } } : n)),
+  };
+}
+
+export function patchScreenZone(game: Game, nodeId: string, zoneId: ZoneId, patch: Partial<ZoneContent>): Game {
+  return {
+    ...game,
+    nodes: game.nodes.map((n) => {
+      if (n.id !== nodeId) return n;
+      const zones = { ...(n.screen?.zones ?? {}), [zoneId]: { ...(n.screen?.zones?.[zoneId] ?? {}), ...patch } };
+      return { ...n, screen: { ...(n.screen ?? {}), zones } };
+    }),
+  };
+}
+
+function withScreenWidgets(game: Game, nodeId: string, zoneId: ZoneId, fn: (widgets: Widget[]) => Widget[]): Game {
+  return {
+    ...game,
+    nodes: game.nodes.map((n) => {
+      if (n.id !== nodeId) return n;
+      const zone = n.screen?.zones?.[zoneId] ?? {};
+      const zones = { ...(n.screen?.zones ?? {}), [zoneId]: { ...zone, widgets: fn(zone.widgets ?? []) } };
+      return { ...n, screen: { ...(n.screen ?? {}), zones } };
+    }),
+  };
+}
+
+export function addScreenWidget(game: Game, nodeId: string, zoneId: ZoneId, widget: Widget): Game {
+  return withScreenWidgets(game, nodeId, zoneId, (ws) => [...ws, widget]);
+}
+
+export function setScreenWidget(game: Game, nodeId: string, zoneId: ZoneId, index: number, widget: Widget): Game {
+  return withScreenWidgets(game, nodeId, zoneId, (ws) => ws.map((w, i) => (i === index ? widget : w)));
+}
+
+export function removeScreenWidget(game: Game, nodeId: string, zoneId: ZoneId, index: number): Game {
+  return withScreenWidgets(game, nodeId, zoneId, (ws) => ws.filter((_, i) => i !== index));
+}
+
+export function moveScreenWidget(game: Game, nodeId: string, zoneId: ZoneId, index: number, dir: -1 | 1): Game {
+  return withScreenWidgets(game, nodeId, zoneId, (ws) => {
+    const j = index + dir;
+    if (index < 0 || index >= ws.length || j < 0 || j >= ws.length) return ws;
+    const next = [...ws];
+    [next[index], next[j]] = [next[j], next[index]];
+    return next;
+  });
+}
+
+// Deplacement inter-zones en une seule operation (change studio-screen-editor,
+// design D2) : un seul pas d'undo, contrairement a remove + add separes.
+// `toIndex` = position d'insertion (defaut : fin de la zone cible).
+export function moveScreenWidgetAcross(
+  game: Game,
+  nodeId: string,
+  fromZone: ZoneId,
+  fromIndex: number,
+  toZone: ZoneId,
+  toIndex?: number | "end",
+): Game {
+  return {
+    ...game,
+    nodes: game.nodes.map((n) => {
+      if (n.id !== nodeId) return n;
+      const from = [...(n.screen?.zones?.[fromZone]?.widgets ?? [])];
+      if (fromIndex < 0 || fromIndex >= from.length) return n;
+      const [deplace] = from.splice(fromIndex, 1);
+      if (fromZone === toZone) {
+        const at = toIndex === "end" || toIndex === undefined ? from.length : toIndex;
+        from.splice(Math.max(0, Math.min(at, from.length)), 0, deplace);
+        const zones = { ...(n.screen?.zones ?? {}), [fromZone]: { ...(n.screen?.zones?.[fromZone] ?? {}), widgets: from } };
+        return { ...n, screen: { ...(n.screen ?? {}), zones } };
+      }
+      const to = [...(n.screen?.zones?.[toZone]?.widgets ?? [])];
+      const at = toIndex === "end" || toIndex === undefined ? to.length : toIndex;
+      to.splice(Math.max(0, Math.min(at, to.length)), 0, deplace);
+      const zones = {
+        ...(n.screen?.zones ?? {}),
+        [fromZone]: { ...(n.screen?.zones?.[fromZone] ?? {}), widgets: from },
+        [toZone]: { ...(n.screen?.zones?.[toZone] ?? {}), widgets: to },
+      };
+      return { ...n, screen: { ...(n.screen ?? {}), zones } };
+    }),
+  };
+}
+
+// Surcharge des styles de l'ecran courant (fusion, change studio-screen-editor).
+export function setScreenStyles(game: Game, nodeId: string, styles: WidgetStyles): Game {
+  return {
+    ...game,
+    nodes: game.nodes.map((n) =>
+      n.id !== nodeId ? n : { ...n, screen: { ...(n.screen ?? {}), styles: { ...(n.screen?.styles ?? {}), ...styles } } },
+    ),
+  };
+}
+
+// Styles globaux du jeu (fusion, change studio-screen-editor).
+export function setGlobalScreenStyles(game: Game, styles: WidgetStyles): Game {
+  const global = { ...(game.global ?? {}), screen: { ...((game.global as { screen?: ScreenDefinition } | undefined)?.screen ?? {}), styles: { ...(((game.global as { screen?: ScreenDefinition } | undefined)?.screen?.styles) ?? {}), ...styles } } };
+  return { ...game, global };
+}
+
+// Defauts globaux des mini-jeux (fusion, change studio-screen-editor).
+export function setMinigameDefaults(game: Game, patch: MinigameDefaults): Game {
+  const global = { ...(game.global ?? {}), minigameDefaults: { ...((game.global as { minigameDefaults?: MinigameDefaults } | undefined)?.minigameDefaults ?? {}), ...patch } };
+  return { ...game, global };
 }
 
 // --- Navigation MCP operations (tache 5.2) ---

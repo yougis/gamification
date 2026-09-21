@@ -3,20 +3,22 @@ package com.geoplay.player
 import android.app.Application
 import android.util.Log
 import androidx.room.Room
-import com.geoplay.player.data.GameDatabase
 import com.geoplay.player.data.GameRepository
 import com.geoplay.player.data.PackManager
+import com.geoplay.shared.GeoPlayShared
+import com.geoplay.shared.db.GeoPlayDatabase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 class GeoPlayApplication : Application() {
 
-    private var database: GameDatabase? = null
+    private var database: GeoPlayDatabase? = null
 
     override fun onCreate() {
         super.onCreate()
-        database = Room.databaseBuilder(this, GameDatabase::class.java, "geoplay.db")
+        Log.i("GeoPlay", "Shared KMP module version: ${GeoPlayShared.VERSION}")
+        database = Room.databaseBuilder(this, GeoPlayDatabase::class.java, "geoplay.db")
             .fallbackToDestructiveMigration()
             .build()
         copyReferencePackIfNeeded()
@@ -45,7 +47,7 @@ class GeoPlayApplication : Application() {
         }
     }
 
-    val databaseInstance: GameDatabase
+    val databaseInstance: GeoPlayDatabase
         get() = database!!
 
     val repository: GameRepository by lazy {

@@ -11,7 +11,8 @@
     "dev:smoke": "tsx smoke.ts",
     "test:runtime": "tsx runtime.smoke.ts",
     "test:modules": "tsx modules.smoke.ts",
-    "test:pack": "tsx pack.smoke.ts"
+    "test:pack": "tsx pack.smoke.ts",
+    "test:screen": "tsx screen.smoke.ts"
   },
   "dependencies": {
     "@xyflow/react": "^12.11.6",

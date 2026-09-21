@@ -53,11 +53,15 @@ Le principe d'architecture du projet (kmp-native-boundary) impose : base KMP par
 - SQLDelight → alternatif solide mais nécessite de réécrire les DAOs existants
 - SQLite brut via expect/actual → trop de boilerplate, pas de type-safety
 
-### 4. Gradle KMP avec Kotlin 2.1
+### 4. Gradle KMP avec Kotlin 2.2
 
-**Décision :** Mettre à jour Kotlin de 2.0.21 à 2.1.x pour bénéficier des dernières améliorations KMP et Compose.
+**Décision :** Mettre à jour Kotlin de 2.0.21 à 2.2.21 (au lieu de 2.1.x initialement envisagé), Compose Multiplatform 1.10.3, KSP 2.2.21-2.0.5, Room 2.8.5, compileSdk/targetSdk 35.
 
-**Rationale :** Kotlin 2.1 améliore la compilation KMP, le support iOS, et la compatibilité Compose Multiplatform. La migration de 2.0 à 2.1 est non-breakinge.
+**Rationale :** Les artefacts récents de l'écosystème (navigation-compose 2.9.2) sont compilés avec Kotlin 2.2.x. Les klibs Kotlin ne sont lisibles que par un compilateur de version égale ou supérieure : rester en 2.1 cassait `kspCommonMainKotlinMetadata` et le link iOS. Room 2.6.1/KAPT ne supporte pas Kotlin ≥ 2.1 (metadata max 2.0.0), d'où Room 2.8.5 + KSP. navigation-compose-android 2.9.7 exige compileSdk 35.
+
+**Note d'implémentation (tâche 1.4) :** Room KMP exige `@ConstructedBy` sur la classe `@Database` en commonMain + un `expect object ... : RoomDatabaseConstructor<T>` ; l'`actual` est **généré par Room** (ne pas l'écrire à la main — conflit de doublon). KSP est branché **par cible** (`kspAndroid`, `kspJvm`) : ce sont les seules configurations câblées dans les graphes de compilation (vérifié via dry-run).
+
+**Note d'implémentation (tâche 2.4) :** `kspCommonMainMetadata` est volontairement exclu pour l'instant — sa sortie produisait un `actual` en double avec les implémentations par cible (erreur `has no corresponding expected declaration`). Il reviendra en phase 3/6.x où le link `.framework` sera vérifié pour de vrai sur runner macOS. Les entités et la DB DOIVENT vivre dans le même module (Room KSP ne résout pas les entités à travers une frontière de module KMP avec ce toolchain). Preuve runtime : `DatabasePersistenceTest` (jvmTest, driver SQLite bundlé, base mémoire) couvre sessions, tirages, complétions, scores (+flag triche), progression, journal HOLD et inventaire.
 
 ### 5. GitHub Actions pour iOS
 

@@ -1,10 +1,10 @@
 package com.geoplay.player
 
-import com.geoplay.player.game.Sim
-import com.geoplay.player.game.drawPool
-import com.geoplay.player.game.evaluate
-import com.geoplay.player.game.present
-import com.geoplay.player.model.Game
+import com.geoplay.shared.game.Sim
+import com.geoplay.shared.game.drawPool
+import com.geoplay.shared.game.evaluate
+import com.geoplay.shared.game.present
+import com.geoplay.shared.model.Game
 import kotlinx.serialization.json.Json
 import org.junit.Assert.*
 import org.junit.Test

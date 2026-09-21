@@ -16,7 +16,25 @@
         "additionalProperties": false,
         "properties": {
           "q": {"type": "string", "minLength": 1},
-          "options": {"type": "array", "minItems": 2, "items": {"type": "string"}},
+          "options": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 6,
+            "items": {
+              "anyOf": [
+                {"type": "string"},
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "text": {"type": "string"},
+                    "image": {"type": "string", "minLength": 1}
+                  },
+                  "anyOf": [{"required": ["text"]}, {"required": ["image"]}]
+                }
+              ]
+            }
+          },
           "correctIndex": {"type": "integer", "minimum": 0},
           "explanation": {"type": "string"},
           "points": {"type": "integer", "minimum": 0}
@@ -24,6 +42,7 @@
       }
     },
     "timeLimitSeconds": {"type": "integer", "minimum": 0},
+    "maxAttempts": {"type": "integer", "minimum": 1},
     "onTimeout": {"type": "string"}
   },
   "x-needs": {"gps": false, "compass": false, "camera": false, "map": false},

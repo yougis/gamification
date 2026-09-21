@@ -10,8 +10,16 @@
     "image": {"type": "string", "minLength": 1},
     "rows": {"type": "integer", "minimum": 2},
     "cols": {"type": "integer", "minimum": 2},
+    "tileRows": {"type": "integer", "minimum": 2, "maximum": 6},
+    "tileCols": {"type": "integer", "minimum": 2, "maximum": 6},
+    "maxAttempts": {"type": "integer", "minimum": 1},
+    "timeLimitSeconds": {"type": "integer", "minimum": 0},
     "mode": {"enum": ["slide", "drag"]}
   },
+  "allOf": [
+    {"if": {"required": ["tileRows"]}, "then": {"required": ["tileCols"]}},
+    {"if": {"required": ["tileCols"]}, "then": {"required": ["tileRows"]}}
+  ],
   "x-needs": {"gps": false, "compass": false, "camera": false, "map": false},
   "x-fallback": "etat restaure depuis SQLite (tactile + clavier)"
 }

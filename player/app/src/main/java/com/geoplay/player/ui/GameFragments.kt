@@ -12,7 +12,6 @@ import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.geoplay.player.R
-import com.geoplay.player.data.GameDatabase
 import com.geoplay.player.data.GameRepository
 import com.geoplay.player.data.PackManager
 import com.geoplay.player.databinding.FragmentGameBinding
@@ -22,10 +21,10 @@ import com.geoplay.player.databinding.FragmentModuleBinding
 import com.geoplay.player.databinding.FragmentPreviewBinding
 import com.geoplay.player.databinding.FragmentReviewBinding
 import com.geoplay.player.databinding.FragmentSettingsBinding
-import com.geoplay.player.game.Sim
-import com.geoplay.player.game.evaluate
-import com.geoplay.player.model.Game
-import com.geoplay.player.model.OnReentry
+import com.geoplay.shared.game.Sim
+import com.geoplay.shared.game.evaluate
+import com.geoplay.shared.model.Game
+import com.geoplay.shared.model.OnReentry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -242,13 +241,13 @@ class GameFragment : Fragment() {
         // ON_GAME_START en ordre de declaration (topo au socle) + persistance immediate, jamais recalcule.
         g.nodes.filter { it.randomPool != null }.forEach { pool ->
             val timing = pool.randomPool?.drawTiming
-            if (timing == com.geoplay.player.model.DrawTiming.ON_GAME_START && !draws.containsKey(pool.id)) {
+            if (timing == com.geoplay.shared.model.DrawTiming.ON_GAME_START && !draws.containsKey(pool.id)) {
                 val forced = if (isCheatMode) arguments?.getStringArrayList("forceDraw")?.toList() else null
-                val result = com.geoplay.player.game.drawPool(pool, sid, forced)
+                val result = com.geoplay.shared.game.drawPool(pool, sid, forced)
                 draws[pool.id] = result
                 result.forEach { nodeId ->
                     repository.saveRandomDraw(
-                        com.geoplay.player.model.RandomDrawEntity(
+                        com.geoplay.shared.model.RandomDrawEntity(
                             sessionId = sid,
                             poolNodeId = pool.id,
                             drawnNodeId = nodeId,
@@ -264,15 +263,15 @@ class GameFragment : Fragment() {
         val g = game ?: return
         val sid = sessionId ?: return
         g.nodes.filter { it.randomPool != null }.forEach { pool ->
-            if (pool.randomPool?.drawTiming == com.geoplay.player.model.DrawTiming.ON_POOL_ACTIVATION
+            if (pool.randomPool?.drawTiming == com.geoplay.shared.model.DrawTiming.ON_POOL_ACTIVATION
                 && !draws.containsKey(pool.id) && isPoolUnlocked(pool)
             ) {
                 val forced = if (isCheatMode) arguments?.getStringArrayList("forceDraw")?.toList() else null
-                val result = com.geoplay.player.game.drawPool(pool, sid, forced)
+                val result = com.geoplay.shared.game.drawPool(pool, sid, forced)
                 draws[pool.id] = result
                 result.forEach { nodeId ->
                     repository.saveRandomDraw(
-                        com.geoplay.player.model.RandomDrawEntity(
+                        com.geoplay.shared.model.RandomDrawEntity(
                             sessionId = sid,
                             poolNodeId = pool.id,
                             drawnNodeId = nodeId,
@@ -284,22 +283,22 @@ class GameFragment : Fragment() {
         }
     }
 
-    private fun isPoolUnlocked(pool: com.geoplay.player.model.GameNode): Boolean {
+    private fun isPoolUnlocked(pool: com.geoplay.shared.model.GameNode): Boolean {
         // Activation minimale cote Player : graphe (NODE_COMPLETED / POOL_DRAWN / TIMER),
         // environnement suppose favorable comme le validateur (GEOFENCE/TIMER vrais).
         sim.nowMs = System.currentTimeMillis() - gameStartMs
         pool.activation.requires.forEach { c ->
             val ok = when (c.type) {
-                com.geoplay.player.model.ConditionType.NODE_COMPLETED -> done.containsKey(c.nodeId)
-                com.geoplay.player.model.ConditionType.POOL_DRAWN -> !draws[c.poolNodeId].isNullOrEmpty()
-                com.geoplay.player.model.ConditionType.TIMER -> {
-                    val anchor = if (c.anchor == com.geoplay.player.model.Anchor.NODE_COMPLETION) {
+                com.geoplay.shared.model.ConditionType.NODE_COMPLETED -> done.containsKey(c.nodeId)
+                com.geoplay.shared.model.ConditionType.POOL_DRAWN -> !draws[c.poolNodeId].isNullOrEmpty()
+                com.geoplay.shared.model.ConditionType.TIMER -> {
+                    val anchor = if (c.anchor == com.geoplay.shared.model.Anchor.NODE_COMPLETION) {
                         done[c.anchorNodeId] ?: return@forEach
                     } else gameStartMs
                     System.currentTimeMillis() >= anchor + (c.delaySeconds ?: 0L) * 1000L
                 }
-                com.geoplay.player.model.ConditionType.GEOFENCE,
-                com.geoplay.player.model.ConditionType.PROXIMITY_MASTER -> true
+                com.geoplay.shared.model.ConditionType.GEOFENCE,
+                com.geoplay.shared.model.ConditionType.PROXIMITY_MASTER -> true
                 else -> false
             }
             if (!ok) return false
@@ -363,7 +362,7 @@ class GameFragment : Fragment() {
                     val scoreKept = !isReplay || node.scoreOnReplay
                     repository.recordScore(sid, id, if (scoreKept) 10 else 0, isCheatMode)
                     repository.saveProgress(
-                        com.geoplay.player.model.GameProgressEntity(
+                        com.geoplay.shared.model.GameProgressEntity(
                             sessionId = sid,
                             gameId = game?.gameId ?: "",
                             currentNodeId = null,
@@ -499,7 +498,7 @@ class ImportFragment : Fragment() {
         }
     }
 
-    private fun showVerification(result: com.geoplay.player.data.PackVerificationResult) {
+    private fun showVerification(result: com.geoplay.shared.pack.PackVerificationResult) {
         if (result.isValid) {
             Toast.makeText(requireContext(), "Pack verifie : jeu demarrable offline", Toast.LENGTH_SHORT).show()
             findNavController().navigate(R.id.action_importFragment_to_gameFragment)

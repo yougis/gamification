@@ -130,7 +130,15 @@
           "enum": ["fixed", "viewport", "radius", "none"]
         },
         "tileRadiusMeters": {"type": "number", "exclusiveMinimum": 0},
-        "screen": {"$ref": "#/definitions/screen"}
+        "screen": {"$ref": "#/definitions/screen"},
+        "minigameDefaults": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "maxAttempts": {"type": "integer", "minimum": 1},
+            "timeLimitSeconds": {"type": "integer", "minimum": 0}
+          }
+        }
       },
       "allOf": [
         {"if": {"required": ["holdMode"], "properties": {"holdMode": {"enum": ["guidedAccess", "screenPinning", "lockTask"]}}}, "then": {"required": ["holdExit"]}},
@@ -363,6 +371,7 @@
       "additionalProperties": false,
       "properties": {
         "layout": {"type": "string", "minLength": 1},
+        "styles": {"$ref": "#/definitions/widgetStyles"},
         "background": {
           "type": "object",
           "required": ["type", "value"],
@@ -401,6 +410,20 @@
         "widgets": {"type": "array", "items": {"$ref": "#/definitions/widget"}}
       }
     },
+    "widgetStyles": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fontFamily": {"type": "string"},
+        "fontSize": {"type": "number", "exclusiveMinimum": 0},
+        "fontWeight": {"enum": ["normal", "bold"]},
+        "color": {"type": "string"},
+        "align": {"enum": ["left", "center", "right"]},
+        "backgroundColor": {"type": "string"},
+        "textColor": {"type": "string"},
+        "borderRadius": {"type": "number", "minimum": 0}
+      }
+    },
     "widget": {
       "type": "object",
       "required": ["type"],
@@ -414,7 +437,8 @@
             "style": {"enum": ["heading", "subtitle", "body", "caption"]},
             "fontSize": {"type": "number", "minimum": 0},
             "color": {"type": "string"},
-            "align": {"enum": ["left", "center", "right"]}
+            "align": {"enum": ["left", "center", "right"]},
+            "styles": {"$ref": "#/definitions/widgetStyles"}
           }
         },
         {
@@ -426,7 +450,8 @@
             "width": {"type": ["number", "string"]},
             "height": {"type": ["number", "string"]},
             "fit": {"enum": ["cover", "contain", "fill"]},
-            "alt": {"type": "string"}
+            "alt": {"type": "string"},
+            "styles": {"$ref": "#/definitions/widgetStyles"}
           }
         },
         {
@@ -437,7 +462,8 @@
             "label": {"type": "string"},
             "action": {"type": "string"},
             "icon": {"type": "string"},
-            "variant": {"enum": ["primary", "secondary", "ghost"]}
+            "variant": {"enum": ["primary", "secondary", "ghost"]},
+            "styles": {"$ref": "#/definitions/widgetStyles"}
           }
         },
         {
@@ -447,7 +473,8 @@
             "type": {"const": "progress"},
             "progressType": {"enum": ["steps", "score"]},
             "showLabel": {"type": "boolean"},
-            "color": {"type": "string"}
+            "color": {"type": "string"},
+            "styles": {"$ref": "#/definitions/widgetStyles"}
           }
         },
         {
@@ -455,16 +482,7 @@
           "additionalProperties": false,
           "properties": {
             "type": {"const": "module"},
-            "styles": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "backgroundColor": {"type": "string"},
-                "textColor": {"type": "string"},
-                "fontSize": {"type": "number", "minimum": 0},
-                "borderRadius": {"type": "number", "minimum": 0}
-              }
-            }
+            "styles": {"$ref": "#/definitions/widgetStyles"}
           }
         },
         {
@@ -472,7 +490,8 @@
           "additionalProperties": false,
           "properties": {
             "type": {"const": "spacer"},
-            "height": {"type": ["number", "string"]}
+            "height": {"type": ["number", "string"]},
+            "styles": {"$ref": "#/definitions/widgetStyles"}
           }
         }
       ]

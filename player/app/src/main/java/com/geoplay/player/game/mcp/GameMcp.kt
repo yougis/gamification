@@ -1,20 +1,20 @@
 package com.geoplay.player.game.mcp
 
-import com.geoplay.player.model.Activation
-import com.geoplay.player.model.Anchor
-import com.geoplay.player.model.Branding
-import com.geoplay.player.model.Condition
-import com.geoplay.player.model.ConditionType
-import com.geoplay.player.model.ExperienceStyle
-import com.geoplay.player.model.Game
-import com.geoplay.player.model.GameNode
-import com.geoplay.player.model.HoldExit
-import com.geoplay.player.model.HoldExitMethod
-import com.geoplay.player.model.HoldMode
-import com.geoplay.player.model.ModuleData
-import com.geoplay.player.model.Operator
-import com.geoplay.player.model.GameMode
-import com.geoplay.player.model.Difficulty
+import com.geoplay.shared.model.Activation
+import com.geoplay.shared.model.Anchor
+import com.geoplay.shared.model.Branding
+import com.geoplay.shared.model.Condition
+import com.geoplay.shared.model.ConditionType
+import com.geoplay.shared.model.ExperienceStyle
+import com.geoplay.shared.model.Game
+import com.geoplay.shared.model.GameNode
+import com.geoplay.shared.model.HoldExit
+import com.geoplay.shared.model.HoldExitMethod
+import com.geoplay.shared.model.HoldMode
+import com.geoplay.shared.model.ModuleData
+import com.geoplay.shared.model.Operator
+import com.geoplay.shared.model.GameMode
+import com.geoplay.shared.model.Difficulty
 
 // Port de studio/src/game/mcp.ts addSecoursCode : secours QUIZ + OR sur les avals.
 fun addSecoursCode(game: Game, nodeId: String): Game {

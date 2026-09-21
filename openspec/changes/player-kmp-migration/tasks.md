@@ -1,18 +1,18 @@
 ## 1. Setup KMP et Gradle
 
-- [ ] 1.1 Créer le module `shared` avec configuration KMP (build.gradle.kts, targets androidTarget/iosArm64/iosSimulatorArm64, Kotlin 2.1, Compose Multiplatform plugin) — Vérifier : `./gradlew :shared:compileKotlinAndroid` passe
-- [ ] 1.2 Configurer le module `app` pour consommer `shared` (api dependency, Compose Activity) — Vérifier : `./gradlew :app:assembleDebug` passe
-- [ ] 1.3 Ajouter les dépendances Compose Multiplatform au module `shared` (runtime, ui, material3, navigation) — Vérifier : la compilation passe sans erreur
-- [ ] 1.4 Configurer Room KMP dans le module `shared` (KSP, schema, DAOs communs) — Vérifier : `./gradlew :shared:compileKotlinAndroid` passe avec Room
-- [ ] 1.5 Vérifier la compilation iOS (`./gradlew :shared:linkDebugFrameworkIosArm64`) — Vérifier : le framework iOS est produit
-- [ ] 1.6 Vérifier que le module `app` fonctionne toujours (smoke test Android existant) — Vérifier : le jeu se lance sur émulateur Android
+- [x] 1.1 Créer le module `shared` avec configuration KMP (build.gradle.kts, targets androidTarget/iosArm64/iosSimulatorArm64, Kotlin 2.1, Compose Multiplatform plugin) — Vérifier : `./gradlew :shared:compileKotlinAndroid` passe
+- [x] 1.2 Configurer le module `app` pour consommer `shared` (api dependency, Compose Activity) — Vérifier : `./gradlew :app:assembleDebug` passe
+- [x] 1.3 Ajouter les dépendances Compose Multiplatform au module `shared` (runtime, ui, material3, navigation) — Vérifier : la compilation passe sans erreur
+- [x] 1.4 Configurer Room KMP dans le module `shared` (KSP, schema, DAOs communs) — Vérifier : `./gradlew :shared:compileKotlinAndroid` passe avec Room
+- [ ] 1.5 Vérifier la compilation iOS (`./gradlew :shared:linkDebugFrameworkIosArm64`) — Vérifier : le framework iOS est produit — NOTE: `compileKotlinIosArm64` + `compileKotlinIosSimulatorArm64` (klib) passent sur Linux ; le link `.framework` est désactivé par le plugin Kotlin sur non-macOS ("Task is enabled is false", Apple SDK requis) → framework vérifié sur runner macOS en 6.3
+- [x] 1.6 Vérifier que le module `app` fonctionne toujours (smoke test Android existant) — Vérifier : le jeu se lance sur émulateur Android — NOTE: émulateur Fedora HS (SwiftShader segfault) ; smoke test OK sur émulateur Android Studio (Mac) : l'appli démarre
 
 ## 2. Extraction logique vers commonMain
 
-- [ ] 2.1 Déplacer les modèles de données (Game, Node, Condition, Module, etc.) vers `shared/src/commonMain` — Vérifier : compilation commune et Android passent
-- [ ] 2.2 Déplacer le GameEngine (machine à états, évaluation des conditions, latch, file FIFO) vers `shared/src/commonMain` — Vérifier : tests unitaires communs passent
-- [ ] 2.3 Déplacer l'import de packs (manifest, vérification SHA-256, lecture JSON) vers `shared/src/commonMain` — Vérifier : test d'import passe
-- [ ] 2.4 Configurer Room KMP avec le schéma de persistence (sessions, tirages, événements, inventaire) — Vérifier : `./gradlew :shared:compileKotlinAndroid` passe
+- [x] 2.1 Déplacer les modèles de données (Game, Node, Condition, Module, etc.) vers `shared/src/commonMain` — Vérifier : compilation commune et Android passent
+- [x] 2.2 Déplacer le GameEngine (machine à états, évaluation des conditions, latch, file FIFO) vers `shared/src/commonMain` — Vérifier : tests unitaires communs passent
+- [x] 2.3 Déplacer l'import de packs (manifest, vérification SHA-256, lecture JSON) vers `shared/src/commonMain` — Vérifier : test d'import passe
+- [x] 2.4 Configurer Room KMP avec le schéma de persistence (sessions, tirages, événements, inventaire) — Vérifier : `./gradlew :shared:compileKotlinAndroid` passe
 
 ## 3. Stubs expect/actual pour modules natifs
 

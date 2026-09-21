@@ -2,40 +2,19 @@ package com.geoplay.player.data
 
 import android.content.Context
 import android.util.Log
-import com.geoplay.player.model.Game
+import com.geoplay.shared.model.Game
+import com.geoplay.shared.pack.ManifestEntry
+import com.geoplay.shared.pack.PackManifest
+import com.geoplay.shared.pack.PackVerificationResult
+import com.geoplay.shared.pack.Sha256
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.File
-import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.InputStream
-import java.security.MessageDigest
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
-
-@Serializable
-data class PackManifest(
-    val files: List<ManifestEntry>,
-    val version: Int = 1
-)
-
-@Serializable
-data class ManifestEntry(
-    val path: String,
-    val version: String,
-    val size: Long,
-    val sha256: String
-)
-
-data class PackVerificationResult(
-    val isValid: Boolean,
-    val errors: List<String> = emptyList(),
-    val progressPercent: Float = 0f,
-    val missingFiles: List<String> = emptyList(),
-    val corruptedFiles: List<String> = emptyList()
-)
 
 class PackManager private constructor(private val context: Context) {
 
@@ -265,15 +244,8 @@ class PackManager private constructor(private val context: Context) {
     }
 
     private fun computeSha256(file: File): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        FileInputStream(file).use { fis ->
-            val buffer = ByteArray(8192)
-            var read: Int
-            while (fis.read(buffer).also { read = it } != -1) {
-                digest.update(buffer, 0, read)
-            }
-        }
-        return digest.digest().joinToString("") { "%02x".format(it) }
+        // Implémentation unique côté partagé (KMP) : même code sur Android et iOS.
+        return Sha256.hex(file.readBytes())
     }
 
     private fun saveManifest(manifest: PackManifest, packDir: File) {

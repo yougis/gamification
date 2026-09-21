@@ -6,7 +6,7 @@ import android.view.ViewGroup
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.geoplay.player.R
-import com.geoplay.player.model.GameNode
+import com.geoplay.shared.model.GameNode
 
 class QueueAdapter(
     private val queue: List<String>,

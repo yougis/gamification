@@ -1,14 +1,17 @@
 package com.geoplay.player.data
 
 import android.content.Context
+import androidx.room.Room
+import com.geoplay.shared.db.GameDao
+import com.geoplay.shared.db.GeoPlayDatabase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import com.geoplay.player.model.GameProgressEntity
-import com.geoplay.player.model.InventoryEntity
-import com.geoplay.player.model.NodeCompletionEntity
-import com.geoplay.player.model.RandomDrawEntity
-import com.geoplay.player.model.ScoreEntity
-import com.geoplay.player.model.SessionEntity
+import com.geoplay.shared.model.GameProgressEntity
+import com.geoplay.shared.model.InventoryEntity
+import com.geoplay.shared.model.NodeCompletionEntity
+import com.geoplay.shared.model.RandomDrawEntity
+import com.geoplay.shared.model.ScoreEntity
+import com.geoplay.shared.model.SessionEntity
 
 class GameRepository(
     private val dao: GameDao,
@@ -20,8 +23,13 @@ class GameRepository(
 
         fun getInstance(context: Context): GameRepository {
             return INSTANCE ?: synchronized(this) {
+                val db = Room.databaseBuilder(
+                    context.applicationContext,
+                    GeoPlayDatabase::class.java,
+                    "geoplay.db"
+                ).fallbackToDestructiveMigration().build()
                 val instance = GameRepository(
-                    GameDatabase.getInstance(context).gameDao(),
+                    db.gameDao(),
                     context.applicationContext
                 )
                 INSTANCE = instance

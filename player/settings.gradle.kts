@@ -14,3 +14,4 @@ dependencyResolutionManagement {
 }
 rootProject.name = "GeoPlayPlayer"
 include(":app")
+include(":shared")

@@ -26,7 +26,11 @@ export function NodeList({
   statuts,
   impasses,
   sel,
+  selMulti = [],
   onChoisir,
+  onBasculer,
+  onToutBasculer,
+  toutSelectionne = false,
   erreursParNoeud,
   lectureSeule,
   boutonPlier,
@@ -38,7 +42,16 @@ export function NodeList({
   statuts: Record<string, { state: string }>;
   impasses: Set<string>;
   sel: string | null;
+  // Sélection additive partagée avec le graphe (change studio-select-all, D1/D4) :
+  // la sélection visible = `{sel} ∪ selMulti`, optionnelle pour compatibilité.
+  selMulti?: string[];
   onChoisir: (id: string) => void;
+  // Maj+clic / Maj+Entrée : bascule le nœud dans la sélection partagée (D2).
+  onBasculer?: (id: string) => void;
+  // Action groupée unique « Tout sélectionner / Tout désélectionner » (D3),
+  // même action que la barre du graphe, libellé réactif via `toutSelectionne`.
+  onToutBasculer?: () => void;
+  toutSelectionne?: boolean;
   erreursParNoeud: Map<string, string[]>;
   lectureSeule: boolean;
   boutonPlier?: React.ReactNode;
@@ -46,6 +59,7 @@ export function NodeList({
   panneauMolette?: React.ReactNode;
   onSupprimer?: (id: string) => void;
 }) {
+  const selectionnes = new Set([...selMulti, ...(sel ? [sel] : [])]);
   const [recherche, setRecherche] = useState("");
   const [filtre, setFiltre] = useState<FiltreListe>("tous");
 
@@ -69,9 +83,17 @@ export function NodeList({
           <Icon name="liste" size={16} />
           <h2 className="text-[9px] font-bold">Étapes ({elements.length}/{game.nodes.length})</h2>
           <span className="flex-1" />
+          {onToutBasculer && (
+            <button className="btn min-h-8 px-2 text-[8px]" onClick={onToutBasculer}
+              disabled={game.nodes.length === 0}
+              title={toutSelectionne ? "Désélectionner toutes les étapes" : "Sélectionner toutes les étapes"}
+              aria-label={toutSelectionne ? "Tout désélectionner" : "Tout sélectionner"}>
+              {toutSelectionne ? "Tout désélectionner" : "Tout sélectionner"}
+            </button>
+          )}
           {!lectureSeule && (
-            <span className="text-[8px] text-fog">
-              Clic = modifier à droite
+            <span className="text-[8px] text-fog" title="Maj+clic ajoute ou retire de la sélection multiple">
+              Clic = modifier · Maj+clic = ajouter
             </span>
           )}
           {boutonMolette}
@@ -123,18 +145,26 @@ className="champ min-w-0 flex-1 min-h-10"
           const statut = statuts[n.id]?.state ?? "draft";
           const estImpasse = impasses.has(n.id);
           const enErreur = (erreursParNoeud.get(n.id) ?? []).length > 0;
-          const choisi = sel === n.id;
+          const choisi = selectionnes.has(n.id);
           const declencheurs = n.activation.requires
             .map((c) => CONDITIONS_FR[c.type]?.nom ?? c.type)
             .slice(0, 2)
             .join(" + ");
           return (
-            <button
+            <div
               key={n.id}
               id={`liste-${n.id}`}
               role="option"
               aria-selected={choisi}
-              onClick={() => onChoisir(n.id)}
+              tabIndex={0}
+              onClick={(e) => { if (e.shiftKey && onBasculer) onBasculer(n.id); else onChoisir(n.id); }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  if (e.shiftKey && onBasculer) onBasculer(n.id);
+                  else onChoisir(n.id);
+                }
+              }}
 className={`${choisi ? "etape-courante" : ""} flex items-start gap-2.5 w-full min-h-14 rounded-lg cursor-pointer text-left p-2.5 my-0.5 font-normal`}
                style={{
                  border: choisi ? "2px solid var(--focus)" : enErreur ? "1px solid var(--couleur-alerte)" : "1px solid var(--line)",
@@ -228,7 +258,7 @@ className={`${choisi ? "etape-courante" : ""} flex items-start gap-2.5 w-full mi
                   <Icon name="fermer" size={14} />
                 </button>
               )}
-            </button>
+            </div>
           );
         })}
       </div>

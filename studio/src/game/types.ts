@@ -91,6 +91,7 @@ export interface TextWidget {
   fontSize?: number;
   color?: string;
   align?: "left" | "center" | "right";
+  styles?: WidgetStyles;
 }
 
 export interface ImageWidget {
@@ -100,6 +101,7 @@ export interface ImageWidget {
   height?: number | string;
   fit?: "cover" | "contain" | "fill";
   alt?: string;
+  styles?: WidgetStyles;
 }
 
 export interface ButtonWidget {
@@ -108,6 +110,7 @@ export interface ButtonWidget {
   action?: string;
   icon?: string;
   variant?: "primary" | "secondary" | "ghost";
+  styles?: WidgetStyles;
 }
 
 export interface ProgressBarWidget {
@@ -115,14 +118,25 @@ export interface ProgressBarWidget {
   progressType?: "steps" | "score";
   showLabel?: boolean;
   color?: string;
+  styles?: WidgetStyles;
 }
 
+// Styles par niveau (change studio-screen-editor, design D3) : chaque widget,
+// chaque ecran (`node.screen.styles`) et le global (`global.screen.styles`)
+// MAY porter ce sous-objet. La resolution est global → ecran → widget,
+// dernier niveau renseigne gagne, par propriete (`resolveStyles`).
 export interface WidgetStyles {
+  fontFamily?: string;
+  fontSize?: number;
+  fontWeight?: "normal" | "bold";
+  color?: string;
+  align?: "left" | "center" | "right";
   backgroundColor?: string;
   textColor?: string;
-  fontSize?: number;
   borderRadius?: number;
 }
+
+export type StyleOrigin = "global" | "ecran" | "widget";
 
 export interface ModuleWidget {
   type: "module";
@@ -132,6 +146,7 @@ export interface ModuleWidget {
 export interface SpacerWidget {
   type: "spacer";
   height?: number | string;
+  styles?: WidgetStyles;
 }
 
 export type Widget =
@@ -167,6 +182,15 @@ export interface ScreenDefinition {
   background?: ScreenBackground;
   zones?: Partial<Record<ZoneId, ZoneContent>>;
   transitions?: ScreenTransitions;
+  styles?: WidgetStyles;
+}
+
+// Defauts globaux des mini-jeux, surchargeables par noeud dans `module.data`
+// (change studio-screen-editor, design D4). Absence de surcharge = defaut
+// global ; absence de defaut global = comportement actuel du module.
+export interface MinigameDefaults {
+  maxAttempts?: number;
+  timeLimitSeconds?: number;
 }
 
 // --- Indoor plan types (change studio-map-view) ---
@@ -253,6 +277,7 @@ export interface Game {
     difficulty?: "ENFANT" | "FAMILLE" | "EXPERT";
     indoorPlans?: IndoorPlan[];
     screen?: ScreenDefinition;
+    minigameDefaults?: MinigameDefaults;
   };
   nodes: GameNode[];
   objects?: { id: string; name: string; icon?: string; description?: string; consumable?: boolean; stackable?: boolean }[];

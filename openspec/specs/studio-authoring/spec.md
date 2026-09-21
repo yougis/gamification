@@ -150,25 +150,115 @@ Le Studio SHALL organiser son interface en 6 écrans — Composer, Importer, Rel
 
 Une barre globale SHALL afficher en permanence : le nom du jeu, son statut (`draft`/`reviewed`), l'indicateur de validation C1/C2, l'undo/redo et l'accès à l'export.
 
+La navigation latérale SHALL être repliable en une colonne d'icônes sur grand écran, avec accès direct aux actions de création (Étape, Lieu, Tirage, Fin) dans l'état replié.
+
 #### Scenario: Navigation sans perte d'état
 - **GIVEN** un auteur ayant composé 3 nœuds dans Composer
 - **WHEN** il navigue vers Valider puis revient vers Composer
 - **THEN** les 3 nœuds, la sélection et l'historique undo/redo sont inchangés
 
+#### Scenario: Menu replié avec actions de création
+- **GIVEN** le Studio en mode grand écran avec le menu latéral replié
+- **WHEN** l'auteur regarde la barre latérale
+- **THEN** les boutons de création (Étape, Lieu, Tirage, Fin) sont visibles en tant qu'icônes cliquables, même sans nœud sélectionné
+
 ### Requirement: Canvas graphe détaillé
 
-Le canvas SHALL offrir : nœuds déplaçables sur grille libre, zoom/pan standard, arêtes directionnelles (flèche) avec un style distinct quand la relation porte une condition, icône par type de condition, sélection multiple, alignement/distribution basique, recherche de nœud par nom ou type.
+Le canvas SHALL offrir : nœuds déplaçables de dimensions uniformes sur grille libre, zoom/pan standard, arêtes au rendu par défaut reliant le bas de la source vers le haut de la cible, sélection multiple, alignement/distribution basique, recherche de nœud par nom ou type.
 
-Un nœud en statut `draft` SHALL être visuellement distinct (bordure pointillée + badge) en permanence, pas seulement lors de la validation.
+Le canvas SHALL utiliser le rendu par défaut de ReactFlow sans surcharge de style par statut ou par type : pas de fonds, rails, ombres ni bordures custom sur les nœuds ; pas de couleurs, pointillés, marqueurs ni pilules sur les arêtes. Chaque arête SHALL porter son libellé de condition en texte simple (prop standard).
+
+Le statut `draft` SHALL rester visible dans la liste des étapes, l'écran Relire et le blocage d'export — jamais sur le nœud du canvas lui-même.
+
+La sélection (simple et multiple) SHALL être stable : sélectionner un nœud ne SHALL jamais déclencher de boucle de re-rendu (`Maximum update depth exceeded`). Un événement de sélection identique à la sélection courante SHALL ne produire aucun changement d'état observable.
+
+Seul un déplacement réel SHALL modifier les positions persistées des nœuds. Une sélection sans déplacement SHALL laisser les positions strictement inchangées.
+
+Le recadrage automatique SHALL intervenir uniquement au montage du canvas, à l'arrivée du premier nœud, ou sur action explicite `Recentrer`. Il SHALL ne jamais se déclencher en réponse à un zoom/pan manuel ni à une sélection.
+
+Le canvas SHALL n'être présenté comme vide que si le jeu ne contient aucun nœud. Un canvas non monté (graphe replié, autre onglet actif) SHALL ne jamais être présenté comme un graphe vide.
+
+La sélection SHALL être unique et partagée entre le canvas et la liste des étapes : l'ensemble des nœuds sélectionnés est identique des deux côtés à tout instant. Sélectionner dans la liste SHALL surligner le nœud du canvas ; sélectionner sur le canvas SHALL marquer l'élément de la liste.
+
+Un clic simple sur un bloc du canvas ou une ligne de la liste SHALL remplacer la sélection par ce seul nœud. Un clic combiné à la touche Maj SHALL ajouter le nœud à la sélection courante (ou le retirer s'il y est déjà) sans toucher aux autres. Un clic sur le fond vide du canvas SHALL vider toute sélection.
+
+Le Studio SHALL offrir une action « Tout sélectionner / Tout désélectionner » (barre du graphe et en-tête de la liste, même action) : elle SHALL sélectionner tous les nœuds du jeu, ou vider la sélection si tous sont déjà sélectionnés. Son libellé SHALL refléter l'état courant.
+
+Le panneau détail SHALL suivre le nœud primaire (dernier nœud cliqué) ; une sélection multiple SHALL ne jamais ouvrir plusieurs panneaux.
+
+#### Scenario: Boîtes aux dimensions uniformes
+- **GIVEN** un jeu avec 5 nœuds aux identifiants de longueurs variées
+- **WHEN** le canvas s'affiche
+- **THEN** toutes les boîtes ont la même largeur et les libellés restent lisibles sans tronquer l'identifiant
+
+#### Scenario: Liens verticaux bas vers haut
+- **GIVEN** un nœud A placé au-dessus d'un nœud B avec une arête A→B
+- **WHEN** le canvas s'affiche
+- **THEN** le lien sort par le bas de A et entre par le haut de B avec le libellé de condition en texte simple
 
 #### Scenario: Nœud draft reconnaissable sans valider
 - **GIVEN** un jeu avec 1 nœud `draft` parmi 5 nœuds
 - **WHEN** l'auteur regarde le canvas sans lancer aucune validation
-- **THEN** le nœud `draft` porte la bordure pointillée et le badge, les 4 autres non
+- **THEN** aucune distinction visuelle n'apparaît sur le canvas et la liste des étapes indique le statut `draft` du nœud
+
+#### Scenario: Sélection stable sans boucle
+- **GIVEN** un jeu avec 3 nœuds affichés sur le canvas
+- **WHEN** l'auteur clique sur un nœud
+- **THEN** le nœud devient sélectionné, aucune erreur `Maximum update depth exceeded` n'est levée, et l'interaction suivante reste immédiate
+
+#### Scenario: Sélection identique sans effet
+- **GIVEN** un nœud déjà sélectionné sur le canvas
+- **WHEN** le même état de sélection est ré-émis
+- **THEN** aucun changement d'état observable ne se produit (pas de re-rendu en cascade)
+
+#### Scenario: Seul le déplacement persiste
+- **GIVEN** un jeu avec 2 nœuds positionnés
+- **WHEN** l'auteur déplace un nœud puis le dépose
+- **THEN** la nouvelle position est persistée
+- **WHEN** l'auteur sélectionne un nœud sans le déplacer
+- **THEN** les positions persistées restent strictement inchangées
+
+#### Scenario: Zoom manuel non contrarié
+- **GIVEN** un jeu avec des étapes cadrées sur le canvas
+- **WHEN** l'auteur zoome manuellement
+- **THEN** aucun recadrage automatique ne ramène la caméra et le niveau de zoom choisi est conservé
+
+#### Scenario: Vide réel distingué du non monté
+- **GIVEN** un jeu sans aucun nœud
+- **WHEN** l'auteur ouvre le Composer
+- **THEN** le canvas indique un graphe vide avec l'aide à la création
+- **GIVEN** un jeu avec des nœuds mais le graphe replié ou un autre onglet actif
+- **THEN** aucun message de graphe vide n'est présenté pour le canvas
+
+#### Scenario: Clic simple remplace la sélection
+- **GIVEN** un jeu avec 3 nœuds dont 2 sélectionnés (Maj+clic)
+- **WHEN** l'auteur clique simplement sur le 3e nœud
+- **THEN** seul le 3e nœud est sélectionné, dans le canvas comme dans la liste
+
+#### Scenario: Maj+clic ajoute à la sélection
+- **GIVEN** un jeu avec 3 nœuds dont 1 sélectionné
+- **WHEN** l'auteur Maj+clique sur un 2e nœud
+- **THEN** les 2 nœuds sont sélectionnés des deux côtés et le panneau détail suit le 2e nœud
+- **WHEN** l'auteur Maj+clique à nouveau sur le 2e nœud
+- **THEN** seul le 1er reste sélectionné
+
+#### Scenario: Tout sélectionner puis tout désélectionner
+- **GIVEN** un jeu avec 5 nœuds et aucune sélection
+- **WHEN** l'auteur active « Tout sélectionner »
+- **THEN** les 5 nœuds sont sélectionnés dans le canvas et la liste, et l'action affiche « Tout désélectionner »
+- **WHEN** l'auteur active « Tout désélectionner »
+- **THEN** plus aucun nœud n'est sélectionné des deux côtés
+
+#### Scenario: Sélection liste reflétée sur le canvas
+- **GIVEN** un jeu avec 3 nœuds et aucune sélection
+- **WHEN** l'auteur clique sur le 2e élément de la liste des étapes
+- **THEN** le 2e nœud est surligné sur le canvas et le panneau détail l'affiche
 
 ### Requirement: Inspecteur de nœud
 
-Le panneau d'inspection SHALL présenter des sections fixes dans cet ordre : `module` (type + version) → `activation` → `latch`/rejeu → `discovery` → `effects` → `inventoryRef`, générées depuis le registre de modules sans aucun champ codé en dur dans l'UI.
+Le panneau d'inspection SHALL présenter des sections fixes dans cet ordre : `module` (type + version) → `activation` → `latch`/rejeu → `discovery` → `effects` → `inventoryRef` → `position`, générées depuis le registre de modules sans aucun champ codé en dur dans l'UI.
+
+Le panneau d'inspection SHALL utiliser un système de sidebar à icônes : une colonne d'icônes identifiant chaque section, avec un contenu qui s'affiche lorsqu'une icône est sélectionnée. Si aucun nœud n'est sélectionné, la sidebar affiche un placeholder indiquant de sélectionner un nœud.
 
 Si le module déclare `needsLock: true` alors que `holdMode == none`, le champ HOLD correspondant SHALL être affiché en lecture seule avec un lien direct vers la configuration globale et l'explication du blocage, jamais un blocage muet.
 
@@ -183,6 +273,16 @@ Des `presentationNeeds`/`experienceNeeds` non satisfaits par la config globale a
 - **GIVEN** un module avec `experienceNeeds: ["map"]` et un `experienceStyle` sans configuration `map`
 - **WHEN** l'auteur ouvre l'inspecteur du nœud
 - **THEN** un avertissement inline est affiché et l'édition du nœud reste possible
+
+#### Scenario: Sidebar à icônes avec placeholder
+- **GIVEN** le Composer ouvert sans nœud sélectionné
+- **WHEN** l'auteur regarde le panneau d'inspection à droite
+- **THEN** une colonne d'icônes est visible, le contenu affiche "Sélectionne une étape dans le graphe ou dans la liste pour la visualiser et la modifier"
+
+#### Scenario: Sélection d'une section via icône
+- **GIVEN** un nœud sélectionné dans l'inspecteur
+- **WHEN** l'auteur clique sur l'icône "Effets" (section 7)
+- **THEN** le contenu de la section Effets s'affiche dans le panneau, les autres sections sont masquées
 
 ### Requirement: Gestion de l'inventaire
 
@@ -433,3 +533,82 @@ Chaque reference orpheline SHALL produire une erreur C2 dans la categorie "refer
 - **GIVEN** un jeu ou le noeud `etape-2` a ete supprime mais `etape-1` contient encore une condition `NODE_COMPLETED` vers `etape-2`
 - **WHEN** le validateur tourne
 - **THEN** le jeu est rejete avec l'erreur C2 : "Reference orpheline : etape-1.condition[0] pointe vers etape-2 (inexistant)"
+
+### Requirement: Éditeur WYSIWYG screen builder
+
+Le Studio SHALL offrir un éditeur WYSIWYG qui remplace l'Inspector fixe par un panneau de propriétés contextuel. L'éditeur SHALL comporter :
+- Un canvas de prévisualisation phone-size (environ 375x667px) dans le panneau central du Composer, affichant les zones (header, content, footer) avec leurs widgets rendus
+- Un panneau de propriétés contextuel dans le panneau droit, affichant les propriétés selon la sélection (rien → propriétés nœud, zone → propriétés zone, widget → propriétés widget, module widget → config module + propriétés widget)
+- Un sélecteur de template (TemplatePicker) pour choisir parmi des templates de mise en page prédéfinis
+
+Le panneau de propriétés contextuel SHALL conserver les 9 familles de l'Inspector existant (module, activation, latch/rejeu, discovery, effects, inventoryRef, etc.) dans le même ordre, mais dans un panneau contextuel plutôt que fixe. Les warnings `needsLock` et `experienceNeeds` SHALL être affichés dans le panneau contextuel.
+
+Le canvas SHALL être synchronisé avec la sélection du nœud dans le graphe : sélectionner un nœud affiche son screen, modifier le screen met à jour le JSON.
+
+#### Scenario: Bascule de l'Inspector vers le WYSIWYG
+
+- **GIVEN** un auteur habitué à l'Inspector fixe
+- **WHEN** le Studio affiche le nouveau Composer
+- **THEN** les mêmes sections (module, activation, discovery, effects, etc.) sont disponibles dans le panneau contextuel du WYSIWYG, dans le même ordre
+
+#### Scenario: Sélection de nœud affiche son screen
+
+- **GIVEN** un jeu avec 3 nœuds ayant des screens différents
+- **WHEN** l'auteur sélectionne le nœud 2 dans le graphe
+- **THEN** le canvas affiche le screen du nœud 2 et le panneau de propriétés affiche ses propriétés
+
+#### Scenario: Modification de widget persistée
+
+- **GIVEN** un nœud avec un widget texte dans la zone header
+- **WHEN** l'auteur modifie le texte du widget dans le panneau de propriétés
+- **THEN** le texte est mis à jour dans le canvas et dans le JSON du nœud
+
+### Requirement: Navigation graphe/screen dans le Composer
+
+Le Composer SHALL offrir un toggle ou une navigation entre la vue graphe (canvas de nœuds et arêtes) et la vue screen (WYSIWYG du nœud sélectionné). La sélection de nœud SHALL être synchronisée entre les deux vues.
+
+Un raccourci clavier ou bouton SHALL permet basculer rapidement entre la vue graphe et la vue screen du nœud sélectionné.
+
+#### Scenario: Toggle vers la vue screen
+
+- **GIVEN** le Composer en vue graphe avec un nœud sélectionné
+- **WHEN** l'auteur clique sur le bouton "Screen" ou utilise le raccourci
+- **THEN** le panneau central affiche le WYSIWYG screen du nœud sélectionné
+
+#### Scenario: Retour à la vue graphe
+
+- **GIVEN** le Composer en vue screen
+- **WHEN** l'auteur clique sur le bouton "Graphe"
+- **THEN** le panneau central revient à la vue graphe avec le même nœud sélectionné
+
+### Requirement: Barre d'outils de création dans la liste
+
+L'écran Composer, lorsque l'onglet "Liste" est actif, SHALL afficher une barre d'outils de création au-dessus de la liste des nœuds. Cette barre SHALL proposer les mêmes actions que la palette du graphe : Étape de jeu, Lieu GPS, Tirage au sort, Fin du jeu.
+
+La barre de création SHALL être visible en permanence lorsque l'onglet Liste est actif, indépendamment de la sélection de nœud.
+
+#### Scenario: Création depuis la liste
+- **GIVEN** l'auteur dans l'onglet "Liste" du Composer
+- **WHEN** il clique sur "Lieu GPS" dans la barre d'outils
+- **THEN** un nouveau nœud de type INFO avec condition GEOFENCE est créé, sélectionné, et la vue bascule vers l'inspecteur
+
+#### Scenario: Barre visible sans sélection
+- **GIVEN** l'onglet "Liste" actif sans nœud sélectionné
+- **WHEN** l'auteur regarde la barre d'outils
+- **THEN** les 4 boutons de création sont visibles et cliquables
+
+### Requirement: Suppression de l'onglet Essai du Composer
+
+Le Composer SHALL ne plus proposer l'onglet "Essai". Le composant Apercu (simulateur de jeu) SHALL être déplacé dans l'écran Prévisualiser, qui devient l'écran unique de simulation pas-à-pas.
+
+L'écran Prévisualiser SHALL intégrer le simulateur Apercu avec les mêmes fonctionnalités qu'auparavant : bypass capteurs, `forceDraw`, injection `sessionId`, flag triche, `forceHoldLock`/`forceHoldExit`.
+
+#### Scenario: Apercu dans Prévisualiser
+- **GIVEN** l'auteur navigue vers l'écran Prévisualiser
+- **WHEN** il charge un jeu
+- **THEN** le simulateur Apercu s'affiche avec les mêmes contrôles qu'auparavant dans l'onglet Essai du Composer
+
+#### Scenario: Composer sans onglet Essai
+- **GIVEN** le Composer ouvert
+- **WHEN** l'auteur regarde les onglets disponibles
+- **THEN** seuls les onglets "Graphe", "Liste" et "Détail" sont affichés (pas "Essai")
