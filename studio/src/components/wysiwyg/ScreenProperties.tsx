@@ -1,21 +1,35 @@
 // Proprietes de l'ecran : fond (type, valeur, voile). La selection de l'ecran
 // se fait en cliquant une zone vide du canvas (PhoneCanvas remonte null).
+// Le fond image passe par ImagePicker (parcours + depot, asset + manifest).
+// Defaut visible + retour unitaire (change studio-media-templates, D2).
 import type { ScreenBackground } from "../../game/types";
+import { ImagePicker } from "./ImagePicker";
+import { RetourDefaut } from "./FieldDefaults";
 
 const DEFAUT_FOND: ScreenBackground = { type: "color", value: "#1a1a2e" };
 
 export function ScreenProperties({
   background,
+  onPickFile,
   onChange,
 }: {
   background?: ScreenBackground;
+  onPickFile?: (file: File) => Promise<string>;
   onChange: (bg: ScreenBackground) => void;
 }) {
   const bg = background ?? DEFAUT_FOND;
   const set = (patch: Partial<ScreenBackground>) => onChange({ ...bg, ...patch });
   return (
     <div className="flex flex-col gap-2 p-2" aria-label="Propriétés de l'écran">
-      <h4 className="font-bold text-sm">Écran — fond</h4>
+      <h4 className="flex items-center gap-1 font-bold text-sm">
+        Écran — fond
+        <span className="text-[11px] font-normal text-fog">(défaut : couleur #1a1a2e)</span>
+        <RetourDefaut
+          visible={bg.type !== DEFAUT_FOND.type || bg.value !== DEFAUT_FOND.value}
+          titre="fond"
+          onReset={() => onChange({ ...DEFAUT_FOND, overlay: bg.overlay })}
+        />
+      </h4>
       <label className="flex flex-col gap-1 text-xs">
         Type de fond
         <select
@@ -39,9 +53,16 @@ export function ScreenProperties({
             onChange={(e) => set({ value: e.target.value })}
           />
         </label>
+      ) : bg.type === "image" ? (
+        <ImagePicker
+          label="Image de fond"
+          value={bg.value}
+          onPickFile={onPickFile ?? (async () => { throw new Error("Sélection de fichier indisponible ici."); })}
+          onChange={(value) => set({ value })}
+        />
       ) : (
         <label className="flex flex-col gap-1 text-xs">
-          {bg.type === "image" ? "Source (asset ou URL)" : "Valeur CSS (linear-gradient…)"}
+          Valeur CSS (linear-gradient…)
           <input
             type="text"
             className="champ"

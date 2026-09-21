@@ -110,5 +110,85 @@ export const SCREEN_TEMPLATES: ScreenTemplate[] = [
 ];
 
 export function getScreenTemplate(layoutId: string | undefined): ScreenTemplate | undefined {
-  return SCREEN_TEMPLATES.find((t) => t.id === layoutId);
+  return allScreenTemplates().find((t) => t.id === layoutId);
+}
+
+// Bibliotheque de modeles (change studio-media-templates, design D4) :
+// predefinis embarques (immuables) + modeles enregistres par l'auteur
+// (« Enregistrer comme modele », persistance locale). Appliquer = copie
+// profonde : toute modification ulterieure est une declinaison, le modele
+// n'est jamais mute.
+export interface CustomScreenTemplate {
+  id: string;
+  name: string;
+  screen: ScreenDefinition;
+}
+
+const CLE_MODELES = "geoplay-screen-templates-v1";
+
+function slug(nom: string): string {
+  const s = nom
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+  return s || "modele";
+}
+
+export function loadCustomTemplates(): CustomScreenTemplate[] {
+  try {
+    if (typeof localStorage === "undefined") return [];
+    const raw = localStorage.getItem(CLE_MODELES);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.flatMap((e): CustomScreenTemplate[] => {
+      if (!e || typeof e !== "object") return [];
+      const { id, name, screen } = e as { id?: unknown; name?: unknown; screen?: unknown };
+      if (typeof id !== "string" || typeof name !== "string" || !screen || typeof screen !== "object") return [];
+      return [{ id, name, screen: screen as ScreenDefinition }];
+    });
+  } catch {
+    return [];
+  }
+}
+
+export function customTemplateExists(id: string): boolean {
+  return loadCustomTemplates().some((t) => t.id === id);
+}
+
+export function customTemplateId(nom: string): string {
+  return `custom-${slug(nom)}`;
+}
+
+// Enregistre (copie profonde figeante) ; ecrase l'enregistrement de meme id
+// (l'appelant confirme). Retourne l'id. Silencieux hors stockage (false).
+export function saveCustomTemplate(nom: string, screen: ScreenDefinition): { id: string; persisted: boolean } {
+  const id = customTemplateId(nom);
+  const copie: ScreenDefinition =
+    typeof structuredClone === "function" ? structuredClone(screen) : JSON.parse(JSON.stringify(screen));
+  const liste = loadCustomTemplates().filter((t) => t.id !== id);
+  liste.push({ id, name: nom, screen: copie });
+  try {
+    if (typeof localStorage === "undefined") return { id, persisted: false };
+    localStorage.setItem(CLE_MODELES, JSON.stringify(liste));
+    return { id, persisted: true };
+  } catch {
+    return { id, persisted: false };
+  }
+}
+
+// Tous les modeles : predefinis puis enregistres (meme forme pour le picker).
+export function allScreenTemplates(): ScreenTemplate[] {
+  return [
+    ...SCREEN_TEMPLATES,
+    ...loadCustomTemplates().map((t) => ({
+      id: t.id,
+      name: t.name,
+      description: "Modèle enregistré par l'auteur.",
+      screen: t.screen,
+    })),
+  ];
 }

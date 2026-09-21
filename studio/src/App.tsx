@@ -17,6 +17,8 @@ import { validateGame, deadEnds } from "./game/validate";
 import { evaluate, drawPool, type Sim } from "./game/evaluate";
 import { composeNodes, setActivation, registerAsset, exportPackFull, canExport, addSecoursCode, importGame, addObject, setObjects, setReview, removeNode, renameNode, duplicateNode, patchScreenZone, addScreenWidget, setScreenWidget as mcpSetScreenWidget, removeScreenWidget, moveScreenWidget, moveScreenWidgetAcross, setNodeScreen, setScreenBackground, setScreenStyles, setGlobalScreenStyles, setMinigameDefaults, type ManifestFile } from "./game/mcp";
 import { emptyMeta, type Condition, type Game, type GameNode, type MinigameDefaults, type Predicate, type StudioMeta, type ExperienceStyle, type Branding, type GameMode, type Difficulty, type ZoneId } from "./game/types";
+import { sha256Hex } from "./game/pack";
+import { FONT_OPTIONS, estPoliceConnue } from "./game/fonts";
 import {
   MODULES_FR, CONDITIONS_FR, FAMILLES, PRESETS_RAYON, MILIEUX, ETATS_FR,
   OPERATEURS_FR, erreurFR, IMPORTER, type Milieu,
@@ -51,6 +53,7 @@ import { WorkflowStepper, type EtapeWorkflow } from "./components/WorkflowSteppe
 import { NodeList } from "./components/NodeList";
 import MapView from "./components/MapView";
 import { PhoneCanvas, VIEWPORTS, type ViewportId } from "./components/wysiwyg/PhoneCanvas";
+import { ImagePicker } from "./components/wysiwyg/ImagePicker";
 import { PropertiesPanel } from "./components/wysiwyg/PropertiesPanel";
 import { TemplatePicker } from "./components/wysiwyg/TemplatePicker";
 import { ScreenProperties } from "./components/wysiwyg/ScreenProperties";
@@ -201,6 +204,38 @@ export default function App() {
   const [brut, setBrut] = useState<string[]>([]);
   const [animateur, setAnimateur] = useState(false);
   const [manifest, setManifest] = useState<ManifestFile[]>([]);
+  // Octets des images choisies pendant la session (change
+  // studio-media-templates, design D1) : chemin manifest -> File, gardés en
+  // mémoire pour téléchargement à l'export. Jamais dans le JSON ni le brouillon.
+  const assetsSession = useRef(new Map<string, File>());
+  // Enregistre un fichier image au manifest et retourne son chemin d'asset.
+  // Même contenu (sha) -> chemin existant réutilisé ; collision de nom ->
+  // suffixe numérique. Erreur explicite hors contexte sécurisé (WebCrypto).
+  const prendreImage = useCallback(async (file: File): Promise<string> => {
+    if (typeof crypto?.subtle?.digest !== "function") {
+      throw new Error("Empreinte impossible dans ce contexte : ajoutez le fichier via l'écran Exporter (bouton Fichier).");
+    }
+    const octets = new Uint8Array(await file.arrayBuffer());
+    const sha256 = await sha256Hex(octets);
+    const deja = manifest.find((m) => m.sha256 === sha256);
+    if (deja) {
+      assetsSession.current.set(deja.path, file);
+      return deja.path;
+    }
+    const base = (file.name.replace(/[^a-zA-Z0-9._-]+/g, "_") || "image.png").slice(0, 80);
+    const point = base.lastIndexOf(".");
+    const [nom, ext] = point > 0 ? [base.slice(0, point), base.slice(point)] : [base, ""];
+    let chemin = `assets/${base}`;
+    let i = 2;
+    const pris = new Set([...manifest.map((m) => m.path), ...assetsSession.current.keys()]);
+    while (pris.has(chemin)) {
+      chemin = `assets/${nom}-${i}${ext}`;
+      i++;
+    }
+    setManifest((m) => registerAsset(m, { path: chemin, version: "1.0.0", size: file.size, sha256 }));
+    assetsSession.current.set(chemin, file);
+    return chemin;
+  }, [manifest]);
   const [nouveauType, setNouveauType] = useState("GEOFENCE");
   const [etapeWorkflow, setEtapeWorkflow] = useState<EtapeWorkflow>(1);
   const [onglet, setOnglet] = useState<Onglet>("graphe");
@@ -758,7 +793,20 @@ const noeuds: Node[] = useMemo(
     dl("game.json", r.gameJson!);
     dl("manifest.json", JSON.stringify(r.manifest, null, 2));
     dl("studio-meta.json", JSON.stringify(st.present.meta, null, 2));
-    setRapport([`Export OK : game.json + manifest (${r.manifest!.files.length} fichiers) + studio-meta.json`]);
+    // Assets choisis pendant la session (change studio-media-templates) :
+    // les octets gardés en mémoire sont proposés au téléchargement avec le pack.
+    let nbAssets = 0;
+    for (const [chemin, fichier] of assetsSession.current) {
+      if (!r.manifest!.files.some((m) => m.path === chemin)) continue;
+      const url = URL.createObjectURL(fichier);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = chemin.split("/").pop() ?? chemin;
+      a.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 5000);
+      nbAssets++;
+    }
+    setRapport([`Export OK : game.json + manifest (${r.manifest!.files.length} fichiers) + studio-meta.json${nbAssets ? ` + ${nbAssets} asset(s)` : ""}`]);
     setDernierExport({ date: new Date().toISOString(), files: r.manifest!.files });
     setExportOk(true);
     setEtapeWorkflow(5);
@@ -1138,7 +1186,7 @@ const noeuds: Node[] = useMemo(
             zone={screenZone ? (etape.screen?.zones?.[screenZone] ?? {}) : null}
             selectedWidgetIndex={screenWidget}
             widget={screenZone && screenWidget != null ? (etape.screen?.zones?.[screenZone]?.widgets?.[screenWidget] ?? null) : null}
-            modulePanel={<PanneauModule node={etape} globalDefaults={game.global?.minigameDefaults} lectureSeule={relecture} editGame={editGame} />}
+            modulePanel={<PanneauModule node={etape} globalDefaults={game.global?.minigameDefaults} onPickFile={prendreImage} lectureSeule={relecture} editGame={editGame} />}
             screenSelected={screenBg}
             screenBackground={etape.screen?.background}
             globalStyles={game.global?.screen?.styles}
@@ -1146,10 +1194,12 @@ const noeuds: Node[] = useMemo(
             customizableStyles={getScreenPlugin(etape.module.type)?.customizableStyles}
             onPatchGlobalStyles={(s) => editGame((g) => setGlobalScreenStyles(g, s), "setGlobalScreenStyles")}
             onPatchScreenStyles={(s) => editGame((g) => setScreenStyles(g, etape.id, s), "setScreenStyles")}
+            onPickFile={prendreImage}
             templatePicker={
               <TemplatePicker
                 currentLayout={etape.screen?.layout}
                 hasCustomizations={Object.values(etape.screen?.zones ?? {}).some((z) => (z?.widgets?.length ?? 0) > 0)}
+                screenCourant={etape.screen}
                 onSelectTemplate={(layoutId) => {
                   const t = getScreenTemplate(layoutId);
                   if (!t) return;
@@ -1189,7 +1239,7 @@ const noeuds: Node[] = useMemo(
         </div>
       )}
     </aside>
-  ), [etape, game, st.present.meta, edit, editGame, nouveauType, relecture, vueCentrale, screenZone, screenWidget, screenBg]);
+  ), [etape, game, st.present.meta, edit, editGame, nouveauType, relecture, vueCentrale, screenZone, screenWidget, screenBg, prendreImage]);
 
   // Listes mémoïsées (change studio-graph-selection) : mêmes dépendances de données
   // que le détail, pour ne pas re-rendre à chaque frame de drag.
@@ -1424,8 +1474,8 @@ const noeuds: Node[] = useMemo(
             <h2 className="font-display font-extrabold text-2xl tracking-widest uppercase text-snow mb-6">Configuration</h2>
             <ModePanel game={game} edit={edit} lectureSeule={relecture} />
             <ExperienceStylePanel game={game} edit={edit} lectureSeule={relecture} />
-            <BrandingPanel game={game} edit={edit} lectureSeule={relecture} />
-            <ScreenGlobalPanel game={game} edit={edit} lectureSeule={relecture} />
+            <BrandingPanel game={game} edit={edit} lectureSeule={relecture} onPickFile={prendreImage} />
+            <ScreenGlobalPanel game={game} edit={edit} lectureSeule={relecture} onPickFile={prendreImage} />
             <MinigameDefaultsPanel game={game} editGame={editGame} lectureSeule={relecture} />
             <ObjetsPanel game={game} editGame={editGame} lectureSeule={relecture} onChoisir={choisirNoeud} />
             {(() => {
@@ -1775,8 +1825,8 @@ function Famille({ id, icone, titre, aide, active, children }: { id: string; ico
 // rend le propertiesPanel du screenPlugin du type de module, cable sur node.module.data.
 // Sans plugin : undefined (PropertiesPanel affiche son placeholder).
 // Les defauts globaux mini-jeux sont transmis pour affichage heritage (change studio-screen-editor).
-function PanneauModule({ node, globalDefaults, lectureSeule, editGame }: {
-  node: GameNode; globalDefaults?: MinigameDefaults; lectureSeule: boolean; editGame: (fn: (g: Game) => Game, op?: string) => void;
+function PanneauModule({ node, globalDefaults, onPickFile, lectureSeule, editGame }: {
+  node: GameNode; globalDefaults?: MinigameDefaults; onPickFile?: (file: File) => Promise<string>; lectureSeule: boolean; editGame: (fn: (g: Game) => Game, op?: string) => void;
 }) {
   const plugin = getScreenPlugin(node.module.type);
   if (!plugin) return null;
@@ -1786,6 +1836,7 @@ function PanneauModule({ node, globalDefaults, lectureSeule, editGame }: {
       data={node.module.data}
       readOnly={lectureSeule}
       minigameDefaults={globalDefaults}
+      onPickFile={onPickFile}
       onChange={(data) =>
         editGame(
           (g) => ({ ...g, nodes: g.nodes.map((n) => (n.id === node.id ? { ...n, module: { ...n.module, data } } : n)) }),
@@ -2348,10 +2399,11 @@ function ExperienceStylePanel({ game, edit, lectureSeule }: {
   );
 }
 
-function BrandingPanel({ game, edit, lectureSeule }: {
+function BrandingPanel({ game, edit, lectureSeule, onPickFile }: {
   game: Game;
   edit: (fn: (s: { game: Game; meta: StudioMeta }) => { game: Game; meta: StudioMeta }) => void;
   lectureSeule: boolean;
+  onPickFile?: (file: File) => Promise<string>;
 }) {
   const b = game.branding ?? { name: "", primaryColor: "#1a7f37", secondaryColor: "#5f3dc4", fontFamily: "system-ui" };
   return (
@@ -2373,12 +2425,48 @@ function BrandingPanel({ game, edit, lectureSeule }: {
       </label>
       <label className="text-[8px] flex gap-1 items-center mt-1">
         Police :
-        <input className="champ" value={b.fontFamily} disabled={lectureSeule} placeholder="system-ui" onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, branding: { ...b, fontFamily: e.target.value } } }), "setBranding")} />
+        <select
+          className="champ"
+          value={estPoliceConnue(b.fontFamily) ? b.fontFamily : b.fontFamily ? "__custom__" : ""}
+          disabled={lectureSeule}
+          aria-label="Police du jeu"
+          onChange={(e) => {
+            const v = e.target.value;
+            if (v === "__custom__") {
+              edit((s) => ({ ...s, game: { ...s.game, branding: { ...b, fontFamily: estPoliceConnue(b.fontFamily) ? "" : b.fontFamily } } }), "setBranding");
+            } else {
+              edit((s) => ({ ...s, game: { ...s.game, branding: { ...b, fontFamily: v || "system-ui" } } }), "setBranding");
+            }
+          }}
+        >
+          <option value="">Défaut (système)</option>
+          {FONT_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+          <option value="__custom__">Personnalisée…</option>
+        </select>
+        {b.fontFamily && !estPoliceConnue(b.fontFamily) ? (
+          <input
+            className="champ font-mono"
+            value={b.fontFamily}
+            disabled={lectureSeule}
+            placeholder="Ma Police"
+            aria-label="Police personnalisée"
+            onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, branding: { ...b, fontFamily: e.target.value || "system-ui" } } }), "setBranding")}
+          />
+        ) : null}
       </label>
-      <label className="text-[8px] flex gap-1 items-center">
-        Logo (asset) :
-        <input className="champ" value={b.logo ?? ""} disabled={lectureSeule} placeholder="assets/logo.png" onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, branding: { ...b, logo: e.target.value || undefined } } }), "setBranding")} />
-      </label>
+      <div className="mt-1">
+        <ImagePicker
+          label="Logo"
+          value={b.logo ?? ""}
+          disabled={lectureSeule}
+          onPickFile={onPickFile ?? (async () => { throw new Error("Sélection de fichier indisponible ici."); })}
+          onChange={(logo) => edit((s) => ({ ...s, game: { ...s.game, branding: { ...b, logo: logo || undefined } } }), "setBranding")}
+        />
+      </div>
     </div>
   );
 }
@@ -2425,10 +2513,11 @@ function MinigameDefaultsPanel({ game, editGame, lectureSeule }: {
   );
 }
 
-function ScreenGlobalPanel({ game, edit, lectureSeule }: {
+function ScreenGlobalPanel({ game, edit, lectureSeule, onPickFile }: {
   game: Game;
   edit: (fn: (s: { game: Game; meta: StudioMeta }) => { game: Game; meta: StudioMeta }, op?: string) => void;
   lectureSeule: boolean;
+  onPickFile?: (file: File) => Promise<string>;
 }) {
   const gs = game.global?.screen;
   const personnalise = !!gs?.zones && Object.values(gs.zones).some((z) => (z?.widgets?.length ?? 0) > 0);
@@ -2444,6 +2533,7 @@ function ScreenGlobalPanel({ game, edit, lectureSeule }: {
         <TemplatePicker
           currentLayout={gs?.layout}
           hasCustomizations={personnalise}
+          screenCourant={gs}
           onSelectTemplate={(layoutId) => {
             const t = getScreenTemplate(layoutId);
             if (!t) return;
@@ -2452,6 +2542,7 @@ function ScreenGlobalPanel({ game, edit, lectureSeule }: {
         />
         <ScreenProperties
           background={gs?.background}
+          onPickFile={prendreImage}
           onChange={(background) => appliquer({ screen: { ...(gs ?? {}), background } })}
         />
       </fieldset>

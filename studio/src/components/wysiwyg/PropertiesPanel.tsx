@@ -43,6 +43,7 @@ export function PropertiesPanel({
   nodePanel,
   modulePanel,
   templatePicker,
+  onPickFile,
   onPatchZone,
   onSelectWidget,
   onAddWidget,
@@ -68,6 +69,9 @@ export function PropertiesPanel({
   // Selecteur de template au niveau du noeud (change
   // studio-screen-selection-zones) : affiche quand rien n'est selectionne.
   templatePicker?: React.ReactNode;
+  // Enregistrement d'un fichier image au manifest (change
+  // studio-media-templates) : retourne le chemin d'asset.
+  onPickFile?: (file: File) => Promise<string>;
   onPatchZone: (zoneId: ZoneId, patch: Partial<ZoneContent>) => void;
   onSelectWidget?: (zoneId: ZoneId, index: number) => void;
   onAddWidget: (zoneId: ZoneId, widget: Widget) => void;
@@ -123,7 +127,7 @@ export function PropertiesPanel({
           <TextWidgetProperties widget={widget} onChange={(w) => onPatchWidget(selectedZone, selectedWidgetIndex, w)} />
         ) : null}
         {widget.type === "image" ? (
-          <ImageWidgetProperties widget={widget} onChange={(w) => onPatchWidget(selectedZone, selectedWidgetIndex, w)} />
+          <ImageWidgetProperties widget={widget} onPickFile={onPickFile} onChange={(w) => onPatchWidget(selectedZone, selectedWidgetIndex, w)} />
         ) : null}
         {widget.type === "button" ? (
           <ButtonWidgetProperties widget={widget} onChange={(w) => onPatchWidget(selectedZone, selectedWidgetIndex, w)} />
@@ -169,7 +173,7 @@ export function PropertiesPanel({
   if (screenSelected && onPatchBackground) {
     return (
       <div className="flex flex-col gap-3">
-        <ScreenProperties background={screenBackground} onChange={onPatchBackground} />
+        <ScreenProperties background={screenBackground} onPickFile={onPickFile} onChange={onPatchBackground} />
         {sectionEcran}
       </div>
     );

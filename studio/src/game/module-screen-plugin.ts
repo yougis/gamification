@@ -19,6 +19,9 @@ export interface ModulePropertiesPanelProps {
   // Defauts globaux des mini-jeux (change studio-screen-editor) : affiches
   // comme valeurs heritees dans les blocs QCM/puzzle.
   minigameDefaults?: MinigameDefaults;
+  // Enregistrement d'un fichier image au manifest (change
+  // studio-media-templates) : retourne le chemin d'asset.
+  onPickFile?: (file: File) => Promise<string>;
 }
 
 export interface ModulePlayerRendererProps {

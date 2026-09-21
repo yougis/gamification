@@ -11,6 +11,7 @@ import type {
   ModuleScreenPlugin,
 } from "../../../game/module-screen-plugin";
 import { MinigameParamsFields } from "./minigame-params";
+import { ImagePicker } from "../ImagePicker";
 
 export interface QuizOptionObject {
   text?: string;
@@ -84,7 +85,7 @@ export function QuizEditorPreview({ data }: ModuleEditorPreviewProps) {
 // Panneau de proprietes : questions + bloc QCM (reponses, bonne reponse,
 // explication) + parametres essais/temps. Refus de formulaire : reponse sans
 // texte ni image, question sans bonne reponse, bornes 2-6 reponses.
-export function QuizPropertiesPanel({ data, onChange, readOnly, minigameDefaults }: ModulePropertiesPanelProps) {
+export function QuizPropertiesPanel({ data, onChange, readOnly, minigameDefaults, onPickFile }: ModulePropertiesPanelProps) {
   const questions = quizQuestions(data);
   const setQuestions = (next: QuizQuestion[]) => onChange({ ...data, questions: next });
   const patchQuestion = (qi: number, patch: Partial<QuizQuestion>) => {
@@ -163,15 +164,13 @@ export function QuizPropertiesPanel({ data, onChange, readOnly, minigameDefaults
                         <Icon name="fermer" size={13} />
                       </button>
                     </div>
-                    <input
-                      className="champ"
+                    <ImagePicker
+                      label={`Réponse ${oi + 1} image (optionnel)`}
                       value={quizOptionImage(opt)}
-                      placeholder="Image (asset, optionnel)"
-                      aria-label={`Réponse ${oi + 1} image`}
-                      onChange={(e) => {
+                      onPickFile={onPickFile ?? (async () => { throw new Error("Sélection de fichier indisponible ici."); })}
+                      onChange={(img) => {
                         const next = [...options];
                         const txt = quizOptionText(opt);
-                        const img = e.target.value;
                         next[oi] = !txt && !img ? "" : img && !txt ? { image: img } : { text: txt, ...(img ? { image: img } : {}) };
                         patchQuestion(qi, { options: next });
                       }}

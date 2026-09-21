@@ -7,6 +7,7 @@
 // compact (pastille + infobulle) ; renseigner surcharge le niveau edite,
 // effacer retombe sur l'heritage. Groupe vide = masque.
 import type { StyleOrigin, WidgetStyles } from "../../game/types";
+import { FONT_OPTIONS, estPoliceConnue } from "../../game/fonts";
 
 export const STYLE_LABELS: Record<keyof WidgetStyles, string> = {
   fontFamily: "Police",
@@ -110,16 +111,50 @@ export function StyleToolbar({
                 <span className="text-[11px]">Police</span>
                 <Badge niveau={niveau} origine={etat("fontFamily").origine} estLocale={etat("fontFamily").estLocale} />
               </span>
-              <span className="flex items-center">
-                <input
-                  type="text"
-                  className="champ min-h-[44px] w-28"
-                  value={typeof etat("fontFamily").locale === "string" ? (etat("fontFamily").locale as string) : ""}
-                  placeholder={etat("fontFamily").heritee != null ? String(etat("fontFamily").heritee) : "Défaut"}
+              <span className="flex items-center gap-1">
+                <select
+                  className="champ min-h-[44px] max-w-32"
+                  value={
+                    typeof etat("fontFamily").locale === "string" && estPoliceConnue(etat("fontFamily").locale as string)
+                      ? (etat("fontFamily").locale as string)
+                      : typeof etat("fontFamily").locale === "string"
+                        ? "__custom__"
+                        : ""
+                  }
                   aria-label="Police"
                   title={etat("fontFamily").heritee != null && !etat("fontFamily").estLocale ? `Hérité : ${String(etat("fontFamily").heritee)}` : "Police"}
-                  onChange={(e) => setTexte("fontFamily", e.target.value)}
-                />
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (v === "") {
+                      const next = { ...local };
+                      delete next.fontFamily;
+                      onChange(next);
+                    } else if (v === "__custom__") {
+                      const heritee = etat("fontFamily").heritee;
+                      onChange({ ...local, fontFamily: typeof heritee === "string" && !estPoliceConnue(heritee) ? heritee : "" });
+                    } else {
+                      onChange({ ...local, fontFamily: v });
+                    }
+                  }}
+                >
+                  <option value="">{etat("fontFamily").heritee != null ? `Hérité : ${String(etat("fontFamily").heritee)}` : "Défaut"}</option>
+                  {FONT_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                  <option value="__custom__">Personnalisée…</option>
+                </select>
+                {typeof etat("fontFamily").locale === "string" && !estPoliceConnue(etat("fontFamily").locale as string) ? (
+                  <input
+                    type="text"
+                    className="champ min-h-[44px] w-28 font-mono"
+                    value={etat("fontFamily").locale as string}
+                    placeholder="Ma Police"
+                    aria-label="Police personnalisée"
+                    onChange={(e) => setTexte("fontFamily", e.target.value)}
+                  />
+                ) : null}
                 {croix("fontFamily", "Police", etat("fontFamily").estLocale)}
               </span>
             </span>

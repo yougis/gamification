@@ -1,11 +1,19 @@
 // Proprietes d'une barre de progression : type (etapes/score), libelle, couleur.
+// Defauts visibles + retour unitaire (change studio-media-templates, D2).
 import type { ProgressBarWidget } from "../../game/types";
+import { defaultWidget } from "./AddWidgetMenu";
+import { RetourDefaut } from "./FieldDefaults";
+
+const DEFAUT = defaultWidget("progress") as ProgressBarWidget;
 
 export function ProgressBarProperties({ widget, onChange }: { widget: ProgressBarWidget; onChange: (w: ProgressBarWidget) => void }) {
   return (
     <div className="flex flex-col gap-2">
       <label className="flex flex-col gap-1 text-xs">
-        Type
+        <span className="flex items-center gap-1">
+          Type <span className="text-fog">(défaut : Étapes)</span>
+          <RetourDefaut visible={(widget.progressType ?? "steps") !== "steps"} titre="type" onReset={() => onChange({ ...widget, progressType: "steps" })} />
+        </span>
         <select
           className="champ"
           value={widget.progressType ?? "steps"}
@@ -21,10 +29,16 @@ export function ProgressBarProperties({ widget, onChange }: { widget: ProgressBa
           checked={widget.showLabel ?? false}
           onChange={(e) => onChange({ ...widget, showLabel: e.target.checked })}
         />
-        Afficher le libellé
+        <span className="flex items-center gap-1">
+          Afficher le libellé <span className="text-fog">(défaut : oui)</span>
+          <RetourDefaut visible={(widget.showLabel ?? true) !== (DEFAUT.showLabel ?? true)} titre="libellé" onReset={() => onChange({ ...widget, showLabel: DEFAUT.showLabel })} />
+        </span>
       </label>
       <label className="flex flex-col gap-1 text-xs">
-        Couleur
+        <span className="flex items-center gap-1">
+          Couleur <span className="text-fog">(accent)</span>
+          <RetourDefaut visible={widget.color !== undefined} titre="couleur" onReset={() => onChange({ ...widget, color: undefined })} />
+        </span>
         <input
           type="text"
           className="champ"

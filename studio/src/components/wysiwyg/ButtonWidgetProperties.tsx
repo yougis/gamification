@@ -1,11 +1,19 @@
 // Proprietes d'un widget bouton : libelle, action, icone, variante.
+// Defauts visibles + retour unitaire (change studio-media-templates, D2).
 import type { ButtonWidget } from "../../game/types";
+import { defaultWidget } from "./AddWidgetMenu";
+import { RetourDefaut } from "./FieldDefaults";
+
+const DEFAUT = defaultWidget("button") as ButtonWidget;
 
 export function ButtonWidgetProperties({ widget, onChange }: { widget: ButtonWidget; onChange: (w: ButtonWidget) => void }) {
   return (
     <div className="flex flex-col gap-2">
       <label className="flex flex-col gap-1 text-xs">
-        Libellé
+        <span className="flex items-center gap-1">
+          Libellé <span className="text-fog">(défaut : « {DEFAUT.label} »)</span>
+          <RetourDefaut visible={widget.label !== DEFAUT.label} titre="libellé" onReset={() => onChange({ ...widget, label: DEFAUT.label })} />
+        </span>
         <input
           type="text"
           className="champ"
@@ -14,7 +22,10 @@ export function ButtonWidgetProperties({ widget, onChange }: { widget: ButtonWid
         />
       </label>
       <label className="flex flex-col gap-1 text-xs">
-        Action
+        <span className="flex items-center gap-1">
+          Action <span className="text-fog">(défaut : aucune)</span>
+          <RetourDefaut visible={widget.action !== undefined} titre="action" onReset={() => onChange({ ...widget, action: undefined })} />
+        </span>
         <select
           className="champ"
           value={widget.action ?? ""}
@@ -28,7 +39,10 @@ export function ButtonWidgetProperties({ widget, onChange }: { widget: ButtonWid
       </label>
       <div className="flex gap-2">
         <label className="flex flex-1 flex-col gap-1 text-xs">
-          Icône
+          <span className="flex items-center gap-1">
+            Icône <span className="text-fog">(aucune)</span>
+            <RetourDefaut visible={widget.icon !== undefined} titre="icône" onReset={() => onChange({ ...widget, icon: undefined })} />
+          </span>
           <input
             type="text"
             className="champ"
@@ -38,7 +52,10 @@ export function ButtonWidgetProperties({ widget, onChange }: { widget: ButtonWid
           />
         </label>
         <label className="flex flex-1 flex-col gap-1 text-xs">
-          Variante
+          <span className="flex items-center gap-1">
+            Variante <span className="text-fog">(défaut : Primaire)</span>
+            <RetourDefaut visible={(widget.variant ?? "primary") !== "primary"} titre="variante" onReset={() => onChange({ ...widget, variant: "primary" })} />
+          </span>
           <select
             className="champ"
             value={widget.variant ?? "primary"}

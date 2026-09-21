@@ -10,6 +10,7 @@ import type {
   ModuleScreenPlugin,
 } from "../../../game/module-screen-plugin";
 import { MinigameParamsFields } from "./minigame-params";
+import { ImagePicker } from "../ImagePicker";
 
 export const DECOUPE_MIN = 2;
 export const DECOUPE_MAX = 6;
@@ -78,7 +79,7 @@ export function PuzzleEditorPreview({ data }: ModuleEditorPreviewProps) {
 
 // Panneau de proprietes : image source, decoupe 2-6 (refus hors bornes),
 // apercu grille, essais/temps via les defauts globaux.
-export function PuzzlePropertiesPanel({ data, onChange, readOnly, minigameDefaults }: ModulePropertiesPanelProps) {
+export function PuzzlePropertiesPanel({ data, onChange, readOnly, minigameDefaults, onPickFile }: ModulePropertiesPanelProps) {
   const d = data as PuzzleData;
   const lignes = typeof d.tileRows === "number" ? d.tileRows : 3;
   const colonnes = typeof d.tileCols === "number" ? d.tileCols : 3;
@@ -95,17 +96,13 @@ export function PuzzlePropertiesPanel({ data, onChange, readOnly, minigameDefaul
   return (
     <fieldset disabled={readOnly} className="contents">
       <div className="flex flex-col gap-2" aria-label="Configuration du puzzle">
-        <label className="flex flex-col gap-1 text-xs">
-          Image source (asset du pack)
-          <input
-            className="champ"
-            value={d.image ?? ""}
-            placeholder="puzzle-chateau.jpg"
-            aria-label="Image source du puzzle"
-            onChange={(e) => onChange({ ...data, image: e.target.value || undefined })}
-          />
-          <span className="text-[11px] text-fog">Le fichier doit être ajouté au manifest (écran Exporter).</span>
-        </label>
+        <ImagePicker
+          label="Image source (asset du pack)"
+          value={d.image ?? ""}
+          onPickFile={onPickFile ?? (async () => { throw new Error("Sélection de fichier indisponible ici."); })}
+          onChange={(image) => onChange({ ...data, image: image || undefined })}
+        />
+        <p className="text-[11px] text-fog">Le fichier est ajouté au manifest (écran Exporter).</p>
         <div className="flex gap-2">
           <label className="flex flex-1 flex-col gap-1 text-xs">
             Lignes (2–6)

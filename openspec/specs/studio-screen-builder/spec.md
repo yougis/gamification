@@ -65,7 +65,9 @@ Le schéma SHALL définir les types de widgets suivants via un discrimant sur `t
 - `ModuleWidget` : `{ type: "module" }` — slot pour le plugin du module associé au nœud
 - `SpacerWidget` : `{ type: "spacer", height?: number|string }`
 
-Chaque variante SHALL imposer ses champs requis et interdire les champs des autres varianteS (`additionalProperties: false` par variante).
+Chaque variante SHALL imposer ses champs requis et interdire les champs des autres variantes (`additionalProperties: false` par variante).
+
+Tout widget MAY porter un sous-objet optionnel `styles` : `{ fontFamily?: string, fontSize?: number, fontWeight?: "normal"|"bold", color?: string, align?: "left"|"center"|"right" }`. Les `styles` du widget SHALL prendre le pas sur les styles de l'écran et les styles globaux. `additionalProperties: false` SHALL être appliqué au sous-objet `styles`.
 
 #### Scenario: TextWidget valide
 
@@ -85,11 +87,25 @@ Chaque variante SHALL imposer ses champs requis et interdire les champs des autr
 - **WHEN** la validation Draft-07 tourne
 - **THEN** le widget est rejeté (champ `src` étranger à TextWidget)
 
+#### Scenario: Widget avec styles valides
+
+- **GIVEN** un widget `{ type: "text", text: "Titre", styles: { fontFamily: "Georgia", fontSize: 20, fontWeight: "bold" } }`
+- **WHEN** la validation Draft-07 tourne
+- **THEN** le widget est accepté
+
+#### Scenario: Widget avec style inconnu
+
+- **GIVEN** un widget `{ type: "text", text: "Titre", styles: { shadow: true } }`
+- **WHEN** la validation Draft-07 tourne
+- **THEN** le widget est rejeté (champ étranger à `styles`)
+
 ### Requirement: Fusion global/screen et node/screen
 
 La ScreenDefinition de `global.screen` SHALL servir de template par défaut pour tous les nœuds. La ScreenDefinition de `node.screen` SHALL override les propriétés spécifiées. Le merge SHALL être récursif pour les zones : si un nœud spécifie `zones.header`, il remplace complètement le header du global, pas append.
 
 Si un nœud ne définit pas de `screen`, le moteur SHALL utiliser `global.screen` tel quel. Si ni le nœud ni le global ne définissent de `screen`, le moteur SHALL appliquer un écran par défaut (fond uni, zone content-only, aucun header/footer).
+
+Les styles SHALL se résoudre par héritage global → écran → widget : `global.screen.styles` (défauts pour tout le jeu), surchargés par `node.screen.styles` (écran courant), surchargés par `widgets[].styles` (widget). À chaque niveau, seules les propriétés renseignées SHALL surcharger ; les autres SHALL être héritées. Un écran sans `styles` SHALL hériter intégralement des styles globaux.
 
 #### Scenario: Nœud inherit du global
 
@@ -109,6 +125,12 @@ Si un nœud ne définit pas de `screen`, le moteur SHALL utiliser `global.screen
 - **WHEN** le moteur résout l'écran
 - **THEN** le résultat contient le header du global ET le content du node (merge de top-level zones)
 
+#### Scenario: Héritage des styles sur trois niveaux
+
+- **GIVEN** `global.screen.styles: { fontFamily: "Georgia", fontSize: 14 }`, `node.screen.styles: { fontSize: 18 }` et un widget avec `styles: { color: "#ff0000" }`
+- **WHEN** le moteur résout le style du widget
+- **THEN** le widget utilise Georgia / 18 / #ff0000 (global → écran → widget, dernier niveau gagne par propriété)
+
 ### Requirement: Sélection de template
 
 Le Studio SHALL fournir un sélecteur de template (TemplatePicker) permettant de choisir parmi des templates de mise en page prédéfinis. Les templates disponibles SHALL inclure au minimum :
@@ -119,6 +141,8 @@ Le Studio SHALL fournir un sélecteur de template (TemplatePicker) permettant de
 - `"inventory-view"` : fond sombre, header avec titre, zone content avec grille d'objets
 
 La sélection d'un template SHALL remplacer les zones et le layout du screen courant par ceux du template. Les customisations existantes seront perdues (confirmation requise si des modifications existent).
+
+Le panneau WYSIWYG SHALL exposer le sélecteur de template au niveau du nœud (quand aucun widget n'est sélectionné) : appliquer un template remplace zones + layout de l'écran du nœud courant, avec confirmation si l'écran est déjà personnalisé.
 
 #### Scenario: Sélection d'un template
 
@@ -132,6 +156,12 @@ La sélection d'un template SHALL remplacer les zones et le layout du screen cou
 - **WHEN** l'auteur tente de sélectionner un template
 - **THEN** une confirmation affiche "Les modifications actuelles seront perdues. Continuer ?"
 
+#### Scenario: Template appliqué depuis le WYSIWYG du nœud
+
+- **GIVEN** un nœud sélectionné avec un écran content-only, aucun widget sélectionné
+- **WHEN** l'auteur choisit le template "quiz-focus" dans le panneau WYSIWYG
+- **THEN** l'écran du nœud affiche header, content et footer du template et le JSON du nœud est mis à jour
+
 ### Requirement: Éditeur WYSIWYG canvas
 
 Le Studio SHALL offrir un canvas de prévisualisation phone-size (environ 375x667 pixels) dans le panneau central du Composer. Le canvas SHALL afficher les zones du screen (header, content, footer) avec leurs widgets rendus.
@@ -143,7 +173,15 @@ Le canvas SHALL supporter :
 - Réordonnancement de widgets par drag & drop dans une zone
 - Suppression de widget par bouton ou touche Delete
 
+Un clic sur une zone SHALL sélectionner cette zone sans la désélectionner aussitôt : le clic ne SHALL jamais bouillonner vers le fond du canvas (qui vide la sélection). Seul un clic sur le fond vide du canvas SHALL vider la sélection.
+
+Les zones header/footer/overlay absentes de l'écran SHALL être dessinées en pointillés (« + En-tête », « + Pied de page », « + Surimpression »). Un clic sur une zone fantôme SHALL créer la zone vide et la sélectionner.
+
 Le canvas SHALL être synchronisé avec le nœud sélectionné dans le graphe : sélectionner un nœud affiche son screen, modifier le screen met à jour le JSON.
+
+Le canvas SHALL proposer un sélecteur de viewport : téléphone portrait (375×667), téléphone paysage (667×375), tablette portrait (768×1024), tablette paysage (1024×768). Changer de viewport SHALL redimensionner le canvas et réajuster la mise en page (zones `free` conservées en coordonnées relatives). Le viewport SHALL rester un état d'édition local, jamais persisté dans le JSON.
+
+Le contenu des widgets texte SHALL être éditable en place : un clic sur un texte l'ouvre en édition, Entrée ou perte de focus SHALL persister la valeur via l'opération MCP (annulable par undo). Les widgets texte SHALL pouvoir être déplacés par glisser-déposer, y compris d'une zone vers une autre.
 
 #### Scenario: Affichage du screen d'un nœud
 
@@ -157,11 +195,41 @@ Le canvas SHALL être synchronisé avec le nœud sélectionné dans le graphe : 
 - **WHEN** l'auteur clique sur la zone header
 - **THEN** la zone est surlignée et le panneau de propriétés affiche les propriétés de la zone header
 
+#### Scenario: Clic zone sans auto-annulation
+
+- **GIVEN** le canvas affichant un screen avec une zone content
+- **WHEN** l'auteur clique sur la zone content
+- **THEN** la zone reste sélectionnée (contour néon), le panneau affiche « Ajouter un widget », et le panneau fond d'écran ne s'affiche pas
+
+#### Scenario: Zone fantôme créée au clic
+
+- **GIVEN** un écran content-only (ni header ni footer)
+- **WHEN** l'auteur clique sur le fantôme « + En-tête »
+- **THEN** une zone header vide est créée dans le JSON du nœud et sélectionnée, le panneau affiche ses propriétés
+
 #### Scenario: Ajout de widget
 
 - **GIVEN** le canvas avec une zone content sélectionnée
 - **WHEN** l'auteur clique "Ajouter un widget" et choisit "Texte"
 - **THEN** un widget texte par défaut est ajouté à la zone content et apparaît dans le canvas
+
+#### Scenario: Bascule portrait vers tablette paysage
+
+- **GIVEN** un screen affiché en téléphone portrait
+- **WHEN** l'auteur choisit le viewport tablette paysage
+- **THEN** le canvas passe en 1024×768, les zones restent visibles et le JSON du jeu est inchangé
+
+#### Scenario: Édition en place d'un texte
+
+- **GIVEN** un widget texte "Bienvenue" dans le header
+- **WHEN** l'auteur clique dessus, tape "Bienvenue au château" et valide
+- **THEN** le texte est mis à jour dans le canvas et dans le JSON, et undo restaure "Bienvenue"
+
+#### Scenario: Drag-and-drop inter-zones
+
+- **GIVEN** un widget texte dans la zone content
+- **WHEN** l'auteur le glisse vers la zone footer
+- **THEN** le widget quitte content pour footer, l'ordre des deux zones est persisté, et undo restaure la position d'origine
 
 ### Requirement: Panneau de propriétés contextuel
 
@@ -172,6 +240,19 @@ Le panneau droit du Composer SHALL afficher les propriétés contextuelles selon
 - **Module widget sélectionné** : propriétés du widget + panneau de configuration du module existant (questions quiz, polygones 7-erreurs, etc.)
 
 Le panneau de propriétés SHALL implémenter le requirement existant "Inspecteur de nœud" : sections module → activation → latch/rejeu → discovery → effects → inventoryRef, mais dans un panneau contextuel plutôt que dans un panneau fixe.
+
+Le panneau SHALL distinguer trois sections de style, affichées selon la sélection :
+- **Style global** (aucune sélection écran) : `global.screen.styles` — typo, tailles, couleurs par défaut pour tout le jeu ;
+- **Style de l'écran** (écran sans widget sélectionné) : `node.screen.styles` — surcharges de l'écran courant, avec indication des propriétés héritées du global ;
+- **Style du contenu sélectionné** (widget sélectionné) : `widgets[].styles` — typo, taille, graisse, couleur, alignement du widget, avec indication des propriétés héritées de l'écran.
+
+Chaque section de style SHALL être rendue comme une barre d'outils compacte genre éditeur de texte riche, groupant les contrôles au lieu d'une ligne par propriété :
+- groupe typographie (police, taille, gras/normal),
+- groupe couleur (couleur du texte, couleur de fond selon les champs couverts),
+- groupe alignement (gauche/centré/droite),
+- groupe surcharge (retirer la surcharge = retour à l'héritage).
+
+La sémantique d'héritage SHALL être inchangée : chaque contrôle affiche la valeur résolue et son origine (badge Global/Écran/Widget/défaut) ; renseigner surcharge le niveau édité, effacer retombe sur l'héritage. Seuls les champs couverts par le niveau (et par `customizableStyles` pour un module) SHALL être proposés.
 
 #### Scenario: Sélection du module widget
 
@@ -184,6 +265,24 @@ Le panneau de propriétés SHALL implémenter le requirement existant "Inspecteu
 - **GIVEN** le canvas avec un screen
 - **WHEN** l'auteur sélectionne la zone header
 - **THEN** le panneau affiche : layout selector (stack/grid), widgets list, bouton "Ajouter un widget"
+
+#### Scenario: Surcharge de style d'écran visible
+
+- **GIVEN** `global.screen.styles: { fontSize: 14 }` et un écran sans `styles`
+- **WHEN** l'auteur ouvre la section style de l'écran
+- **THEN** fontSize affiche 14 comme valeur héritée (non éditable en place), modifiable en renseignant la surcharge
+
+#### Scenario: Barre d'outils groupée
+
+- **GIVEN** un widget texte sélectionné avec `global.screen.styles: { fontFamily: "Georgia" }`
+- **WHEN** l'auteur ouvre la section « Style — Contenu »
+- **THEN** une seule barre compacte affiche les groupes typographie/couleur/alignement/surcharge, et la police affiche Georgia comme valeur héritée badgée Global
+
+#### Scenario: Gras en un clic
+
+- **GIVEN** la barre d'outils de style du contenu avec graisse héritée « normal »
+- **WHEN** l'auteur active le contrôle gras du groupe typographie
+- **THEN** `widgets[].styles.fontWeight` vaut `bold`, le badge passe à Widget, et l'aperçu du canvas reflète la graisse
 
 ### Requirement: Écrans dans le schéma global
 
