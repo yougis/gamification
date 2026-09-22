@@ -18,4 +18,4 @@
 ## 4. Vérification d'ensemble
 
 - [x] 4.1 Rejouer une partie Sherlock complète dans le mode (start → tirage → branche → fin) et constater écrans, validation jouée et `isEnding` atteint, vérifié par la session observée de bout en bout
-- [ ] 4.2 Faire tourner les smokes Studio concernées et constater 0 échec, vérifié par la sortie des commandes
+- [x] 4.2 Faire tourner les smokes Studio concernées et constater 0 échec, vérifié par la sortie des commandes

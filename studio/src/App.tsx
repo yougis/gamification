@@ -51,6 +51,7 @@ import { Icon, type IconName } from "./components/icons";
 import Splitter from "./components/Splitter";
 import { WorkflowStepper, type EtapeWorkflow } from "./components/WorkflowStepper";
 import { NodeList } from "./components/NodeList";
+import { ChevronRepli, RailReplie } from "./components/Repli";
 import MapView from "./components/MapView";
 import { PhoneCanvas, VIEWPORTS, type ViewportId } from "./components/wysiwyg/PhoneCanvas";
 import { ImagePicker } from "./components/wysiwyg/ImagePicker";
@@ -1147,7 +1148,7 @@ const noeuds: Node[] = useMemo(
         ? <span className="puce puce-fin"><Icon name="fin" size={13} /> Fin présente</span>
         : <span className="puce puce-erreur"><Icon name="alerte" size={13} /> Pas de fin — ajoute une Fin du jeu</span>}
       {impasses.size > 0 && (
-        <button className="puce puce-erreur cursor-pointer" onClick={() => choisirNoeud([...impasses][0])} title="Aller à la première impasse">
+        <button className="puce puce-erreur cursor-pointer" onClick={() => { choisirNoeud([...impasses][0]); setEcran("composer"); }} title="Aller à la première impasse">
           <Icon name="alerte" size={13} /> {impasses.size} impasse{impasses.size > 1 ? "s" : ""} : {[...impasses].slice(0, 3).join(", ")}
         </button>
       )}
@@ -1170,7 +1171,7 @@ const noeuds: Node[] = useMemo(
             <Icon name="alerte" size={14} />
             <span className="flex-1">{r}</span>
             {cible && (
-              <button className="btn min-h-8 px-2.5 text-[8px]" onClick={() => choisirNoeud(cible.id)} title={`Aller à ${cible.id}`}>
+              <button className="btn min-h-8 px-2.5 text-[8px]" onClick={() => { choisirNoeud(cible.id); setEcran("composer"); }} title={`Aller à ${cible.id}`}>
                 Voir {cible.id}
               </button>
             )}
@@ -1365,6 +1366,8 @@ const noeuds: Node[] = useMemo(
         <div className="h-full overflow-y-auto">
           <div className="p-6 max-w-2xl">
             <h2 className="font-display font-extrabold text-2xl tracking-widest uppercase text-snow mb-6">Validation</h2>
+            {pied}
+            {listeErreurs}
             <div className="grid grid-cols-2 gap-4 mb-5">
               <div className="bg-panel border border-rule rounded-md p-4">
                 <div className="flex items-center justify-between mb-3">
@@ -1680,15 +1683,18 @@ HOLD est un mode système : il se configure dans Configuration globale, pas ici.
         <main className="flex min-h-0 min-w-0 flex-[3] flex-col gap-2" aria-label="Graphe et liste">
           <div className="flex min-h-0 flex-1 gap-3">
             {mep.repliees.graphe ? (
-              <div className="carte flex w-12 shrink-0 flex-col items-center p-2" aria-label="Graphe replié">
-                <button className="btn px-2.5" onClick={() => basculerSection("graphe")} title="Déplier le graphe" aria-label="Déplier le graphe">
-                  <Icon name="graphe" size={17} />
-                </button>
-              </div>
+              <RailReplie icone="graphe" titre="Graphe — cliquer pour déplier" directionRetour="droite" onDeplier={() => basculerSection("graphe")} />
             ) : (
               <div id="section-graphe" className="relative flex min-h-0 min-w-0 flex-1 flex-col" style={surlignage("graphe")}>
                 {zoneGraphe}
                 <div className="absolute right-2 top-2 z-5 flex gap-1">
+                  <button className="btn min-h-8 px-2.5" onClick={() => setEcran("valider")} title={erreurs.length ? `${erreurs.length} problème${erreurs.length > 1 ? "s" : ""} — Voir le détail dans Valider` : "Jeu valide — Voir dans Valider"} aria-label={erreurs.length ? `${erreurs.length} problèmes, voir le détail dans Valider` : "Jeu valide, voir dans Valider"}>
+                    {erreurs.length ? (
+                      <span className="puce puce-erreur"><Icon name="alerte" size={13} /> {erreurs.length}</span>
+                    ) : (
+                      <span className="puce puce-ok"><Icon name="ok" size={13} /> Valide</span>
+                    )}
+                  </button>
                   <button className="btn min-h-8 px-2.5" onClick={() => basculerMolette("graphe")} title="Réglages du graphe" aria-label="Réglages du graphe" aria-expanded={molette === "graphe"}>
                     <Icon name="engrenage" size={15} />
                   </button>
@@ -1726,10 +1732,6 @@ HOLD est un mode système : il se configure dans Configuration globale, pas ici.
                 {liste}
               </div>
             )}
-          </div>
-          <div id="section-validation" style={surlignage("validation")}>
-            {pied}
-            {listeErreurs}
           </div>
         </main>
         <Splitter label="Ajuster la largeur du panneau latéral" onDelta={(dx) => setMep((m) => ({ ...m, droite: Math.min(640, Math.max(280, m.droite - dx)) }))} />

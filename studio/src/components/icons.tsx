@@ -34,7 +34,11 @@ export type IconName =
   | "package"
   | "engrenage"
   | "soleil"
-  | "lune";
+  | "lune"
+  | "chevron-g"
+  | "chevron-d"
+  | "chevron-h"
+  | "chevron-b";
 
 const PATHS: Record<IconName, React.ReactNode> = {
   etape: (
@@ -187,6 +191,26 @@ const PATHS: Record<IconName, React.ReactNode> = {
   fermer: (
     <>
       <path d="M6 6l12 12M18 6 6 18" />
+    </>
+  ),
+  "chevron-g": (
+    <>
+      <path d="M15 5l-7 7 7 7" />
+    </>
+  ),
+  "chevron-d": (
+    <>
+      <path d="M9 5l7 7-7 7" />
+    </>
+  ),
+  "chevron-h": (
+    <>
+      <path d="M5 15l7-7 7 7" />
+    </>
+  ),
+  "chevron-b": (
+    <>
+      <path d="M5 9l7 7 7-7" />
     </>
   ),
   ajouter: (
