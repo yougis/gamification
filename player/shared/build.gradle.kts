@@ -23,6 +23,11 @@ kotlin {
             baseName = "shared"
         }
     }
+    iosX64 {
+        binaries.framework {
+            baseName = "shared"
+        }
+    }
     iosSimulatorArm64 {
         binaries.framework {
             baseName = "shared"
