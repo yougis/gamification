@@ -9,7 +9,8 @@ import type {
   ModulePlayerRendererProps,
   ModuleScreenPlugin,
 } from "../../../game/module-screen-plugin";
-import { MinigameParamsFields } from "./minigame-params";
+import { MinigameParamsAccordeon } from "./minigame-params";
+import { Accordeon, useAccordeon } from "../../Accordeon";
 import { ImagePicker } from "../ImagePicker";
 
 export const DECOUPE_MIN = 2;
@@ -84,6 +85,7 @@ export function PuzzlePropertiesPanel({ data, onChange, readOnly, minigameDefaul
   const lignes = typeof d.tileRows === "number" ? d.tileRows : 3;
   const colonnes = typeof d.tileCols === "number" ? d.tileCols : 3;
   const valide = puzzleDecoupeValide(lignes, colonnes);
+  const [decoupeOuverte, basculerDecoupe] = useAccordeon("puzzle-decoupe", true);
   const setDecoupe = (cible: "tileRows" | "tileCols", raw: string) => {
     if (raw === "") {
       const next = { ...data };
@@ -96,53 +98,70 @@ export function PuzzlePropertiesPanel({ data, onChange, readOnly, minigameDefaul
   return (
     <fieldset disabled={readOnly} className="contents">
       <div className="flex flex-col gap-2" aria-label="Configuration du puzzle">
-        <ImagePicker
-          label="Image source (asset du pack)"
-          value={d.image ?? ""}
-          onPickFile={onPickFile ?? (async () => { throw new Error("Sélection de fichier indisponible ici."); })}
-          onChange={(image) => onChange({ ...data, image: image || undefined })}
-        />
-        <p className="text-[11px] text-fog">Le fichier est ajouté au manifest (écran Exporter).</p>
-        <div className="flex gap-2">
-          <label className="flex flex-1 flex-col gap-1 text-xs">
-            Lignes (2–6)
-            <input
-              type="number"
-              min={DECOUPE_MIN}
-              max={DECOUPE_MAX}
-              step={1}
-              className="champ"
-              value={typeof d.tileRows === "number" ? d.tileRows : ""}
-              placeholder="3"
-              aria-label="Nombre de lignes de découpe"
-              onChange={(e) => setDecoupe("tileRows", e.target.value)}
+        <Accordeon
+          id="puzzle-decoupe"
+          titre="Image et découpe"
+          badge={
+            <>
+              <span className="puce">
+                {lignes}×{colonnes} ({lignes * colonnes} pièces)
+              </span>
+              {!valide ? (
+                <span className="puce puce-erreur" role="alert">
+                  Hors bornes 2–6
+                </span>
+              ) : null}
+            </>
+          }
+          ouvert={decoupeOuverte}
+          onToggle={basculerDecoupe}
+        >
+          <div className="flex flex-col gap-2">
+            <ImagePicker
+              label="Image source (asset du pack)"
+              value={d.image ?? ""}
+              onPickFile={onPickFile ?? (async () => { throw new Error("Sélection de fichier indisponible ici."); })}
+              onChange={(image) => onChange({ ...data, image: image || undefined })}
             />
-          </label>
-          <label className="flex flex-1 flex-col gap-1 text-xs">
-            Colonnes (2–6)
-            <input
-              type="number"
-              min={DECOUPE_MIN}
-              max={DECOUPE_MAX}
-              step={1}
-              className="champ"
-              value={typeof d.tileCols === "number" ? d.tileCols : ""}
-              placeholder="3"
-              aria-label="Nombre de colonnes de découpe"
-              onChange={(e) => setDecoupe("tileCols", e.target.value)}
-            />
-          </label>
-        </div>
-        {!valide ? (
-          <p className="text-[11px] text-fail" role="alert">
-            Découpe hors bornes : lignes et colonnes entre {DECOUPE_MIN} et {DECOUPE_MAX} (ex. 1×1 refusé).
-          </p>
-        ) : (
-          <p className="text-[11px] text-fog">
-            {lignes * colonnes} pièces ({lignes}×{colonnes}).
-          </p>
-        )}
-        <MinigameParamsFields data={data} defaults={minigameDefaults} onChange={onChange} readOnly={readOnly} />
+            <p className="text-[11px] text-fog">Le fichier est ajouté au manifest (écran Exporter).</p>
+            <div className="flex gap-2">
+              <label className="flex flex-1 flex-col gap-1 text-xs">
+                Lignes (2–6)
+                <input
+                  type="number"
+                  min={DECOUPE_MIN}
+                  max={DECOUPE_MAX}
+                  step={1}
+                  className="champ"
+                  value={typeof d.tileRows === "number" ? d.tileRows : ""}
+                  placeholder="3"
+                  aria-label="Nombre de lignes de découpe"
+                  onChange={(e) => setDecoupe("tileRows", e.target.value)}
+                />
+              </label>
+              <label className="flex flex-1 flex-col gap-1 text-xs">
+                Colonnes (2–6)
+                <input
+                  type="number"
+                  min={DECOUPE_MIN}
+                  max={DECOUPE_MAX}
+                  step={1}
+                  className="champ"
+                  value={typeof d.tileCols === "number" ? d.tileCols : ""}
+                  placeholder="3"
+                  aria-label="Nombre de colonnes de découpe"
+                  onChange={(e) => setDecoupe("tileCols", e.target.value)}
+                />
+              </label>
+            </div>
+            {!valide ? (
+              <p className="text-[11px] text-fail" role="alert">
+                Découpe hors bornes : lignes et colonnes entre {DECOUPE_MIN} et {DECOUPE_MAX} (ex. 1×1 refusé).
+              </p>
+            ) : null}
+          </div>
+        </Accordeon>
+        <MinigameParamsAccordeon data={data} defaults={minigameDefaults} onChange={onChange} readOnly={readOnly} />
       </div>
     </fieldset>
   );

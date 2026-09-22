@@ -18,8 +18,8 @@
 
 - [x] 4.1 Créer le composant `Accordeon` (id stable, titre, badge, ouvert contrôlé, persistance localStorage, a11y `aria-expanded`/`aria-controls`) — Vérifier : comportements unitaires (toggle, mémoire après rechargement simulé)
 - [x] 4.2 Appliquer l'accordéon au `PropertiesPanel` (Style Écran/Contenu/Global, Zone, widget, TemplatePicker) avec règle « contexte seul » par type de sélection — Vérifier : clic widget texte → seule « Contenu » ouverte ; clic zone → « Zone » ; fond → « Fond/Écran »
-- [ ] 4.3 Appliquer l'accordéon aux formulaires modules (quiz, puzzle, minigame-params, `*WidgetProperties`) avec badges résumé (comptes, origine d'héritage) — Vérifier : en-têtes affichent les badges sans ouverture, Formulaires inchangés fonctionnellement (smokes `screen.smoke.ts` verts)
-- [ ] 4.4 Appliquer l'accordéon aux sous-sections dans une famille Inspecteur (tabs des 9 familles conservés) — Vérifier : navigation tabs inchangée (clic + flèches clavier), sous-sections repliables avec mémoire
+- [x] 4.3 Appliquer l'accordéon aux formulaires modules (quiz, puzzle, minigame-params, `*WidgetProperties`) avec badges résumé (comptes, origine d'héritage) — Vérifier : en-têtes affichent les badges sans ouverture, Formulaires inchangés fonctionnellement (smokes `screen.smoke.ts` verts)
+- [x] 4.4 Appliquer l'accordéon aux sous-sections dans une famille Inspecteur (tabs des 9 familles conservés) — Vérifier : navigation tabs inchangée (clic + flèches clavier), sous-sections repliables avec mémoire
 
 ## 5. Vérification globale
 

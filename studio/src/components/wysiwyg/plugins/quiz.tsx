@@ -10,7 +10,8 @@ import type {
   ModulePlayerRendererProps,
   ModuleScreenPlugin,
 } from "../../../game/module-screen-plugin";
-import { MinigameParamsFields } from "./minigame-params";
+import { Accordeon, useAccordeon } from "../../Accordeon";
+import { MinigameParamsAccordeon } from "./minigame-params";
 import { ImagePicker } from "../ImagePicker";
 
 export interface QuizOptionObject {
@@ -82,6 +83,162 @@ export function QuizEditorPreview({ data }: ModuleEditorPreviewProps) {
   );
 }
 
+// Une question = un accordéon (change studio-composer-ux) : badge = énoncé
+// tronqué + alerte si aucune bonne réponse désignée. Composant enfant dédié
+// car les hooks ne peuvent pas vivre dans une boucle .map.
+function QuestionBloc({
+  qi,
+  question,
+  premiere,
+  patch,
+  supprimer,
+  onPickFile,
+}: {
+  qi: number;
+  question: QuizQuestion;
+  premiere: boolean;
+  patch: (patch: Partial<QuizQuestion>) => void;
+  supprimer: () => void;
+  onPickFile?: (file: File) => Promise<string>;
+}) {
+  const [ouvert, basculer] = useAccordeon(`quiz-q-${qi}`, premiere);
+  const q = question;
+  const options = Array.isArray(q.options) ? q.options : [];
+  const sansBonne = q.correctIndex == null && options.length > 0;
+  const enonce = (q.q ?? "").trim();
+  return (
+    <Accordeon
+      id={`quiz-q-${qi}`}
+      titre={`Question ${qi + 1}`}
+      badge={
+        <>
+          <span className="puce" title={enonce || "Sans énoncé"}>
+            {enonce ? (enonce.length > 28 ? `${enonce.slice(0, 28)}…` : enonce) : "Sans énoncé"}
+          </span>
+          {sansBonne ? (
+            <span className="puce puce-erreur" role="alert">
+              Sans bonne réponse
+            </span>
+          ) : null}
+        </>
+      }
+      ouvert={ouvert}
+      onToggle={basculer}
+    >
+      <div className="flex flex-col gap-2 rounded border border-line p-2">
+        <div className="flex gap-1">
+          <input
+            className="champ flex-1"
+            value={q.q ?? ""}
+            placeholder={`Question ${qi + 1}`}
+            aria-label={`Question ${qi + 1}`}
+            onChange={(e) => patch({ q: e.target.value })}
+          />
+          <button
+            type="button"
+            className="btn px-2.5"
+            aria-label={`Supprimer la question ${qi + 1}`}
+            title="Supprimer"
+            onClick={supprimer}
+          >
+            <Icon name="fermer" size={15} />
+          </button>
+        </div>
+        <span className="text-xs text-fog">Réponses ({options.length}/6) — cochez la bonne</span>
+        {options.map((opt, oi) => {
+          const vide = optionVide(opt);
+          return (
+            <div key={oi} className={`flex flex-col gap-1 rounded border p-1.5 ${vide ? "border-fail/60" : "border-line/60"}`}>
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="radio"
+                  name={`quiz-${qi}-correct`}
+                  checked={q.correctIndex === oi}
+                  aria-label={`Bonne réponse : option ${oi + 1}`}
+                  title="Bonne réponse"
+                  onChange={() => patch({ correctIndex: oi })}
+                />
+                <input
+                  className="champ min-w-0 flex-1"
+                  value={quizOptionText(opt)}
+                  placeholder={`Réponse ${oi + 1} (texte)`}
+                  aria-label={`Réponse ${oi + 1} texte`}
+                  onChange={(e) => {
+                    const next = [...options];
+                    const img = quizOptionImage(opt);
+                    next[oi] = img ? { text: e.target.value, image: img } : e.target.value;
+                    patch({ options: next });
+                  }}
+                />
+                <button
+                  type="button"
+                  className="btn px-2 disabled:opacity-30"
+                  disabled={options.length <= 2}
+                  title={options.length <= 2 ? "Minimum 2 réponses" : "Supprimer cette réponse"}
+                  aria-label={`Supprimer la réponse ${oi + 1}`}
+                  onClick={() => patch({ options: options.filter((_, j) => j !== oi) })}
+                >
+                  <Icon name="fermer" size={13} />
+                </button>
+              </div>
+              <ImagePicker
+                label={`Réponse ${oi + 1} image (optionnel)`}
+                value={quizOptionImage(opt)}
+                onPickFile={onPickFile ?? (async () => { throw new Error("Sélection de fichier indisponible ici."); })}
+                onChange={(img) => {
+                  const next = [...options];
+                  const txt = quizOptionText(opt);
+                  next[oi] = !txt && !img ? "" : img && !txt ? { image: img } : { text: txt, ...(img ? { image: img } : {}) };
+                  patch({ options: next });
+                }}
+              />
+              {vide ? <p className="text-[11px] text-fail" role="alert">Réponse vide : texte ou image requis.</p> : null}
+            </div>
+          );
+        })}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            className="btn"
+            disabled={options.length >= 6}
+            title={options.length >= 6 ? "Maximum 6 réponses" : "Ajouter une réponse"}
+            onClick={() => patch({ options: [...options, ""] })}
+          >
+            <Icon name="ajouter" size={13} /> Réponse
+          </button>
+          {sansBonne ? (
+            <p className="text-[11px] text-caution" role="alert">Désignez la bonne réponse.</p>
+          ) : null}
+        </div>
+        <div className="flex gap-2">
+          <label className="flex flex-1 flex-col gap-1 text-xs">
+            Explication (optionnel)
+            <input
+              className="champ"
+              value={q.explanation ?? ""}
+              placeholder="Affichée après réponse"
+              aria-label={`Explication question ${qi + 1}`}
+              onChange={(e) => patch({ explanation: e.target.value || undefined })}
+            />
+          </label>
+          <label className="flex w-20 flex-col gap-1 text-xs">
+            Points
+            <input
+              type="number"
+              min={0}
+              className="champ"
+              value={q.points ?? ""}
+              placeholder="1"
+              aria-label={`Points question ${qi + 1}`}
+              onChange={(e) => patch({ points: e.target.value === "" ? undefined : Number(e.target.value) })}
+            />
+          </label>
+        </div>
+      </div>
+    </Accordeon>
+  );
+}
+
 // Panneau de proprietes : questions + bloc QCM (reponses, bonne reponse,
 // explication) + parametres essais/temps. Refus de formulaire : reponse sans
 // texte ni image, question sans bonne reponse, bornes 2-6 reponses.
@@ -104,126 +261,21 @@ export function QuizPropertiesPanel({ data, onChange, readOnly, minigameDefaults
     <fieldset disabled={readOnly} className="contents">
       <div className="flex flex-col gap-3" aria-label="Questions du quiz">
         <span className="text-xs text-fog">Questions ({questions.length})</span>
-        {questions.map((q, qi) => {
-          const options = Array.isArray(q.options) ? q.options : [];
-          const sansBonne = q.correctIndex == null && options.length > 0;
-          return (
-            <div key={qi} className="flex flex-col gap-2 rounded border border-line p-2">
-              <div className="flex gap-1">
-                <input
-                  className="champ flex-1"
-                  value={q.q ?? ""}
-                  placeholder={`Question ${qi + 1}`}
-                  aria-label={`Question ${qi + 1}`}
-                  onChange={(e) => patchQuestion(qi, { q: e.target.value })}
-                />
-                <button
-                  type="button"
-                  className="btn px-2.5"
-                  aria-label={`Supprimer la question ${qi + 1}`}
-                  title="Supprimer"
-                  onClick={() => setQuestions(questions.filter((_, j) => j !== qi))}
-                >
-                  <Icon name="fermer" size={15} />
-                </button>
-              </div>
-              <span className="text-xs text-fog">Réponses ({options.length}/6) — cochez la bonne</span>
-              {options.map((opt, oi) => {
-                const vide = optionVide(opt);
-                return (
-                  <div key={oi} className={`flex flex-col gap-1 rounded border p-1.5 ${vide ? "border-fail/60" : "border-line/60"}`}>
-                    <div className="flex items-center gap-1.5">
-                      <input
-                        type="radio"
-                        name={`quiz-${qi}-correct`}
-                        checked={q.correctIndex === oi}
-                        aria-label={`Bonne réponse : option ${oi + 1}`}
-                        title="Bonne réponse"
-                        onChange={() => patchQuestion(qi, { correctIndex: oi })}
-                      />
-                      <input
-                        className="champ min-w-0 flex-1"
-                        value={quizOptionText(opt)}
-                        placeholder={`Réponse ${oi + 1} (texte)`}
-                        aria-label={`Réponse ${oi + 1} texte`}
-                        onChange={(e) => {
-                          const next = [...options];
-                          const img = quizOptionImage(opt);
-                          next[oi] = img ? { text: e.target.value, image: img } : e.target.value;
-                          patchQuestion(qi, { options: next });
-                        }}
-                      />
-                      <button
-                        type="button"
-                        className="btn px-2 disabled:opacity-30"
-                        disabled={options.length <= 2}
-                        title={options.length <= 2 ? "Minimum 2 réponses" : "Supprimer cette réponse"}
-                        aria-label={`Supprimer la réponse ${oi + 1}`}
-                        onClick={() => patchQuestion(qi, { options: options.filter((_, j) => j !== oi) })}
-                      >
-                        <Icon name="fermer" size={13} />
-                      </button>
-                    </div>
-                    <ImagePicker
-                      label={`Réponse ${oi + 1} image (optionnel)`}
-                      value={quizOptionImage(opt)}
-                      onPickFile={onPickFile ?? (async () => { throw new Error("Sélection de fichier indisponible ici."); })}
-                      onChange={(img) => {
-                        const next = [...options];
-                        const txt = quizOptionText(opt);
-                        next[oi] = !txt && !img ? "" : img && !txt ? { image: img } : { text: txt, ...(img ? { image: img } : {}) };
-                        patchQuestion(qi, { options: next });
-                      }}
-                    />
-                    {vide ? <p className="text-[11px] text-fail" role="alert">Réponse vide : texte ou image requis.</p> : null}
-                  </div>
-                );
-              })}
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  className="btn"
-                  disabled={options.length >= 6}
-                  title={options.length >= 6 ? "Maximum 6 réponses" : "Ajouter une réponse"}
-                  onClick={() => patchQuestion(qi, { options: [...options, ""] })}
-                >
-                  <Icon name="ajouter" size={13} /> Réponse
-                </button>
-                {sansBonne ? (
-                  <p className="text-[11px] text-caution" role="alert">Désignez la bonne réponse.</p>
-                ) : null}
-              </div>
-              <div className="flex gap-2">
-                <label className="flex flex-1 flex-col gap-1 text-xs">
-                  Explication (optionnel)
-                  <input
-                    className="champ"
-                    value={q.explanation ?? ""}
-                    placeholder="Affichée après réponse"
-                    aria-label={`Explication question ${qi + 1}`}
-                    onChange={(e) => patchQuestion(qi, { explanation: e.target.value || undefined })}
-                  />
-                </label>
-                <label className="flex w-20 flex-col gap-1 text-xs">
-                  Points
-                  <input
-                    type="number"
-                    min={0}
-                    className="champ"
-                    value={q.points ?? ""}
-                    placeholder="1"
-                    aria-label={`Points question ${qi + 1}`}
-                    onChange={(e) => patchQuestion(qi, { points: e.target.value === "" ? undefined : Number(e.target.value) })}
-                  />
-                </label>
-              </div>
-            </div>
-          );
-        })}
+        {questions.map((q, qi) => (
+          <QuestionBloc
+            key={qi}
+            qi={qi}
+            question={q}
+            premiere={qi === 0}
+            patch={(patch) => patchQuestion(qi, patch)}
+            supprimer={() => setQuestions(questions.filter((_, j) => j !== qi))}
+            onPickFile={onPickFile}
+          />
+        ))}
         <button type="button" className="btn" onClick={() => setQuestions([...questions, { q: "", options: ["", ""], points: 1 }])}>
           <Icon name="ajouter" size={15} /> Question
         </button>
-        <MinigameParamsFields data={data} defaults={minigameDefaults} onChange={onChange} readOnly={readOnly} />
+        <MinigameParamsAccordeon data={data} defaults={minigameDefaults} onChange={onChange} readOnly={readOnly} />
       </div>
     </fieldset>
   );

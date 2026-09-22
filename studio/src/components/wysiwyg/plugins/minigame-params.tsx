@@ -5,6 +5,7 @@
 // heritage (cle retiree de `data`).
 import { resolveMinigameParam } from "../../../game/screen-utils";
 import type { MinigameDefaults } from "../../../game/types";
+import { Accordeon, useAccordeon } from "../../Accordeon";
 
 const ORIGINE_LABEL = { locale: "Locale", globale: "Globale", defaut: "Défaut module" } as const;
 
@@ -75,5 +76,45 @@ export function MinigameParamsFields({
         </label>
       </div>
     </div>
+  );
+}
+
+/**
+ * « Essais / Temps » en accordéon (change studio-composer-ux) : badge =
+ * valeurs résolues, fermé par défaut (secondaire après le contenu du module).
+ * Partagé par les panneaux quiz et puzzle (même `id` => mémoire commune,
+ * le contenu étant identique).
+ */
+export function MinigameParamsAccordeon({
+  data,
+  defaults,
+  onChange,
+  readOnly,
+}: {
+  data: Record<string, unknown>;
+  defaults?: MinigameDefaults;
+  onChange: (data: Record<string, unknown>) => void;
+  readOnly?: boolean;
+}) {
+  const [ouvert, basculer] = useAccordeon("minigame-params", false);
+  const localAttempts = typeof data.maxAttempts === "number" ? data.maxAttempts : undefined;
+  const localTime = typeof data.timeLimitSeconds === "number" ? data.timeLimitSeconds : undefined;
+  const attempts = resolveMinigameParam(localAttempts, defaults, "maxAttempts");
+  const time = resolveMinigameParam(localTime, defaults, "timeLimitSeconds");
+  const fmt = (v: number | undefined, unite: string) => (v == null ? "défaut" : `${v} ${unite}`);
+  return (
+    <Accordeon
+      id="minigame-params"
+      titre="Essais / Temps"
+      badge={
+        <span className="puce" title="Valeurs appliquées (locale, globale ou défaut module)">
+          {fmt(attempts.value, "essais")} · {fmt(time.value, "s")}
+        </span>
+      }
+      ouvert={ouvert}
+      onToggle={basculer}
+    >
+      <MinigameParamsFields data={data} defaults={defaults} onChange={onChange} readOnly={readOnly} />
+    </Accordeon>
   );
 }

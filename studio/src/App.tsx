@@ -16,7 +16,7 @@ import "@xyflow/react/dist/style.css";
 import { validateGame, deadEnds } from "./game/validate";
 import { evaluate, drawPool, type Sim } from "./game/evaluate";
 import { composeNodes, setActivation, registerAsset, exportPackFull, canExport, addSecoursCode, importGame, addObject, setObjects, setReview, removeNode, renameNode, duplicateNode, patchScreenZone, addScreenWidget, setScreenWidget as mcpSetScreenWidget, removeScreenWidget, moveScreenWidget, moveScreenWidgetAcross, setNodeScreen, setScreenBackground, setScreenStyles, setGlobalScreenStyles, setMinigameDefaults, type ManifestFile } from "./game/mcp";
-import { emptyMeta, type Condition, type Game, type GameNode, type MinigameDefaults, type Predicate, type StudioMeta, type ExperienceStyle, type Branding, type GameMode, type Difficulty, type ZoneId } from "./game/types";
+import { emptyMeta, type Condition, type Effect, type Game, type GameNode, type MinigameDefaults, type Predicate, type StudioMeta, type ExperienceStyle, type Branding, type GameMode, type Difficulty, type ZoneId } from "./game/types";
 import { sha256Hex } from "./game/pack";
 import { FONT_OPTIONS, estPoliceConnue } from "./game/fonts";
 import {
@@ -52,6 +52,7 @@ import Splitter from "./components/Splitter";
 import { WorkflowStepper, type EtapeWorkflow } from "./components/WorkflowStepper";
 import { NodeList } from "./components/NodeList";
 import { ChevronRepli, RailReplie } from "./components/Repli";
+import { Accordeon, useAccordeon } from "./components/Accordeon";
 import MapView from "./components/MapView";
 import { PhoneCanvas, VIEWPORTS, type ViewportId } from "./components/wysiwyg/PhoneCanvas";
 import { ImagePicker } from "./components/wysiwyg/ImagePicker";
@@ -1679,13 +1680,7 @@ HOLD est un mode système : il se configure dans Configuration globale, pas ici.
               <div id="section-graphe" className="relative flex min-h-0 min-w-0 flex-1 flex-col" style={surlignage("graphe")}>
                 {zoneGraphe}
                 <div className="absolute right-2 top-2 z-5 flex gap-1">
-                  <button className="btn min-h-8 px-2.5" onClick={() => setEcran("valider")} title={erreurs.length ? `${erreurs.length} problème${erreurs.length > 1 ? "s" : ""} — Voir le détail dans Valider` : "Jeu valide — Voir dans Valider"} aria-label={erreurs.length ? `${erreurs.length} problèmes, voir le détail dans Valider` : "Jeu valide, voir dans Valider"}>
-                    {erreurs.length ? (
-                      <span className="puce puce-erreur"><Icon name="alerte" size={13} /> {erreurs.length}</span>
-                    ) : (
-                      <span className="puce puce-ok"><Icon name="ok" size={13} /> Valide</span>
-                    )}
-                  </button>
+                  <PastilleValidation nbErreurs={erreurs.length} onVoir={() => setEcran("valider")} />
                   <button className="btn min-h-8 px-2 text-[8px]" onClick={() => { rfRef.current?.fitView({ padding: 0.2 }); }} title="Recentrer le graphe">
                     Recentrer
                   </button>
@@ -1736,7 +1731,10 @@ HOLD est un mode système : il se configure dans Configuration globale, pas ici.
             <div className="flex min-h-0 flex-1 flex-col gap-2">
               {onglet === "graphe" && (
                 <div className="flex min-h-0 flex-1 flex-col gap-2">
-                  <div className="carte shrink-0 p-2">{resetLayout}</div>
+                  <div className="carte flex shrink-0 items-center gap-2 p-2">
+                    <PastilleValidation nbErreurs={erreurs.length} onVoir={() => setEcran("valider")} />
+                    {resetLayout}
+                  </div>
                   <div className="flex min-h-0 flex-1 flex-col">{zoneGraphe}</div>
                 </div>
               )}
@@ -1751,8 +1749,6 @@ HOLD est un mode système : il se configure dans Configuration globale, pas ici.
         </main>
         {ecran === "composer" ? (
           <>
-            {pied}
-            {listeErreurs}
             <nav className="carte flex shrink-0 items-stretch gap-1 p-1 sticky bottom-0" aria-label="Sections du Composer">
               {(
                 [
@@ -1815,6 +1811,157 @@ function Famille({ id, icone, titre, aide, active, children }: { id: string; ico
   );
 }
 
+// Pastille compacte d'état de validation (change studio-composer-ux) : le seul
+// signal validation du Composer (desktop + mobile), cliquable vers Valider.
+// Le détail vit exclusivement dans l'écran Valider.
+function PastilleValidation({ nbErreurs, onVoir }: { nbErreurs: number; onVoir: () => void }) {
+  return (
+    <button
+      className="btn min-h-8 px-2.5"
+      onClick={onVoir}
+      title={nbErreurs ? `${nbErreurs} problème${nbErreurs > 1 ? "s" : ""} — Voir le détail dans Valider` : "Jeu valide — Voir dans Valider"}
+      aria-label={nbErreurs ? `${nbErreurs} problèmes, voir le détail dans Valider` : "Jeu valide, voir dans Valider"}
+    >
+      {nbErreurs ? (
+        <span className="puce puce-erreur"><Icon name="alerte" size={13} /> {nbErreurs} problème{nbErreurs > 1 ? "s" : ""}</span>
+      ) : (
+        <span className="puce puce-ok"><Icon name="ok" size={13} /> Valide</span>
+      )}
+    </button>
+  );
+}
+
+// Résumé d'un déclencheur pour badge d'accordéon (change studio-composer-ux).
+function resumeCondition(c: Condition): string {
+  switch (c.type) {
+    case "GEOFENCE": return `${c.radiusMeters ?? "?"} m`;
+    case "NODE_COMPLETED": return c.nodeId ?? "—";
+    case "TIMER": return `${c.delaySeconds ?? "?"} s`;
+    case "POOL_DRAWN": return c.poolNodeId ?? "—";
+    case "ITEM_REQUIRED":
+    case "ITEM_USED": return c.itemId ?? "—";
+    case "CODE_INPUT": return c.code ?? "—";
+    case "CLUE_RESOLVED": return c.clueId ?? "—";
+    case "PROXIMITY_MASTER": return c.masterId ?? "—";
+    default: return "";
+  }
+}
+
+// Un déclencheur = un accordéon : hooks interdits dans .map, d'où l'enfant dédié.
+function DeclencheurBloc({
+  index,
+  condition,
+  premier,
+  game,
+  onPatch,
+  onSupprimer,
+}: {
+  index: number;
+  condition: Condition;
+  premier: boolean;
+  game: Game;
+  onPatch: (patch: Partial<Condition>) => void;
+  onSupprimer: () => void;
+}) {
+  const [ouvert, basculer] = useAccordeon(`declencheur-${index}`, premier);
+  const c = condition;
+  return (
+    <Accordeon
+      id={`declencheur-${index}`}
+      titre={CONDITIONS_FR[c.type]?.nom ?? c.type}
+      badge={<span className="puce" title={CONDITIONS_FR[c.type]?.aide}>{resumeCondition(c)}</span>}
+      ouvert={ouvert}
+      onToggle={basculer}
+    >
+      <div className="carte p-2 shadow-none">
+        <span className="flex items-center gap-1.5">
+          <Icon name={iconeCondition(c.type)} size={15} />
+          <b>{CONDITIONS_FR[c.type]?.nom ?? c.type}</b>
+          <span className="flex-1" />
+          <button className="btn min-h-8 px-2.5" aria-label="Supprimer ce déclencheur" title="Supprimer" onClick={onSupprimer}><Icon name="fermer" size={14} /></button>
+        </span>
+        <ChampsDecl game={game} c={c} upd={onPatch} />
+      </div>
+    </Accordeon>
+  );
+}
+
+const EFFETS_FR: Record<string, string> = {
+  GIVE_ITEM: "Donner objet",
+  REMOVE_ITEM: "Retirer objet",
+  REVEAL_NODE: "Révéler nœud",
+  HIDE_NODE: "Masquer nœud",
+  UNLOCK_NODE: "Débloquer nœud",
+  MODIFY_VARIABLE: "Modifier variable",
+  MODIFY_SCORE: "Modifier score",
+  TRIGGER_EVENT: "Déclencher événement",
+};
+
+// Résumé d'un effet pour badge d'accordéon.
+function resumeEffet(eff: Effect): string {
+  switch (eff.type) {
+    case "GIVE_ITEM":
+    case "REMOVE_ITEM": return eff.itemId ?? "—";
+    case "REVEAL_NODE":
+    case "HIDE_NODE":
+    case "UNLOCK_NODE": return eff.nodeId ?? "—";
+    case "MODIFY_VARIABLE": return eff.variableId ?? "—";
+    case "MODIFY_SCORE": return String(eff.value ?? "—");
+    default: return "";
+  }
+}
+
+// Un effet = un accordéon (même contrainte de hooks que DeclencheurBloc).
+function EffetBloc({
+  index,
+  effet,
+  premier,
+  game,
+  nodeId,
+  onPatch,
+  onSupprimer,
+}: {
+  index: number;
+  effet: Effect;
+  premier: boolean;
+  game: Game;
+  nodeId: string;
+  onPatch: (patch: Partial<Effect>) => void;
+  onSupprimer: () => void;
+}) {
+  const [ouvert, basculer] = useAccordeon(`effet-${index}`, premier);
+  const eff = effet;
+  const setCible = (patch: Partial<Effect>) => onPatch(patch);
+  return (
+    <Accordeon
+      id={`effet-${index}`}
+      titre={EFFETS_FR[eff.type] ?? eff.type}
+      badge={<span className="puce">{resumeEffet(eff)}</span>}
+      ouvert={ouvert}
+      onToggle={basculer}
+    >
+      <div className="carte p-2 shadow-none">
+        <span className="flex items-center gap-1.5">
+          <Icon name="engrenage" size={15} />
+          <select className="champ" value={eff.type} onChange={(e) => onPatch({ type: e.target.value })}>
+            <option value="GIVE_ITEM">Donner objet</option>
+            <option value="REMOVE_ITEM">Retirer objet</option>
+            <option value="REVEAL_NODE">Révéler nœud</option>
+            <option value="HIDE_NODE">Masquer nœud</option>
+            <option value="UNLOCK_NODE">Débloquer nœud</option>
+            <option value="MODIFY_VARIABLE">Modifier variable</option>
+            <option value="MODIFY_SCORE">Modifier score</option>
+            <option value="TRIGGER_EVENT">Déclencher événement</option>
+          </select>
+          <span className="flex-1" />
+          <button className="btn min-h-8 px-2.5" aria-label="Supprimer cet effet" title="Supprimer" onClick={onSupprimer}><Icon name="fermer" size={14} /></button>
+        </span>
+        {eff.type === "GIVE_ITEM" || eff.type === "REMOVE_ITEM" ? <label>Objet <select className="champ" value={eff.itemId ?? ""} onChange={(e) => setCible({ itemId: e.target.value })}><option value="">—</option>{game.objects?.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</select></label> : eff.type === "REVEAL_NODE" || eff.type === "HIDE_NODE" || eff.type === "UNLOCK_NODE" ? <label>Nœud <select className="champ" value={eff.nodeId ?? ""} onChange={(e) => setCible({ nodeId: e.target.value })}><option value="">—</option>{game.nodes.filter((m) => m.id !== nodeId).map((m) => <option key={m.id} value={m.id}>{m.id}</option>)}</select></label> : eff.type === "MODIFY_VARIABLE" ? <label>Variable <input className="champ" value={eff.variableId ?? ""} onChange={(e) => setCible({ variableId: e.target.value })} placeholder="id" size={12} /></label> : eff.type === "MODIFY_SCORE" ? <label>Score <input className="champ w-16" type="number" value={Number(eff.value) ?? 0} onChange={(e) => setCible({ value: Number(e.target.value) })} /></label> : null}
+      </div>
+    </Accordeon>
+  );
+}
+
 // Hote du panneau de configuration module dans le WYSIWYG (change studio-screen-wysiwyg) :
 // rend le propertiesPanel du screenPlugin du type de module, cable sur node.module.data.
 // Sans plugin : undefined (PropertiesPanel affiche son placeholder).
@@ -1850,6 +1997,8 @@ function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauT
   onAllerConfig?: () => void;
 }) {
   const [activeFamille, setActiveFamille] = useState<string>(FAMILLES[0].id);
+  const [expertModuleOuvert, basculerExpertModule] = useAccordeon("insp-expert-module", false);
+  const [expertMetaOuvert, basculerExpertMeta] = useAccordeon("insp-expert-meta", false);
   const upd = (patch: Partial<GameNode>) => editGame((g) => ({ ...g, nodes: g.nodes.map((n) => (n.id === node.id ? { ...n, ...patch } : n)) }), "modifierNoeud");
   const updDecl = (i: number, patch: Partial<Condition>) =>
     editGame((g) => ({
@@ -2041,14 +2190,14 @@ function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauT
             }}><Icon name="ajouter" size={15} /> Question</button>
           </div>
         )}
-        <details><summary className="cursor-pointer text-[8px]">Données expertes (JSON)</summary>
+        <Accordeon id="insp-expert-module" titre="Données expertes (JSON)" badge={<span className="puce">JSON</span>} ouvert={expertModuleOuvert} onToggle={basculerExpertModule}>
           <textarea rows={3} className="w-full champ font-mono text-[8px]" value={JSON.stringify(node.module.data)} onChange={(e) => {
             try {
               const data = JSON.parse(e.target.value) as Record<string, unknown>;
               if (data && typeof data === "object") upd({ module: { ...node.module, data } });
             } catch { /* frappe en cours */ }
           }} />
-        </details>
+        </Accordeon>
       </Famille>
       <Famille id={FAMILLES[1].id} icone={FAMILLES[1].icone} titre={FAMILLES[1].titre} aide={FAMILLES[1].aide} active={activeFamille === FAMILLES[1].id}>
         <label>Logique <select className="champ" value={node.activation.operator ?? ""} onChange={(e) => upd({ activation: { ...node.activation, operator: (e.target.value || undefined) as GameNode["activation"]["operator"] } })}>
@@ -2063,15 +2212,15 @@ function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauT
           <button className="btn" onClick={ajoutDecl}><Icon name="ajouter" size={15} /> Déclencheur</button>
         </div>
         {node.activation.requires.map((c, i) => (
-          <div key={i} className="carte p-2 shadow-none">
-            <span className="flex items-center gap-1.5">
-               <Icon name={iconeCondition(c.type)} size={15} />
-               <b>{CONDITIONS_FR[c.type]?.nom ?? c.type}</b>
-              <span className="flex-1" />
-              <button className="btn min-h-8 px-2.5" aria-label="Supprimer ce déclencheur" title="Supprimer" onClick={() => supprDecl(i)}><Icon name="fermer" size={14} /></button>
-            </span>
-            <ChampsDecl game={game} c={c} upd={(p) => updDecl(i, p)} />
-          </div>
+          <DeclencheurBloc
+            key={i}
+            index={i}
+            condition={c}
+            premier={i === 0}
+            game={game}
+            onPatch={(p) => updDecl(i, p)}
+            onSupprimer={() => supprDecl(i)}
+          />
         ))}
       </Famille>
       <Famille id={FAMILLES[2].id} icone={FAMILLES[2].icone} titre={FAMILLES[2].titre} aide={FAMILLES[2].aide} active={activeFamille === FAMILLES[2].id}>
@@ -2124,7 +2273,7 @@ function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauT
             }
           }}><Icon name="ajouter" size={15} /> Secours par code</button>
         )}
-        <details><summary className="cursor-pointer text-[8px]">Options expertes (JSON)</summary>
+        <Accordeon id="insp-expert-meta" titre="Options expertes (JSON)" badge={<span className="puce">JSON</span>} ouvert={expertMetaOuvert} onToggle={basculerExpertMeta}>
           <textarea rows={2} className="w-full champ font-mono text-[8px]" defaultValue={JSON.stringify(meta.overrides[node.id] ?? {})} key={node.id} onBlur={(e) => {
             try {
               const patch = JSON.parse(e.target.value) as Record<string, unknown>;
@@ -2133,7 +2282,7 @@ function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauT
               }
             } catch { alert("Options invalides (JSON)"); }
           }} />
-        </details>
+        </Accordeon>
       </Famille>
       <Famille id={FAMILLES[5].id} icone={FAMILLES[5].icone} titre={FAMILLES[5].titre} aide={FAMILLES[5].aide} active={activeFamille === FAMILLES[5].id}>
         <label>Mode <select className="champ" value={node.discovery?.mode ?? "VISIBLE_NOW"} onChange={(e) => upd({ discovery: { ...node.discovery, mode: e.target.value as any } })}>
@@ -2168,28 +2317,20 @@ function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauT
           <button className="btn" onClick={() => upd({ effects: [{ type: "GIVE_ITEM", itemId: "" }] })}><Icon name="ajouter" size={15} /> Ajouter un effet</button>
         )}
         {(node.effects ?? []).map((eff, i) => (
-          <div key={i} className="carte p-2 shadow-none">
-            <span className="flex items-center gap-1.5">
-              <Icon name="engrenage" size={15} />
-              <select className="champ" value={eff.type} onChange={(e) => {
-                const newEffects = [...(node.effects ?? [])];
-                newEffects[i] = { ...eff, type: e.target.value };
-                upd({ effects: newEffects });
-              }}>
-                <option value="GIVE_ITEM">Donner objet</option>
-                <option value="REMOVE_ITEM">Retirer objet</option>
-                <option value="REVEAL_NODE">Révéler nœud</option>
-                <option value="HIDE_NODE">Masquer nœud</option>
-                <option value="UNLOCK_NODE">Débloquer nœud</option>
-                <option value="MODIFY_VARIABLE">Modifier variable</option>
-                <option value="MODIFY_SCORE">Modifier score</option>
-                <option value="TRIGGER_EVENT">Déclencher événement</option>
-              </select>
-              <span className="flex-1" />
-              <button className="btn min-h-8 px-2.5" aria-label="Supprimer cet effet" title="Supprimer" onClick={() => upd({ effects: (node.effects ?? []).filter((_, j) => j !== i) })}><Icon name="fermer" size={14} /></button>
-            </span>
-            {eff.type === "GIVE_ITEM" || eff.type === "REMOVE_ITEM" ? <label>Objet <select className="champ" value={eff.itemId ?? ""} onChange={(e) => { const ne = [...(node.effects ?? [])]; ne[i] = { ...ne[i], itemId: e.target.value }; upd({ effects: ne }); }}><option value="">—</option>{game.objects?.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</select></label> : eff.type === "REVEAL_NODE" || eff.type === "HIDE_NODE" || eff.type === "UNLOCK_NODE" ? <label>Nœud <select className="champ" value={eff.nodeId ?? ""} onChange={(e) => { const ne = [...(node.effects ?? [])]; ne[i] = { ...ne[i], nodeId: e.target.value }; upd({ effects: ne }); }}><option value="">—</option>{game.nodes.filter((m) => m.id !== node.id).map((m) => <option key={m.id} value={m.id}>{m.id}</option>)}</select></label> : eff.type === "MODIFY_VARIABLE" ? <label>Variable <input className="champ" value={eff.variableId ?? ""} onChange={(e) => { const ne = [...(node.effects ?? [])]; ne[i] = { ...ne[i], variableId: e.target.value }; upd({ effects: ne }); }} placeholder="id" size={12} /></label> : eff.type === "MODIFY_SCORE" ? <label>Score <input className="champ w-16" type="number" value={Number(eff.value) ?? 0} onChange={(e) => { const ne = [...(node.effects ?? [])]; ne[i] = { ...ne[i], value: Number(e.target.value) }; upd({ effects: ne }); }} /></label> : null}
-          </div>
+          <EffetBloc
+            key={i}
+            index={i}
+            effet={eff}
+            premier={i === 0}
+            game={game}
+            nodeId={node.id}
+            onPatch={(patch) => {
+              const newEffects = [...(node.effects ?? [])];
+              newEffects[i] = { ...eff, ...patch };
+              upd({ effects: newEffects });
+            }}
+            onSupprimer={() => upd({ effects: (node.effects ?? []).filter((_, j) => j !== i) })}
+          />
         ))}
       </Famille>
       <Famille id={FAMILLES[7].id} icone={FAMILLES[7].icone} titre={FAMILLES[7].titre} aide={FAMILLES[7].aide} active={activeFamille === FAMILLES[7].id}>
