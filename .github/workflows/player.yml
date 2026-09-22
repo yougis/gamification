@@ -26,6 +26,7 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+      - uses: android-actions/setup-android@v3
       - run: ./gradlew :app:assembleDebug
       - uses: actions/upload-artifact@v4
         with:
@@ -43,13 +44,16 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+      - uses: android-actions/setup-android@v3
       - name: Build Kotlin framework (device)
         run: ./gradlew :shared:linkDebugFrameworkIosArm64
       - name: Build iOS (simulateur, sans signature)
+        # Destination générique : ne dépend pas du nom d'un modèle
+        # de simulateur installé (fragile selon la version Xcode).
         run: >
           xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp
           -configuration Debug -sdk iphonesimulator
-          -destination 'platform=iOS Simulator,name=iPhone 16'
+          -destination 'generic/platform=iOS Simulator'
           CODE_SIGNING_ALLOWED=NO build
 
   ios-testflight:
