@@ -6,12 +6,7 @@
 // manuelle d'un chemin reste possible (assets deja empaquetes, URL).
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "../icons";
-
-const EXT_IMAGE = /\.(png|jpe?g|gif|webp|svg|bmp|avif|ico)$/i;
-
-export function estImageAcceptable(f: File): boolean {
-  return f.type.startsWith("image/") || EXT_IMAGE.test(f.name);
-}
+import { estImageAcceptable } from "./image-files";
 
 export function ImagePicker({
   value,

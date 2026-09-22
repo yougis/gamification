@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" role="img" aria-label="Scène de crime, Baker Street">
+  <rect width="400" height="300" fill="#1a1214"/>
+  <rect x="40" y="60" width="320" height="180" fill="#2a1c20" stroke="#DAA520" stroke-width="2"/>
+  <rect x="60" y="180" width="120" height="12" fill="#5a3a2a"/>
+  <rect x="70" y="120" width="60" height="60" fill="#3a2620" stroke="#DAA520" stroke-width="1"/>
+  <circle cx="280" cy="130" r="34" fill="none" stroke="#DAA520" stroke-width="4"/>
+  <line x1="304" y1="154" x2="326" y2="176" stroke="#DAA520" stroke-width="6" stroke-linecap="round"/>
+  <ellipse cx="150" cy="215" rx="26" ry="10" fill="none" stroke="#8B0000" stroke-width="3" stroke-dasharray="6 4"/>
+  <text x="200" y="272" text-anchor="middle" font-family="Georgia, serif" font-size="16" fill="#DAA520">Baker Street — la scène de crime</text>
+</svg>

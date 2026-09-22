@@ -62,3 +62,9 @@ export function hasScreenPlugin(type: string): boolean {
 export function getPreview(type: string): ComponentType<ModuleEditorPreviewProps> | null {
   return getScreenPlugin(type)?.editorPreview ?? null;
 }
+
+// Rendu joueur du module (change studio-player-preview) : null si le type
+// est inconnu ou sans renderer — l'appelant affiche un état non bloquant.
+export function getPlayer(type: string): ComponentType<ModulePlayerRendererProps> | null {
+  return getScreenPlugin(type)?.playerRenderer ?? null;
+}

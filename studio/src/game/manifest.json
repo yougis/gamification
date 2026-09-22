@@ -5,9 +5,9 @@
   "description": "L Affaire Moriarty - Jeu demo Sherlock Holmes",
   "files": [
     {
-      "path": "game-sherlock-holmes.json",
-      "size": 9320,
-      "sha256": "f5add100182c4703e09022b65b14e9defc5c2c6ea51c4053d0e0cb043ea6311c"
+      "path": "assets/baker-crime.svg",
+      "size": 882,
+      "sha256": "df4dccf4f56ae57b6b02275e0ca2ca8d6a8cbf35bd5c246cbe3a0fa5fb6456c8"
     },
     {
       "path": "assets/baker-street.jpg",
@@ -23,6 +23,11 @@
       "path": "assets/cle.svg",
       "size": 556,
       "sha256": "0fdf31282682556c5ce0b2f8775bd44a7c8942b7c12c492eb0fb288b56196805"
+    },
+    {
+      "path": "assets/fin-deduction.svg",
+      "size": 1072,
+      "sha256": "59a8ffd770d1344d66c8b261c1883dc87a9e04f35e7806f7c1025c70fcde21c5"
     },
     {
       "path": "assets/holmes-fallback.svg",
@@ -50,6 +55,16 @@
       "sha256": "e31ce17f9941159fca9e9b092549e8ab8c7c40678a9055350fbe8d5cd26d24c1"
     },
     {
+      "path": "assets/moriarty-derivee.svg",
+      "size": 851,
+      "sha256": "9484a1a220b445c377b8b22c07df64519ecf63479fa0696468528cd75f20692c"
+    },
+    {
+      "path": "assets/moriarty-source.svg",
+      "size": 1007,
+      "sha256": "4ce2832f0fe618e7afdd932b56b8e2129962d1a30773331c6b72a9ee49cf8b4d"
+    },
+    {
       "path": "assets/poudre.svg",
       "size": 383,
       "sha256": "5584e29c961abf4310962a82e6e2f9bb4580aa7b97f0bffbfe3b81a25a3143e9"
@@ -58,6 +73,21 @@
       "path": "assets/scotland-yard.svg",
       "size": 1747,
       "sha256": "dec73b991e6e4b8ee01919d3c0e6525dcbd68efc4cd3f3c09b0c59d16601c84c"
+    },
+    {
+      "path": "assets/stbarts-vue.svg",
+      "size": 885,
+      "sha256": "696deb5ffcbe943634126142a0052b286aa433899d44ed656ba15108fc7e239e"
+    },
+    {
+      "path": "assets/strand-code.svg",
+      "size": 1100,
+      "sha256": "1edcc3f0cf78a171eb75aaeb5e3330381f4c453892c169bc714037d10be39682"
+    },
+    {
+      "path": "game-sherlock-holmes.json",
+      "size": 19917,
+      "sha256": "a412e307b250f80f59ffb4e47b6c09af91a558afbf1c21b7e321e540a1272dfd"
     }
   ]
 }

@@ -53,6 +53,9 @@ kotlin {
         androidMain.dependencies {
             implementation("androidx.core:core-ktx:1.13.1")
         }
+        iosMain.dependencies {
+            implementation("org.jetbrains.compose.ui:ui-uikit:1.10.3")
+        }
     }
 }
 

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" role="img" aria-label="Point de vue, St Bartholomew">
+  <rect width="400" height="300" fill="#1a1214"/>
+  <circle cx="350" cy="40" r="18" fill="#DAA520"/>
+  <rect x="60" y="140" width="70" height="110" fill="#2a1c20" stroke="#DAA520" stroke-width="2"/>
+  <polygon points="60,140 95,100 130,140" fill="#3a2620" stroke="#DAA520" stroke-width="2"/>
+  <rect x="88" y="180" width="14" height="24" fill="#DAA520"/>
+  <circle cx="250" cy="170" r="52" fill="none" stroke="#DAA520" stroke-width="3"/>
+  <polygon points="250,128 258,162 250,156 242,162" fill="#8B0000"/>
+  <text x="250" y="196" text-anchor="middle" font-family="Georgia, serif" font-size="18" fill="#DAA520">N</text>
+  <text x="200" y="272" text-anchor="middle" font-family="Georgia, serif" font-size="16" fill="#DAA520">St Bartholomew — cap au nord</text>
+</svg>

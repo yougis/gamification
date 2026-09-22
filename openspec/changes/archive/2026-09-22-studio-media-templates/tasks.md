@@ -11,10 +11,10 @@
 
 ## 3. Bibliothèque de modèles (design D4)
 
-- [ ] 3.1 Registre étendu (prédéfinis immuables + `load/saveCustomTemplate` en `geoplay-screen-templates-v1`), `TemplatePicker` avec liste déroulante nommée + « Enregistrer comme modèle » (doublon enregistré = confirmation) ; vérifier : modèle « ACTE II » enregistré, retrouvé après rechargement, prédéfini non modifiable, `tsc --noEmit` passe
-- [ ] 3.2 Application par copie profonde (`structuredClone` → `node.screen`), modification = déclinaison sans mutation du modèle ; vérifier : variante d'un nœud n'affecte ni le modèle ni un autre nœud, undo restaure, `tsc --noEmit` passe
+- [x] 3.1 Registre étendu (prédéfinis immuables + `load/saveCustomTemplate` en `geoplay-screen-templates-v1`), `TemplatePicker` avec liste déroulante nommée + « Enregistrer comme modèle » (doublon enregistré = confirmation) ; vérifier : modèle « ACTE II » enregistré, retrouvé après rechargement, prédéfini non modifiable, `tsc --noEmit` passe
+- [x] 3.2 Application par copie profonde (`structuredClone` → `node.screen`), modification = déclinaison sans mutation du modèle ; vérifier : variante d'un nœud n'affecte ni le modèle ni un autre nœud, undo restaure, `tsc --noEmit` passe
 
 ## 4. Vérification finale
 
-- [ ] 4.1 Rejouer les scénarios du delta (dépôt puzzle + manifest, refus PDF, retour unitaire, police Georgia, déclinaison, enregistrement modèle) ; vérifier chaque scénario et consigner le résultat
-- [ ] 4.2 Non-régression : `screen.smoke.ts` ALL OK, jeux existants sans image acceptés, `npx tsc --noEmit` + `npx vite build` dans `studio/` ; vérifier et consigner
+- [x] 4.1 Rejouer les scénarios du delta (dépôt puzzle + manifest, refus PDF, retour unitaire, police Georgia, déclinaison, enregistrement modèle) ; vérifier chaque scénario et consigner le résultat
+- [x] 4.2 Non-régression : `screen.smoke.ts` ALL OK, jeux existants sans image acceptés, `npx tsc --noEmit` + `npx vite build` dans `studio/` ; vérifier et consigner

@@ -56,6 +56,7 @@ import { PhoneCanvas, VIEWPORTS, type ViewportId } from "./components/wysiwyg/Ph
 import { ImagePicker } from "./components/wysiwyg/ImagePicker";
 import { PropertiesPanel } from "./components/wysiwyg/PropertiesPanel";
 import { TemplatePicker } from "./components/wysiwyg/TemplatePicker";
+import { PlayerTerminal } from "./components/wysiwyg/PlayerTerminal";
 import { ScreenProperties } from "./components/wysiwyg/ScreenProperties";
 import { resolveScreen } from "./game/screen-utils";
 import { getScreenPlugin } from "./game/module-screen-plugin";
@@ -659,6 +660,9 @@ const noeuds: Node[] = useMemo(
   const journal = (msg: string) => setLog((l) => [...l, `[${sessionId}] ${msg} (triche, hold=${game.global?.holdMode ?? "none"})`]);
   // HOLD simulé (prévisualisation uniquement, jamais écrit dans le JSON).
   const [holdSim, setHoldSim] = useState<"none" | "locked">("none");
+  // Mode "Jeux" plein ecran (change studio-player-preview) : vue sur l'etat
+  // de simulation existant, jamais reinitialise a l'entree ni a la sortie.
+  const [modeJeux, setModeJeux] = useState(false);
   const forcerHoldLock = () => {
     setHoldSim("locked");
     journal("forceHoldLock : verrouillage kiosque simulé");
@@ -1412,7 +1416,10 @@ const noeuds: Node[] = useMemo(
         <div className="h-full overflow-y-auto p-6">
           <div className="flex items-center justify-between mb-6">
             <h2 className="font-display font-extrabold text-2xl tracking-widest uppercase text-snow">Prévisualiser</h2>
-            <button onClick={testerBranches} className="text-[8px] font-mono uppercase tracking-wider px-3 py-1.5 border border-rule rounded text-fog hover:border-neon/40 hover:text-neon transition-colors">↺ Rejouer fixture</button>
+            <span className="flex gap-1">
+              <button onClick={() => setModeJeux(true)} disabled={!activeId && !file.length} className="text-[8px] font-mono uppercase tracking-wider px-3 py-1.5 border border-rule rounded text-fog hover:border-neon/40 hover:text-neon transition-colors disabled:opacity-40">▶ Mode Jeux</button>
+              <button onClick={testerBranches} className="text-[8px] font-mono uppercase tracking-wider px-3 py-1.5 border border-rule rounded text-fog hover:border-neon/40 hover:text-neon transition-colors">↺ Rejouer fixture</button>
+            </span>
           </div>
           <Apercu
             game={game} sim={sim} setSim={setSim} file={file} activeId={activeId}
@@ -1422,6 +1429,31 @@ const noeuds: Node[] = useMemo(
             reculer={reculerSim} nbTermines={Object.keys(done).length}
             holdSim={holdSim} onHoldLock={forcerHoldLock} onHoldExit={forcerHoldExit}
           />
+          {modeJeux && activeId && game.nodes.some((n) => n.id === activeId) && (
+            <PlayerTerminal
+              node={game.nodes.find((n) => n.id === activeId)!}
+              globalScreen={game.global?.screen}
+              branding={game.branding}
+              experienceStyle={game.global?.experienceStyle}
+              holdMode={game.global?.holdMode ?? "none"}
+              onCompleteNode={() => activeId && terminer(activeId, false)}
+              onTerminer={() => activeId && terminer(activeId, false)}
+              onAbandonner={() => activeId && terminer(activeId, true)}
+              onQuitter={() => setModeJeux(false)}
+            />
+          )}
+          {modeJeux && !activeId && (
+            <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-2 bg-canvas" role="dialog" aria-label="Terminal joueur simulé — en attente" tabIndex={0} onKeyDown={(e) => { if (e.key === "Escape") setModeJeux(false); }}>
+              <span className="puce">SIMULÉ</span>
+              <p className="text-[11px] text-fog">En attente — aucun nœud ouvert.</p>
+              <div className="flex gap-1 flex-wrap justify-center">
+                {file.map((id) => (
+                  <button key={id} className="btn min-h-9" onClick={() => ouvrir(id)}>Ouvrir {id}</button>
+                ))}
+              </div>
+              <button className="btn min-h-9" onClick={() => setModeJeux(false)}>Quitter (Échap)</button>
+            </div>
+          )}
         </div>
       )}
       {ecran === "exporter" && (

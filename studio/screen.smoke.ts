@@ -6,6 +6,8 @@
 // (change studio-screen-editor).
 import { resolveScreen, DEFAULT_SCREEN, resolveStyles, resolveMinigameParam } from "./src/game/screen-utils";
 import { moveScreenWidgetAcross, patchScreenZone } from "./src/game/mcp";
+import { SCREEN_TEMPLATES, getScreenTemplate, loadCustomTemplates, saveCustomTemplate, allScreenTemplates } from "./src/game/screen-templates";
+import { estImageAcceptable } from "./src/components/wysiwyg/image-files";
 import { validateGame } from "./src/game/validate";
 import game5poi from "./src/game/game-5poi.json";
 import type { Game, GameNode, ScreenDefinition } from "./src/game/types";
@@ -190,5 +192,33 @@ assert(vPuzzle.layers[0].errors.length === 0, `puzzle 4x4 accepte (${vPuzzle.lay
 // 12. Non-regression : game-5poi.json toujours valide couches 1+2.
 const v5poi = validateGame(game5poi);
 assert(v5poi.ok, `game-5poi.json valide (${v5poi.layers.flatMap((l) => l.errors).join("; ")})`);
+
+// 13. Bibliotheque de modeles (change studio-media-templates) : application
+// par copie profonde = declinaison sans mutation du modele.
+const quizFocus = getScreenTemplate("quiz-focus");
+assert(quizFocus != null, "template quiz-focus resolu (predefini + enregistres)");
+const declinaison: ScreenDefinition = structuredClone(quizFocus.screen);
+if (declinaison.zones?.header?.widgets?.[0]?.type === "text") {
+  (declinaison.zones.header.widgets[0] as { text?: string }).text = "Titre modifie";
+}
+const headerOrigine = quizFocus.screen.zones?.header?.widgets?.[0];
+assert(
+  headerOrigine?.type === "text" && (headerOrigine as { text?: string }).text === "Question",
+  "declinaison sans mutation du modele",
+);
+assert(
+  SCREEN_TEMPLATES.every((t) => getScreenTemplate(t.id) === t || (getScreenTemplate(t.id)?.name === t.name)),
+  "predefinis intacts et resolus",
+);
+// Hors navigateur (pas de localStorage) : pas d'exception, persistance signalee.
+assert(loadCustomTemplates().length === 0, "sans stockage : aucun modele enregistre");
+const saveHs = saveCustomTemplate("ACTE II", declinaison);
+assert(saveHs.persisted === false && allScreenTemplates().length === SCREEN_TEMPLATES.length, "sans stockage : echec explicite");
+
+// 14. Refus des non-images (change studio-media-templates).
+const fauxFichier = (name: string, type: string): File => ({ name, type }) as File;
+assert(estImageAcceptable(fauxFichier("chateau.jpg", "image/jpeg")), "jpg accepte");
+assert(estImageAcceptable(fauxFichier("plan.SVG", "")), "svg accepte par extension");
+assert(!estImageAcceptable(fauxFichier("doc.pdf", "application/pdf")), "pdf refuse");
 
 console.log("screen.smoke: ALL OK");

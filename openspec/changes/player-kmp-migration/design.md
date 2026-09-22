@@ -79,6 +79,16 @@ Le principe d'architecture du projet (kmp-native-boundary) impose : base KMP par
 
 **Rationale :** Simplifie la gestion des dépendances. Le framework est un artefact interne, pas une librairie publique.
 
+### 7. Distribution test (sans Android Studio côté testeur)
+
+**Décision :** iOS via TestFlight interne (groupe de testeurs, pas de review Apple) ; Android via sideload APK debug + pack de test à URL stable. Pas de Firebase App Distribution à ce stade.
+
+**Rationale :** TestFlight interne et sideload couvrent les deux plateformes sans infra ni compte supplémentaire au-delà de l'enrôlement Apple Developer (requis dans tous les cas, même en Ad Hoc). Firebase ajouterait un projet et un SDK pour un gain nul à ce stade. Le déploiement production (Play Store, App Store) fera l'objet d'un change ultérieur avec son écran de configuration dans le Studio.
+
+**Alternatives considérées :**
+- Ad Hoc + UDID collectés à la main → rejeté : friction par appareil, TestFlight interne est plus simple au même coût
+- Firebase App Distribution → différé : réévaluer si les testeurs se plaignent du sideload Android
+
 ## Risks / Trade-offs
 
 ### Risque 1 : Compose Multiplatform ne couvre pas tous les cas UI

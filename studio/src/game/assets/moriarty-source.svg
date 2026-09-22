@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" role="img" aria-label="Repère de Moriarty, image source">
+  <rect width="400" height="300" fill="#1a1214"/>
+  <rect x="0" y="220" width="400" height="80" fill="#241a1e"/>
+  <rect x="150" y="90" width="110" height="130" fill="#2a1c20" stroke="#DAA520" stroke-width="2"/>
+  <rect x="170" y="60" width="70" height="30" fill="#3a2620" stroke="#DAA520" stroke-width="2"/>
+  <rect x="185" y="130" width="40" height="90" fill="#120c0e"/>
+  <rect x="40" y="120" width="10" height="100" fill="#3a2620"/>
+  <ellipse cx="45" cy="112" rx="16" ry="12" fill="#DAA520" opacity="0.85"/>
+  <ellipse cx="45" cy="38" rx="9" ry="6" fill="#0c0c0c"/>
+  <circle cx="42" cy="36" r="4" fill="#0c0c0c"/>
+  <polygon points="46,34 52,36 46,38" fill="#0c0c0c"/>
+  <circle cx="330" cy="50" r="16" fill="#e8dcc0" opacity="0.9"/>
+  <text x="200" y="272" text-anchor="middle" font-family="Georgia, serif" font-size="16" fill="#DAA520">Le repère — image source</text>
+</svg>

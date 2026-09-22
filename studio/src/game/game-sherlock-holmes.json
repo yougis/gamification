@@ -22,7 +22,41 @@
       "pin": "1234"
     },
     "difficulty": "FAMILLE",
-    "gameMode": "NORMAL"
+    "gameMode": "NORMAL",
+    "screen": {
+      "layout": "basic-story",
+      "background": {
+        "type": "color",
+        "value": "#1a1214"
+      },
+      "zones": {
+        "header": {
+          "layout": "stack",
+          "widgets": [
+            {
+              "type": "text",
+              "text": "L'Affaire Moriarty",
+              "style": "heading",
+              "align": "center",
+              "styles": {
+                "fontFamily": "Georgia, serif",
+                "color": "#DAA520"
+              }
+            }
+          ]
+        },
+        "content": {
+          "layout": "stack",
+          "widgets": []
+        }
+      },
+      "styles": {
+        "fontFamily": "Georgia, serif",
+        "fontSize": 16,
+        "color": "#f5efe0",
+        "align": "left"
+      }
+    }
   },
   "objects": [
     {
@@ -101,7 +135,61 @@
           "type": "GIVE_ITEM",
           "itemId": "carnet"
         }
-      ]
+      ],
+      "screen": {
+        "layout": "basic-story",
+        "background": {
+          "type": "image",
+          "value": "assets/baker-street.jpg",
+          "overlay": 0.55
+        },
+        "zones": {
+          "header": {
+            "layout": "stack",
+            "widgets": [
+              {
+                "type": "text",
+                "text": "221B Baker Street",
+                "style": "heading",
+                "align": "center",
+                "styles": {
+                  "color": "#DAA520"
+                }
+              }
+            ]
+          },
+          "content": {
+            "layout": "stack",
+            "widgets": [
+              {
+                "type": "text",
+                "text": "Londres, 1891. Un message de Moriarty vient d'arriver. Watson, prenez votre loupe et votre carnet : l'enquête commence.",
+                "style": "body",
+                "align": "center"
+              },
+              {
+                "type": "image",
+                "src": "assets/loupe.svg",
+                "alt": "Loupe d'investigation"
+              },
+              {
+                "type": "module"
+              }
+            ]
+          },
+          "footer": {
+            "layout": "stack",
+            "widgets": [
+              {
+                "type": "button",
+                "label": "Commencer l'enquête",
+                "action": "navigate",
+                "variant": "primary"
+              }
+            ]
+          }
+        }
+      }
     },
     {
       "id": "pool",
@@ -179,7 +267,59 @@
           "type": "REVEAL_NODE",
           "nodeId": "moriarty"
         }
-      ]
+      ],
+      "screen": {
+        "layout": "quiz-focus",
+        "background": {
+          "type": "color",
+          "value": "#14141f"
+        },
+        "zones": {
+          "header": {
+            "layout": "stack",
+            "widgets": [
+              {
+                "type": "text",
+                "text": "Baker Street — l'indice manquant",
+                "style": "heading",
+                "align": "center",
+                "styles": {
+                  "color": "#DAA520"
+                }
+              },
+              {
+                "type": "progress",
+                "progressType": "steps",
+                "showLabel": true
+              }
+            ]
+          },
+          "content": {
+            "layout": "stack",
+            "widgets": [
+              {
+                "type": "image",
+                "src": "assets/baker-crime.svg",
+                "alt": "Scène de crime"
+              },
+              {
+                "type": "module"
+              }
+            ]
+          },
+          "footer": {
+            "layout": "stack",
+            "widgets": [
+              {
+                "type": "button",
+                "label": "Valider",
+                "action": "navigate",
+                "variant": "primary"
+              }
+            ]
+          }
+        }
+      }
     },
     {
       "id": "scotland",
@@ -187,7 +327,9 @@
         "type": "PUZZLE",
         "data": {
           "schemaVersion": "1.0.0",
-          "image": "assets/scotland-yard.svg"
+          "image": "assets/scotland-yard.svg",
+          "tileRows": 3,
+          "tileCols": 3
         }
       },
       "activation": {
@@ -212,7 +354,49 @@
           "type": "GIVE_ITEM",
           "itemId": "lettre"
         }
-      ]
+      ],
+      "screen": {
+        "layout": "clue-focus",
+        "background": {
+          "type": "color",
+          "value": "#14141f"
+        },
+        "zones": {
+          "header": {
+            "layout": "stack",
+            "widgets": [
+              {
+                "type": "text",
+                "text": "Scotland Yard — le puzzle",
+                "style": "heading",
+                "align": "center",
+                "styles": {
+                  "color": "#DAA520"
+                }
+              }
+            ]
+          },
+          "content": {
+            "layout": "stack",
+            "widgets": [
+              {
+                "type": "image",
+                "src": "assets/scotland-yard.svg",
+                "alt": "Blason de Scotland Yard"
+              },
+              {
+                "type": "text",
+                "text": "Reconstituez le plan : 9 pièces, 9 vérités.",
+                "style": "body",
+                "align": "center"
+              },
+              {
+                "type": "module"
+              }
+            ]
+          }
+        }
+      }
     },
     {
       "id": "strand",
@@ -250,7 +434,49 @@
           "type": "GIVE_ITEM",
           "itemId": "cle"
         }
-      ]
+      ],
+      "screen": {
+        "layout": "clue-focus",
+        "background": {
+          "type": "color",
+          "value": "#14141f"
+        },
+        "zones": {
+          "header": {
+            "layout": "stack",
+            "widgets": [
+              {
+                "type": "text",
+                "text": "Strand — le code de Moriarty",
+                "style": "heading",
+                "align": "center",
+                "styles": {
+                  "color": "#DAA520"
+                }
+              }
+            ]
+          },
+          "content": {
+            "layout": "stack",
+            "widgets": [
+              {
+                "type": "image",
+                "src": "assets/strand-code.svg",
+                "alt": "Lettre cryptée"
+              },
+              {
+                "type": "text",
+                "text": "La lettre ne parle qu'à qui possède son secret. Saisissez le mot de passe.",
+                "style": "body",
+                "align": "center"
+              },
+              {
+                "type": "module"
+              }
+            ]
+          }
+        }
+      }
     },
     {
       "id": "stbarts",
@@ -283,7 +509,49 @@
           "type": "GIVE_ITEM",
           "itemId": "morceau"
         }
-      ]
+      ],
+      "screen": {
+        "layout": "map-fullscreen",
+        "background": {
+          "type": "color",
+          "value": "#14141f"
+        },
+        "zones": {
+          "content": {
+            "layout": "stack",
+            "widgets": [
+              {
+                "type": "text",
+                "text": "St Bartholomew — cap au nord",
+                "style": "heading",
+                "align": "center",
+                "styles": {
+                  "color": "#DAA520"
+                }
+              },
+              {
+                "type": "image",
+                "src": "assets/stbarts-vue.svg",
+                "alt": "Point de vue et boussole"
+              },
+              {
+                "type": "module"
+              }
+            ]
+          },
+          "overlay": {
+            "layout": "stack",
+            "widgets": [
+              {
+                "type": "text",
+                "text": "Stabilisez le cap : tolérance 10°.",
+                "style": "caption",
+                "align": "center"
+              }
+            ]
+          }
+        }
+      }
     },
     {
       "id": "holmes",
@@ -321,7 +589,54 @@
           "type": "REVEAL_NODE",
           "nodeId": "moriarty"
         }
-      ]
+      ],
+      "screen": {
+        "layout": "basic-story",
+        "background": {
+          "type": "color",
+          "value": "#1a1214"
+        },
+        "zones": {
+          "header": {
+            "layout": "stack",
+            "widgets": [
+              {
+                "type": "text",
+                "text": "Le repaire — visez la marque",
+                "style": "heading",
+                "align": "center",
+                "styles": {
+                  "color": "#DAA520"
+                }
+              }
+            ]
+          },
+          "content": {
+            "layout": "stack",
+            "widgets": [
+              {
+                "type": "image",
+                "src": "assets/holmes.marker.svg",
+                "alt": "Marqueur du repaire"
+              },
+              {
+                "type": "text",
+                "text": "Sans caméra, le croquis suffit : basculez en mode 2D.",
+                "style": "body",
+                "align": "center"
+              },
+              {
+                "type": "image",
+                "src": "assets/holmes-fallback.svg",
+                "alt": "Croquis de secours"
+              },
+              {
+                "type": "module"
+              }
+            ]
+          }
+        }
+      }
     },
     {
       "id": "moriarty",
@@ -336,7 +651,9 @@
               "w": 5,
               "h": 5
             }
-          ]
+          ],
+          "source": "assets/moriarty-source.svg",
+          "derivee": "assets/moriarty-derivee.svg"
         }
       },
       "activation": {
@@ -371,7 +688,44 @@
           "type": "REVEAL_NODE",
           "nodeId": "fin"
         }
-      ]
+      ],
+      "screen": {
+        "layout": "clue-focus",
+        "background": {
+          "type": "color",
+          "value": "#14141f"
+        },
+        "zones": {
+          "header": {
+            "layout": "stack",
+            "widgets": [
+              {
+                "type": "text",
+                "text": "Le repère — 7 différences",
+                "style": "heading",
+                "align": "center",
+                "styles": {
+                  "color": "#DAA520"
+                }
+              }
+            ]
+          },
+          "content": {
+            "layout": "stack",
+            "widgets": [
+              {
+                "type": "text",
+                "text": "La poudre révèle l'invisible. Trouvez ce qui a changé.",
+                "style": "body",
+                "align": "center"
+              },
+              {
+                "type": "module"
+              }
+            ]
+          }
+        }
+      }
     },
     {
       "id": "fin",
@@ -424,6 +778,58 @@
           }
         ],
         "operator": "OR"
+      },
+      "screen": {
+        "layout": "quiz-focus",
+        "background": {
+          "type": "color",
+          "value": "#14141f"
+        },
+        "zones": {
+          "header": {
+            "layout": "stack",
+            "widgets": [
+              {
+                "type": "text",
+                "text": "La déduction finale",
+                "style": "heading",
+                "align": "center",
+                "styles": {
+                  "color": "#DAA520"
+                }
+              },
+              {
+                "type": "progress",
+                "progressType": "score",
+                "showLabel": true
+              }
+            ]
+          },
+          "content": {
+            "layout": "stack",
+            "widgets": [
+              {
+                "type": "image",
+                "src": "assets/fin-deduction.svg",
+                "alt": "Tableau de déduction"
+              },
+              {
+                "type": "module"
+              }
+            ]
+          },
+          "footer": {
+            "layout": "stack",
+            "widgets": [
+              {
+                "type": "button",
+                "label": "Résoudre l'affaire",
+                "action": "navigate",
+                "variant": "primary"
+              }
+            ]
+          }
+        }
       }
     }
   ]

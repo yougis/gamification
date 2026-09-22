@@ -8,6 +8,7 @@
 //   `{zone, index}` ; depot sur un widget = insertion avant lui, depot sur le
 //   fond de zone = ajout en fin. Repli clavier : boutons haut/bas du panneau.
 import { useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import type { Widget, ZoneId } from "../../game/types";
 import { TextWidgetRenderer } from "./widgets/TextWidgetRenderer";
 import { ImageWidgetRenderer } from "./widgets/ImageWidgetRenderer";
@@ -46,6 +47,7 @@ export function WidgetRenderer({
   onSelect,
   onCommitText,
   onDropBefore,
+  renderModule,
 }: {
   widget: Widget;
   index: number;
@@ -60,6 +62,10 @@ export function WidgetRenderer({
   onCommitText?: (zoneId: ZoneId, index: number, text: string) => void;
   // Depot sur ce widget : insertion avant lui (zone, index cibles resolus ici).
   onDropBefore?: (fromZone: ZoneId, fromIndex: number, toZone: ZoneId, toIndex: number) => void;
+  // Slot module remplaçable (change studio-player-preview) : si fourni et que
+  // le widget est de type "module", rendu à la place de ModuleWidgetRenderer
+  // (ex. renderer joueur en mode terminal). Absent = aperçu éditeur.
+  renderModule?: (widget: Widget) => ReactNode;
 }) {
   const [edition, setEdition] = useState(false);
   const [survol, setSurvol] = useState(false);
@@ -149,7 +155,7 @@ export function WidgetRenderer({
       {widget.type === "image" ? <ImageWidgetRenderer widget={widget} /> : null}
       {widget.type === "button" ? <ButtonWidgetRenderer widget={widget} /> : null}
       {widget.type === "progress" ? <ProgressBarWidgetRenderer widget={widget} /> : null}
-      {widget.type === "module" ? <ModuleWidgetRenderer widget={widget} moduleType={moduleType} moduleData={moduleData} /> : null}
+      {widget.type === "module" ? (renderModule ? renderModule(widget) : <ModuleWidgetRenderer widget={widget} moduleType={moduleType} moduleData={moduleData} />) : null}
       {widget.type === "spacer" ? <SpacerWidgetRenderer widget={widget} /> : null}
     </div>
   );

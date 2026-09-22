@@ -6,6 +6,7 @@
 // Depot DnD sur le fond de zone = ajout en fin ; depot sur un widget =
 // insertion avant lui (props traversees depuis PhoneCanvas).
 import { useState } from "react";
+import type { ReactNode } from "react";
 import type { Widget, ZoneContent, ZoneId } from "../../game/types";
 import { WidgetRenderer, lireDragSource } from "./WidgetRenderer";
 
@@ -26,6 +27,7 @@ export function ZoneRenderer({
   onSelectWidget,
   onCommitText,
   onMoveWidgetAcross,
+  renderModule,
 }: {
   zone: ZoneContent;
   zoneId: ZoneId;
@@ -38,6 +40,9 @@ export function ZoneRenderer({
   onCommitText?: (zoneId: ZoneId, index: number, text: string) => void;
   // Deplacement (intra ou inter-zones) en une seule operation MCP.
   onMoveWidgetAcross?: (fromZone: ZoneId, fromIndex: number, toZone: ZoneId, toIndex: number | "end") => void;
+  // Slot module remplaçable (change studio-player-preview), transmis au
+  // WidgetRenderer. Absent = aperçu éditeur.
+  renderModule?: (widget: Widget) => ReactNode;
 }) {
   const widgets = zone.widgets ?? [];
   const [survol, setSurvol] = useState(false);
@@ -95,6 +100,7 @@ export function ZoneRenderer({
               deplacable={dndActif && w.type === "text"}
               onSelect={(index) => onSelectWidget?.(zoneId, index)}
               onCommitText={onCommitText}
+              renderModule={renderModule}
               onDropBefore={
                 dndActif
                   ? (fromZone, fromIndex, toZone, toIndex) => onMoveWidgetAcross?.(fromZone, fromIndex, toZone, toIndex)

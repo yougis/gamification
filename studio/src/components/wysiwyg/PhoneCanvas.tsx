@@ -2,7 +2,8 @@
 // Simple <div> stylise, pas d'iframe : meme contexte React, transform scale pour ajuster.
 // Disposition : header en haut, content scrollable au centre, footer en bas,
 // overlay en calque absolu. Clic sur le fond -> selection de l'ecran (null).
-import type { ScreenDefinition, ZoneId } from "../../game/types";
+import type { ScreenDefinition, Widget, ZoneId } from "../../game/types";
+import type { ReactNode } from "react";
 import { screenBackgroundStyle } from "../../game/screen-utils";
 import { ZoneRenderer } from "./ZoneRenderer";
 
@@ -50,6 +51,7 @@ export function PhoneCanvas({
   onCommitText,
   onMoveWidgetAcross,
   onCreateZone,
+  renderModule,
 }: {
   screen: ScreenDefinition;
   moduleType?: string;
@@ -67,6 +69,9 @@ export function PhoneCanvas({
   onMoveWidgetAcross?: (fromZone: ZoneId, fromIndex: number, toZone: ZoneId, toIndex: number | "end") => void;
   // Clic sur un fantome : cree la zone vide (jamais appele sans fantome visible).
   onCreateZone?: (zoneId: ZoneId) => void;
+  // Slot module remplaçable (change studio-player-preview), transmis aux
+  // zones. Absent = aperçu éditeur.
+  renderModule?: (widget: Widget) => ReactNode;
 }) {
   const zones = screen.zones ?? {};
   const format = VIEWPORTS.find((v) => v.id === viewport) ?? VIEWPORTS[0];
@@ -103,6 +108,7 @@ export function PhoneCanvas({
                 onSelectWidget={onSelectWidget}
                 onCommitText={onCommitText}
                 onMoveWidgetAcross={onMoveWidgetAcross}
+                renderModule={renderModule}
               />
             </div>
           ) : showGhosts && onCreateZone ? (
@@ -122,6 +128,7 @@ export function PhoneCanvas({
                 onSelectWidget={onSelectWidget}
                 onCommitText={onCommitText}
                 onMoveWidgetAcross={onMoveWidgetAcross}
+                renderModule={renderModule}
               />
           </div>
           {!zones.overlay && showGhosts && onCreateZone ? (
@@ -142,6 +149,7 @@ export function PhoneCanvas({
                 onSelectWidget={onSelectWidget}
                 onCommitText={onCommitText}
                 onMoveWidgetAcross={onMoveWidgetAcross}
+                renderModule={renderModule}
               />
             </div>
           ) : showGhosts && onCreateZone ? (
@@ -163,6 +171,7 @@ export function PhoneCanvas({
                   onSelectWidget={onSelectWidget}
                   onCommitText={onCommitText}
                   onMoveWidgetAcross={onMoveWidgetAcross}
+                  renderModule={renderModule}
                 />
               </div>
             </div>

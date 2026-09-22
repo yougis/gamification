@@ -1,12 +1,14 @@
 package com.geoplay.shared.game
 
 import com.geoplay.shared.model.Activation
+import com.geoplay.shared.model.Anchor
 import com.geoplay.shared.model.Condition
 import com.geoplay.shared.model.ConditionType
 import com.geoplay.shared.model.Game
 import com.geoplay.shared.model.GameNode
 import com.geoplay.shared.model.ModuleData
 import com.geoplay.shared.model.Operator
+import com.geoplay.shared.model.Predicate
 import com.geoplay.shared.model.RandomPool
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -74,13 +76,43 @@ class GameEngineCommonTest {
     }
 
     @Test
-    fun presentKeepsSingleModalFifo() {
-        val first = present(listOf("a", "b"), emptyList(), null)
+    fun presentKeepsSingleModalFifo() {        val first = present(listOf("a", "b"), emptyList(), null)
         assertEquals("a", first.activeId)
         assertEquals(listOf("b"), first.queue)
         // La modale reste latchée tant que a est éligible.
         val second = present(listOf("a", "c"), first.queue, first.activeId)
         assertEquals("a", second.activeId)
         assertTrue(second.queue.contains("c"))
+    }
+
+    @Test
+    fun geofencePresentUnlocks() {
+        val geo = Condition(type = ConditionType.GEOFENCE, lat = 48.01, lng = 2.01, radiusMeters = 30, predicate = Predicate.ENTER)
+        val game = Game(gameId = "test", nodes = listOf(node("poi", requires = listOf(geo))))
+        val absent = evaluate(game, Sim(), emptyMap(), emptyMap(), emptyMap(), emptySet())
+        assertTrue(absent.unlocked.isEmpty())
+        val sim = Sim(present = mutableSetOf("poi"))
+        val present = evaluate(game, sim, emptyMap(), emptyMap(), emptyMap(), emptySet())
+        assertEquals(listOf("poi"), present.unlocked)
+    }
+
+    @Test
+    fun timerDelayRespected() {
+        val timer = Condition(type = ConditionType.TIMER, anchor = Anchor.GAME_START, delaySeconds = 60L)
+        val game = Game(gameId = "test", nodes = listOf(node("t", requires = listOf(timer))))
+        val early = evaluate(game, Sim(nowMs = 0L), emptyMap(), emptyMap(), emptyMap(), emptySet())
+        assertTrue(early.unlocked.isEmpty())
+        val due = evaluate(game, Sim(nowMs = 60_000L), emptyMap(), emptyMap(), emptyMap(), emptySet())
+        assertEquals(listOf("t"), due.unlocked)
+    }
+
+    @Test
+    fun poolDrawnUnlocks() {
+        val drawn = Condition(type = ConditionType.POOL_DRAWN, poolNodeId = "pool")
+        val game = Game(gameId = "test", nodes = listOf(node("c", requires = listOf(drawn))))
+        val none = evaluate(game, Sim(), emptyMap(), emptyMap(), emptyMap(), emptySet())
+        assertTrue(none.unlocked.isEmpty())
+        val drawnState = evaluate(game, Sim(), mapOf("pool" to listOf("c")), emptyMap(), emptyMap(), emptySet())
+        assertEquals(listOf("c"), drawnState.unlocked)
     }
 }

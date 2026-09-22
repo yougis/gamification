@@ -144,6 +144,8 @@ La sélection d'un template SHALL remplacer les zones et le layout du screen cou
 
 Le panneau WYSIWYG SHALL exposer le sélecteur de template au niveau du nœud (quand aucun widget n'est sélectionné) : appliquer un template remplace zones + layout de l'écran du nœud courant, avec confirmation si l'écran est déjà personnalisé.
 
+Les modèles SHALL vivre dans une bibliothèque : modèles prédéfinis embarqués (immuables) + modèles enregistrés par l'auteur (« Enregistrer comme modèle », persistance locale). Le sélecteur SHALL présenter les modèles par nom dans une liste déroulante. Appliquer un modèle puis le modifier crée une déclinaison (l'écran du nœud diverge, le modèle reste intact) ; modifier un modèle passe par un nouvel enregistrement.
+
 #### Scenario: Sélection d'un template
 
 - **GIVEN** un nœud avec un screen vide
@@ -161,6 +163,18 @@ Le panneau WYSIWYG SHALL exposer le sélecteur de template au niveau du nœud (q
 - **GIVEN** un nœud sélectionné avec un écran content-only, aucun widget sélectionné
 - **WHEN** l'auteur choisit le template "quiz-focus" dans le panneau WYSIWYG
 - **THEN** l'écran du nœud affiche header, content et footer du template et le JSON du nœud est mis à jour
+
+#### Scenario: Déclinaison sans altérer le modèle
+
+- **GIVEN** un écran appliqué depuis le modèle "quiz-focus"
+- **WHEN** l'auteur modifie le titre de l'en-tête
+- **THEN** l'écran du nœud diverge (déclinaison), le modèle "quiz-focus" reste inchangé et s'applique à l'identique sur un autre nœud
+
+#### Scenario: Enregistrement comme modèle
+
+- **GIVEN** un écran de nœud personnalisé
+- **WHEN** l'auteur choisit « Enregistrer comme modèle » et nomme «ACTE II»
+- **THEN** «ACTE II» apparaît dans la liste déroulante des modèles et s'applique sur un autre nœud ; les modèles prédéfinis restent non modifiables
 
 ### Requirement: Éditeur WYSIWYG canvas
 
@@ -283,6 +297,42 @@ La sémantique d'héritage SHALL être inchangée : chaque contrôle affiche la 
 - **GIVEN** la barre d'outils de style du contenu avec graisse héritée « normal »
 - **WHEN** l'auteur active le contrôle gras du groupe typographie
 - **THEN** `widgets[].styles.fontWeight` vaut `bold`, le badge passe à Widget, et l'aperçu du canvas reflète la graisse
+
+### Requirement: Sélection d'image par parcours ou dépôt
+
+Tout formulaire acceptant une image (widget image, fond d'écran, image puzzle, réponse QCM image, logo) SHALL proposer le parcours du poste client ET le dépôt par glisser-déposer, avec prévisualisation avant validation. Le fichier retenu SHALL devenir un asset du pack (enregistré au manifest, chemin stocké dans le JSON). Un fichier non image SHALL être refusé avec un message.
+
+#### Scenario: Dépôt d'une image puzzle
+
+- **GIVEN** le bloc puzzle sans image source
+- **WHEN** l'auteur dépose `chateau.jpg` sur la zone de dépôt
+- **THEN** la vignette s'affiche, `module.data.image` vaut le chemin d'asset et le manifest contient le fichier avec son SHA-256
+
+#### Scenario: Fichier non image refusé
+
+- **GIVEN** le formulaire du widget image
+- **WHEN** l'auteur dépose un fichier `.pdf`
+- **THEN** le formulaire refuse avec un message et le JSON reste inchangé
+
+### Requirement: Défauts affichés avec retour unitaire
+
+Chaque formulaire SHALL afficher ses valeurs par défaut (placeholder ou mention « défaut : … »). Tout champ modifié SHALL proposer un retour unitaire à la valeur par défaut du module (bouton par champ), sans toucher aux autres champs. Réinitialiser un champ vide l'absence (héritage) quand le champ est optionnel, ou restaure la valeur par défaut du type de widget quand il est requis.
+
+#### Scenario: Retour unitaire au défaut
+
+- **GIVEN** un widget texte dont la taille a été portée à 24 (défaut : hérité)
+- **WHEN** l'auteur active le retour au défaut sur ce seul champ
+- **THEN** la taille retombe sur l'héritage, les autres champs du widget sont inchangés
+
+### Requirement: Liste de polices prédéfinies
+
+Les champs de police (widget, styles, branding) SHALL proposer une liste fermée de polices prédéfinies (au minimum : système, Georgia, serif, sans-serif, monospace), avec saisie libre conservée en repli. La liste SHALL être identique dans tous les formulaires.
+
+#### Scenario: Police choisie dans la liste
+
+- **GIVEN** la barre d'outils de style du contenu
+- **WHEN** l'auteur ouvre le choix de police
+- **THEN** la liste prédéfinie s'affiche et choisir « Georgia » renseigne `fontFamily: "Georgia"`
 
 ### Requirement: Écrans dans le schéma global
 

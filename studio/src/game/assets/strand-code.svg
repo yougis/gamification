@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" role="img" aria-label="Lettre cryptée de Moriarty">
+  <rect width="400" height="300" fill="#1a1214"/>
+  <rect x="90" y="30" width="220" height="210" fill="#e8dcc0" stroke="#8B0000" stroke-width="3"/>
+  <text x="200" y="70" text-anchor="middle" font-family="Georgia, serif" font-size="20" fill="#8B0000">M • O • R • I • A • R • T • Y</text>
+  <text x="200" y="120" text-anchor="middle" font-family="Georgia, serif" font-size="15" fill="#3a2620">— • —   • — •   • • —</text>
+  <text x="200" y="155" text-anchor="middle" font-family="Georgia, serif" font-size="15" fill="#3a2620">— • •   •   • — •</text>
+  <line x1="120" y1="190" x2="280" y2="190" stroke="#8B0000" stroke-width="1"/>
+  <text x="200" y="218" text-anchor="middle" font-family="Georgia, serif" font-size="13" font-style="italic" fill="#5a3a2a">« Le code ouvre le coffre »</text>
+  <text x="200" y="272" text-anchor="middle" font-family="Georgia, serif" font-size="16" fill="#DAA520">Strand — la lettre cryptée</text>
+</svg>

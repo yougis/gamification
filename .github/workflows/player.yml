@@ -1,0 +1,105 @@
+# CI player GeoPlay (change player-kmp-migration, 6.1-6.3).
+# - Android : assembleDebug + APK en artefact (canal testeurs, tâche 6.7).
+# - iOS (macos) : framework KMP + build simulateur (sans signature) + archive
+#   signée (secrets) + upload TestFlight sur tag v* (tâche 6.3, 6.5).
+# Secrets requis : APPLE_TEAM_ID, APPLE_API_KEY_ID, APPLE_API_ISSUER_ID,
+# APPLE_API_KEY_P8, APPLE_CERT_P12, APPLE_CERT_PASSWORD,
+# APPLE_PROVISIONING_PROFILE.
+name: player
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    paths: ["player/**", ".github/workflows/player.yml"]
+
+jobs:
+  android-debug:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: player
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - run: ./gradlew :app:assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-debug
+          path: player/app/build/outputs/apk/debug/app-debug.apk
+
+  ios-build:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: player
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Build Kotlin framework (device)
+        run: ./gradlew :shared:linkDebugFrameworkIosArm64
+      - name: Build iOS (simulateur, sans signature)
+        run: >
+          xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp
+          -configuration Debug -sdk iphonesimulator
+          -destination 'platform=iOS Simulator,name=iPhone 16'
+          CODE_SIGNING_ALLOWED=NO build
+
+  ios-testflight:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [ios-build]
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: player
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Installer certificat et profil
+        env:
+          CERT_P12: ${{ secrets.APPLE_CERT_P12 }}
+          CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+          PROFILE: ${{ secrets.APPLE_PROVISIONING_PROFILE }}
+        run: |
+          echo "$CERT_P12" | base64 --decode > /tmp/cert.p12
+          security create-keychain -p actions build.keychain
+          security import /tmp/cert.p12 -k build.keychain -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          echo "$PROFILE" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/geoplay.mobileprovision
+      - name: Archive signée
+        run: >
+          xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp
+          -configuration Release -sdk iphoneos archive
+          -archivePath build/GeoPlay.xcarchive
+          DEVELOPMENT_TEAM=${{ secrets.APPLE_TEAM_ID }}
+      - name: Export IPA
+        run: |
+          cat > /tmp/ExportOptions.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+          <key>method</key><string>app-store</string>
+          <key>teamID</key><string>${{ secrets.APPLE_TEAM_ID }}</string>
+          </dict></plist>
+          EOF
+          xcodebuild -exportArchive -archivePath build/GeoPlay.xcarchive \
+            -exportPath build/ipa -exportOptionsPlist /tmp/ExportOptions.plist
+      - name: Upload TestFlight
+        env:
+          API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          API_ISSUER: ${{ secrets.APPLE_API_ISSUER_ID }}
+          API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          echo "$API_KEY_P8" > /tmp/AuthKey.p8
+          xcrun altool --upload-app -f build/ipa/*.ipa -t ios \
+            --apiKey "$API_KEY_ID" --apiIssuer "$API_ISSUER"
