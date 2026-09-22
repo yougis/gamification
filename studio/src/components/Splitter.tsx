@@ -7,10 +7,13 @@ export default function Splitter({
   label,
   onDelta,
   onFin,
+  onReset,
 }: {
   label: string;
   onDelta: (dxPx: number) => void;
   onFin?: () => void;
+  /** Reset (double-clic, touche Origine) : restaure la largeur par défaut. */
+  onReset?: () => void;
 }) {
   const trace = useRef<{ x: number; actif: boolean }>({ x: 0, actif: false });
   const finir = () => {
@@ -23,7 +26,9 @@ export default function Splitter({
       role="separator"
       aria-orientation="vertical"
       aria-label={label}
+      title={onReset ? `${label} — Double-cliquer pour réinitialiser` : label}
       tabIndex={0}
+      onDoubleClick={() => onReset?.()}
       onPointerDown={(e) => {
         e.preventDefault();
         trace.current = { x: e.clientX, actif: true };
@@ -39,6 +44,7 @@ export default function Splitter({
       onKeyDown={(e) => {
         if (e.key === "ArrowLeft") onDelta(-8);
         else if (e.key === "ArrowRight") onDelta(8);
+        else if (e.key === "Home") { onReset?.(); e.preventDefault(); return; }
         else return;
         e.preventDefault();
         onFin?.();

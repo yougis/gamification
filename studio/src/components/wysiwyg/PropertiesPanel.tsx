@@ -8,6 +8,7 @@
 import type { GameNode, ScreenBackground, Widget, WidgetStyles, ZoneContent, ZoneId } from "../../game/types";
 import { resolveStyles } from "../../game/screen-utils";
 import type { ModuleScreenPlugin } from "../../game/module-screen-plugin";
+import { Accordeon, useAccordeon } from "../Accordeon";
 import { ZoneProperties } from "./ZoneProperties";
 import { TextWidgetProperties } from "./TextWidgetProperties";
 import { ImageWidgetProperties } from "./ImageWidgetProperties";
@@ -18,8 +19,7 @@ import { ScreenProperties } from "./ScreenProperties";
 import { StyleToolbar } from "./StyleToolbar";
 
 // Champs de style couverts par les customs d'un plugin module.
-function champsCustoms(customs: ModuleScreenPlugin["customizableStyles"]): (keyof WidgetStyles)[] {
-  const out: (keyof WidgetStyles)[] = [];
+function champsCustoms(customs: ModuleScreenPlugin["customizableStyles"]): (keyof WidgetStyles)[] {  const out: (keyof WidgetStyles)[] = [];
   if (customs.backgroundColor) out.push("backgroundColor");
   if (customs.textColor) out.push("textColor");
   if (customs.fontSize) out.push("fontSize");
@@ -27,6 +27,46 @@ function champsCustoms(customs: ModuleScreenPlugin["customizableStyles"]): (keyo
   if (customs.fontWeight) out.push("fontWeight");
   if (customs.borderRadius) out.push("borderRadius");
   return out;
+}
+
+/** Badge du gabarit courant pour la section « Modèle ». */
+function etapeLayoutBadge(node: GameNode): React.ReactNode {
+  const layout = node.screen?.layout;
+  return layout ? <span className="puce">{layout}</span> : undefined;
+}
+
+// Section repliable à mémoire locale (change studio-composer-ux) : le hook
+// vit dans l'enfant pour ne jamais violer les règles des hooks malgré les
+// retours anticipés par branche ci-dessous.
+function SectionStyle({
+  id,
+  titre,
+  badge,
+  defaut,
+  children,
+}: {
+  id: string;
+  titre: string;
+  badge?: React.ReactNode;
+  defaut: boolean;
+  children: React.ReactNode;
+}) {
+  const [ouvert, basculer] = useAccordeon(id, defaut);
+  return (
+    <Accordeon id={id} titre={titre} badge={badge} ouvert={ouvert} onToggle={basculer}>
+      {children}
+    </Accordeon>
+  );
+}
+
+/** Badge d'origine : personnalisé si surcharge locale, hérité sinon. */
+function BadgeHeritage({ local }: { local: WidgetStyles | undefined }) {
+  const perso = Object.keys(local ?? {}).length > 0;
+  return (
+    <span className="puce" title={perso ? "Valeurs propres à ce niveau" : "Hérité du niveau parent"}>
+      {perso ? "personnalisé" : "hérité"}
+    </span>
+  );
 }
 
 export function PropertiesPanel({
@@ -83,30 +123,28 @@ export function PropertiesPanel({
   onPatchScreenStyles?: (styles: WidgetStyles) => void;
 }) {
   const { styles: stylesResolus, origins } = resolveStyles(globalStyles, screenStyles, widget?.styles);
-  const sectionEcran = onPatchScreenStyles ? (
-    <section aria-label="Style de l'écran" className="flex flex-col gap-2 border-t border-rule pt-2">
-      <h5 className="font-bold text-xs">Style — Écran</h5>
-      <StyleToolbar
-        niveau="ecran"
-        local={screenStyles ?? {}}
-        resolved={resolveStyles(globalStyles, screenStyles).styles}
-        origins={resolveStyles(globalStyles, screenStyles).origins}
-        champs={["fontFamily", "fontSize", "fontWeight", "color", "align"]}
-        onChange={onPatchScreenStyles}
-      />
-    </section>
-  ) : null;
+  // Contenu du « Style — Écran » partagé par les branches zone et fond.
+  const contenuStyleEcran = (
+    <StyleToolbar
+      niveau="ecran"
+      local={screenStyles ?? {}}
+      resolved={resolveStyles(globalStyles, screenStyles).styles}
+      origins={resolveStyles(globalStyles, screenStyles).origins}
+      champs={["fontFamily", "fontSize", "fontWeight", "color", "align"]}
+      onChange={onPatchScreenStyles!}
+    />
+  );
   // Widget selectionne -> proprietes specifiques (+ config module si module).
   if (selectedZone && widget && selectedWidgetIndex != null) {
     if (widget.type === "module") {
       const champs = champsCustoms(customizableStyles ?? {});
       return (
         <div className="flex flex-col gap-3 p-2" aria-label="Propriétés du module">
-          <h4 className="font-bold text-sm">Module — {node.module.type}</h4>
-          {modulePanel ?? <p className="text-xs text-fog">Configuration du module (section 5).</p>}
+          <SectionStyle id="pp-module" titre={`Module — ${node.module.type}`} defaut>
+            {modulePanel ?? <p className="text-xs text-fog">Configuration du module (section 5).</p>}
+          </SectionStyle>
           {champs.length > 0 && onPatchWidget ? (
-            <section aria-label="Style du contenu" className="flex flex-col gap-2 border-t border-rule pt-2">
-              <h5 className="font-bold text-xs">Style — Contenu</h5>
+            <SectionStyle id="pp-style-contenu" titre="Style — Contenu" badge={<BadgeHeritage local={widget.styles} />} defaut={false}>
               <StyleToolbar
                 niveau="widget"
                 local={widget.styles ?? {}}
@@ -115,31 +153,31 @@ export function PropertiesPanel({
                 champs={champs}
                 onChange={(styles) => onPatchWidget(selectedZone, selectedWidgetIndex, { ...widget, styles })}
               />
-            </section>
+            </SectionStyle>
           ) : null}
         </div>
       );
     }
     return (
       <div className="flex flex-col gap-2 p-2" aria-label={`Propriétés du widget ${widget.type}`}>
-        <h4 className="font-bold text-sm">Widget — {widget.type}</h4>
-        {widget.type === "text" ? (
-          <TextWidgetProperties widget={widget} onChange={(w) => onPatchWidget(selectedZone, selectedWidgetIndex, w)} />
-        ) : null}
-        {widget.type === "image" ? (
-          <ImageWidgetProperties widget={widget} onPickFile={onPickFile} onChange={(w) => onPatchWidget(selectedZone, selectedWidgetIndex, w)} />
-        ) : null}
-        {widget.type === "button" ? (
-          <ButtonWidgetProperties widget={widget} onChange={(w) => onPatchWidget(selectedZone, selectedWidgetIndex, w)} />
-        ) : null}
-        {widget.type === "progress" ? (
-          <ProgressBarProperties widget={widget} onChange={(w) => onPatchWidget(selectedZone, selectedWidgetIndex, w)} />
-        ) : null}
-        {widget.type === "spacer" ? (
-          <SpacerWidgetProperties widget={widget} onChange={(w) => onPatchWidget(selectedZone, selectedWidgetIndex, w)} />
-        ) : null}
-        <section aria-label="Style du contenu" className="flex flex-col gap-2 border-t border-rule pt-2">
-          <h5 className="font-bold text-xs">Style — Contenu</h5>
+        <SectionStyle id="pp-contenu" titre="Contenu" badge={<span className="puce">{widget.type}</span>} defaut>
+          {widget.type === "text" ? (
+            <TextWidgetProperties widget={widget} onChange={(w) => onPatchWidget(selectedZone, selectedWidgetIndex, w)} />
+          ) : null}
+          {widget.type === "image" ? (
+            <ImageWidgetProperties widget={widget} onPickFile={onPickFile} onChange={(w) => onPatchWidget(selectedZone, selectedWidgetIndex, w)} />
+          ) : null}
+          {widget.type === "button" ? (
+            <ButtonWidgetProperties widget={widget} onChange={(w) => onPatchWidget(selectedZone, selectedWidgetIndex, w)} />
+          ) : null}
+          {widget.type === "progress" ? (
+            <ProgressBarProperties widget={widget} onChange={(w) => onPatchWidget(selectedZone, selectedWidgetIndex, w)} />
+          ) : null}
+          {widget.type === "spacer" ? (
+            <SpacerWidgetProperties widget={widget} onChange={(w) => onPatchWidget(selectedZone, selectedWidgetIndex, w)} />
+          ) : null}
+        </SectionStyle>
+        <SectionStyle id="pp-style-contenu" titre="Style — Contenu" badge={<BadgeHeritage local={widget.styles} />} defaut={false}>
           <StyleToolbar
             niveau="widget"
             local={widget.styles ?? {}}
@@ -147,7 +185,7 @@ export function PropertiesPanel({
             origins={origins}
             onChange={(styles) => onPatchWidget(selectedZone, selectedWidgetIndex, { ...widget, styles })}
           />
-        </section>
+        </SectionStyle>
       </div>
     );
   }
@@ -155,17 +193,28 @@ export function PropertiesPanel({
   if (selectedZone && zone) {
     return (
       <div className="flex flex-col gap-3 p-2" aria-label="Propriétés de la zone">
-        <ZoneProperties
-          zone={zone}
-          zoneId={selectedZone}
-          selectedWidgetIndex={selectedWidgetIndex}
-          onPatchZone={onPatchZone}
-          onSelectWidget={onSelectWidget}
-          onAddWidget={onAddWidget}
-          onRemoveWidget={onRemoveWidget}
-          onMoveWidget={onMoveWidget}
-        />
-        {sectionEcran}
+        <SectionStyle
+          id="pp-zone"
+          titre="Zone"
+          badge={<span className="puce">{zone.layout ?? "stack"} · {zone.widgets?.length ?? 0}</span>}
+          defaut
+        >
+          <ZoneProperties
+            zone={zone}
+            zoneId={selectedZone}
+            selectedWidgetIndex={selectedWidgetIndex}
+            onPatchZone={onPatchZone}
+            onSelectWidget={onSelectWidget}
+            onAddWidget={onAddWidget}
+            onRemoveWidget={onRemoveWidget}
+            onMoveWidget={onMoveWidget}
+          />
+        </SectionStyle>
+        {onPatchScreenStyles ? (
+          <SectionStyle id="pp-style-ecran" titre="Style — Écran" badge={<BadgeHeritage local={screenStyles} />} defaut={false}>
+            {contenuStyleEcran}
+          </SectionStyle>
+        ) : null}
       </div>
     );
   }
@@ -173,8 +222,19 @@ export function PropertiesPanel({
   if (screenSelected && onPatchBackground) {
     return (
       <div className="flex flex-col gap-3">
-        <ScreenProperties background={screenBackground} onPickFile={onPickFile} onChange={onPatchBackground} />
-        {sectionEcran}
+        <SectionStyle
+          id="pp-fond"
+          titre="Fond"
+          badge={screenBackground ? <span className="puce">{screenBackground.type}</span> : undefined}
+          defaut
+        >
+          <ScreenProperties background={screenBackground} onPickFile={onPickFile} onChange={onPatchBackground} />
+        </SectionStyle>
+        {onPatchScreenStyles ? (
+          <SectionStyle id="pp-style-ecran" titre="Style — Écran" badge={<BadgeHeritage local={screenStyles} />} defaut={false}>
+            {contenuStyleEcran}
+          </SectionStyle>
+        ) : null}
       </div>
     );
   }
@@ -182,10 +242,18 @@ export function PropertiesPanel({
   return (
     <div className="flex flex-col gap-3 p-2" aria-label="Propriétés du nœud">
       {nodePanel ?? <p className="text-xs text-fog">Propriétés du nœud (section 3.8).</p>}
-      {templatePicker}
+      {templatePicker ? (
+        <SectionStyle
+          id="pp-modele"
+          titre="Modèle"
+          badge={etapeLayoutBadge(node)}
+          defaut={false}
+        >
+          {templatePicker}
+        </SectionStyle>
+      ) : null}
       {onPatchGlobalStyles ? (
-        <section aria-label="Style global" className="flex flex-col gap-2 border-t border-rule pt-2">
-          <h5 className="font-bold text-xs">Style — Global</h5>
+        <SectionStyle id="pp-style-global" titre="Style — Global" badge={undefined} defaut={false}>
           <p className="text-[11px] text-fog">Défauts pour tout le jeu, surchargeables par écran puis par widget.</p>
           <StyleToolbar
             niveau="global"
@@ -195,7 +263,7 @@ export function PropertiesPanel({
             champs={["fontFamily", "fontSize", "fontWeight", "color", "align"]}
             onChange={onPatchGlobalStyles}
           />
-        </section>
+        </SectionStyle>
       ) : null}
     </div>
   );

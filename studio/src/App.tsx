@@ -367,12 +367,8 @@ export default function App() {
     return () => window.clearTimeout(t);
   }, [st.present]);
   const basculerSection = (s: SectionPliable) => {
-    setMolette(null);
     setMep((m) => ({ ...m, repliees: { ...m.repliees, [s]: !m.repliees[s] } }));
   };
-  // Panneau « molette » ouvert (change studio-layout-revamp) : une seule section à la fois.
-  const [molette, setMolette] = useState<SectionPliable | null>(null);
-  const basculerMolette = (s: SectionPliable) => setMolette((m) => (m === s ? null : s));
   // Instance ReactFlow pour « Recentrer » (fitView à la demande).
   const rfRef = useRef<ReactFlowInstance | null>(null);
   // Marqueur posé par onNodeClick : la prochaine émission onSelectionChange
@@ -1690,30 +1686,20 @@ HOLD est un mode système : il se configure dans Configuration globale, pas ici.
                       <span className="puce puce-ok"><Icon name="ok" size={13} /> Valide</span>
                     )}
                   </button>
-                  <button className="btn min-h-8 px-2.5" onClick={() => basculerMolette("graphe")} title="Réglages du graphe" aria-label="Réglages du graphe" aria-expanded={molette === "graphe"}>
-                    <Icon name="engrenage" size={15} />
+                  <button className="btn min-h-8 px-2 text-[8px]" onClick={() => { rfRef.current?.fitView({ padding: 0.2 }); }} title="Recentrer le graphe">
+                    Recentrer
+                  </button>
+                  <button className="btn min-h-8 px-2 text-[8px]" onClick={() => { aligner("y"); }} disabled={selMulti.length < 2 || relecture} title={selMulti.length < 2 ? "Sélectionne au moins 2 nœuds (Shift+clic)" : `Aligner horizontalement (${selMulti.length} sélectionnés)`}>
+                    Aligner H
+                  </button>
+                  <button className="btn min-h-8 px-2 text-[8px]" onClick={() => { aligner("x"); }} disabled={selMulti.length < 2 || relecture} title={selMulti.length < 2 ? "Sélectionne au moins 2 nœuds (Shift+clic)" : `Aligner verticalement (${selMulti.length} sélectionnés)`}>
+                    Aligner V
                   </button>
                   <ChevronRepli direction="gauche" titre="Replier le graphe" replie={false} onBasculer={() => basculerSection("graphe")} />
                 </div>
-                {molette === "graphe" && (
-                  <div className="carte absolute right-2 top-12 z-6 flex flex-col gap-1.5 p-2" role="dialog" aria-label="Réglages du graphe">
-                    <button className="btn justify-start" onClick={() => { rfRef.current?.fitView({ padding: 0.2 }); setMolette(null); }} title="Recentrer le graphe">
-                      Recentrer
-                    </button>
-                    <button className="btn justify-start" onClick={() => { aligner("y"); }} disabled={selMulti.length < 2 || relecture} title={selMulti.length < 2 ? "Sélectionne au moins 2 nœuds (Shift+clic)" : `Aligner horizontalement (${selMulti.length} sélectionnés)`}>
-                      Aligner H
-                    </button>
-                    <button className="btn justify-start" onClick={() => { aligner("x"); }} disabled={selMulti.length < 2 || relecture} title={selMulti.length < 2 ? "Sélectionne au moins 2 nœuds (Shift+clic)" : `Aligner verticalement (${selMulti.length} sélectionnés)`}>
-                      Aligner V
-                    </button>
-                    <button className="btn justify-start" onClick={() => basculerSection("graphe")} title="Replier le graphe">
-                      Replier
-                    </button>
-                  </div>
-                )}
               </div>
             )}
-            <Splitter label="Ajuster la largeur de la liste" onDelta={(dx) => setMep((m) => ({ ...m, liste: Math.min(520, Math.max(220, m.liste - dx)) }))} />
+            <Splitter label="Ajuster la largeur de la liste" onDelta={(dx) => setMep((m) => ({ ...m, liste: Math.min(520, Math.max(220, m.liste - dx)) }))} onReset={() => setMep((m) => ({ ...m, liste: LAYOUT_DEFAUT.liste }))} />
             {mep.repliees.liste ? (
               <RailReplie icone="liste" titre="Liste des étapes — cliquer pour déplier" directionRetour="gauche" onDeplier={() => basculerSection("liste")} />
             ) : (
@@ -1723,24 +1709,15 @@ HOLD est un mode système : il se configure dans Configuration globale, pas ici.
             )}
           </div>
         </main>
-        <Splitter label="Ajuster la largeur du panneau latéral" onDelta={(dx) => setMep((m) => ({ ...m, droite: Math.min(640, Math.max(280, m.droite - dx)) }))} />
+        <Splitter label="Ajuster la largeur du panneau latéral" onDelta={(dx) => setMep((m) => ({ ...m, droite: Math.min(640, Math.max(280, m.droite - dx)) }))} onReset={() => setMep((m) => ({ ...m, droite: LAYOUT_DEFAUT.droite }))} />
         {mep.repliees.detail ? (
           <RailReplie icone="detail" titre="Détail de l'étape — cliquer pour déplier" directionRetour="gauche" onDeplier={() => basculerSection("detail")} />
         ) : (
         <div className="flex min-w-0 flex-col gap-3 overflow-auto" style={{ width: mep.droite }}>
             <div id="section-detail" className="flex min-h-0 flex-1 flex-col gap-1" style={surlignage("detail")}>
               <div className="flex justify-end gap-1">
-                <button className="btn min-h-8 px-2.5" onClick={() => basculerMolette("detail")} title="Réglages du détail" aria-label="Réglages du détail" aria-expanded={molette === "detail"}>
-                  <Icon name="engrenage" size={15} />
-                </button>
                 <ChevronRepli direction="droite" titre="Replier le détail" replie={false} onBasculer={() => basculerSection("detail")} />
               </div>
-              {molette === "detail" && (
-                <div className="flex gap-2" role="dialog" aria-label="Réglages du détail">
-                  <button className="btn min-h-8 px-2.5 text-[8px]" onClick={() => basculerSection("detail")} title="Replier le détail">Replier</button>
-                  <button className="btn min-h-8 px-2.5 text-[8px]" onClick={() => { setMep((m) => ({ ...m, droite: 400 })); setMolette(null); }} title="Restaurer la largeur par défaut du panneau">Panneau 400</button>
-                </div>
-              )}
               {detail}
             </div>
         </div>
