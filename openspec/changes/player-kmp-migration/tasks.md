@@ -4,7 +4,7 @@
 - [x] 1.2 Configurer le module `app` pour consommer `shared` (api dependency, Compose Activity) — Vérifier : `./gradlew :app:assembleDebug` passe
 - [x] 1.3 Ajouter les dépendances Compose Multiplatform au module `shared` (runtime, ui, material3, navigation) — Vérifier : la compilation passe sans erreur
 - [x] 1.4 Configurer Room KMP dans le module `shared` (KSP, schema, DAOs communs) — Vérifier : `./gradlew :shared:compileKotlinAndroid` passe avec Room
-- [ ] 1.5 Vérifier la compilation iOS (`./gradlew :shared:linkDebugFrameworkIosArm64`) — Vérifier : le framework iOS est produit — NOTE: `compileKotlinIosArm64` + `compileKotlinIosSimulatorArm64` (klib) passent sur Linux ; le link `.framework` est désactivé par le plugin Kotlin sur non-macOS ("Task is enabled is false", Apple SDK requis) → framework vérifié sur runner macOS en 6.3 — NOTE 2026-09-22 : klibs recompilés OK avec providers + UI Compose + `MainViewController` (uikit 1.10.3)
+- [x] 1.5 Vérifier la compilation iOS (`./gradlew :shared:linkDebugFrameworkIosArm64`) — Vérifier : le framework iOS est produit — NOTE: link vérifié sur runner macOS via CI (run vert 8efb322 : link + build Xcode OK) ; cible `iosX64` ajoutée car les runners Intel exigent la slice x86_64
 - [x] 1.6 Vérifier que le module `app` fonctionne toujours (smoke test Android existant) — Vérifier : le jeu se lance sur émulateur Android — NOTE: émulateur Fedora HS (SwiftShader segfault) ; smoke test OK sur émulateur Android Studio (Mac) : l'appli démarre
 
 ## 2. Extraction logique vers commonMain
@@ -25,7 +25,7 @@
 - [x] 4.1 Créer les composants Compose communs (thème, couleurs, typographie, navigation) — Vérifier : compilation commune passe — NOTE: `GeoPlayTheme` + `GeoPlayNavHost` (graphe/quiz) créés ; compilations commune, Android et klibs iOS OK
 - [x] 4.2 Créer l'écran du graphe de jeu (liste des nœuds avec états LOCKED/UNLOCKED/ACTIVE/COMPLETED) — Vérifier : l'écran s'affiche sur Android — NOTE: `GameGraphScreen` créé + libellés testés (`PlayerUiCommonTest`) + compilation Android OK ; affichage sur appareil/émulateur restant à vérifier (émulateur Fedora HS, cf. 1.6)
 - [x] 4.3 Créer l'écran du module QUIZ (questions, options, validation) — Vérifier : le QUIZ fonctionne sur Android — NOTE: `QuizScreen` + parse/score purs créés, `PlayerUiCommonTest` (options mixtes texte/image, score) OK ; fonctionnement sur appareil restant à vérifier (émulateur Fedora HS, cf. 1.6)
-- [ ] 4.4 Créer l'application iOS SwiftUI qui consomme le framework shared ( ContentView, navigation) — Vérifier : l'app iOS compile et affiche l'écran principal — NOTE 2026-09-22 : scaffold écrit (`player/iosApp` : pbxproj cohérent, `iOSApp`/`ContentView` avec import fichier, `MainViewController` côté shared) + workflow 6.1 ; compilation Xcode réelle en attente du runner macOS (6.3)
+- [ ] 4.4 Créer l'application iOS SwiftUI qui consomme le framework shared ( ContentView, navigation) — Vérifier : l'app iOS compile et affiche l'écran principal — NOTE 2026-09-22 : scaffold écrit (`player/iosApp` : pbxproj cohérent, `iOSApp`/`ContentView` avec import fichier, `MainViewController` côté shared) + compile vérifiée sur CI (run vert 8efb322) ; affichage à l'écran restant à vérifier sur appareil/simulateur (6.4/6.6)
 
 ## 5. Tests
 
@@ -37,9 +37,9 @@
 
 ## 6. CI/CD GitHub Actions
 
-- [ ] 6.1 Créer le workflow GitHub Actions pour iOS (trigger push/PR/tag, runner macos-latest) — Vérifier : le workflow apparaît dans l'onglet Actions — NOTE 2026-09-22 : `.github/workflows/player.yml` écrit (jobs android-debug/APK, ios-build simulateur sans signature, ios-testflight sur tag ; YAML valide) ; apparition dans l'onglet à vérifier après push
+- [x] 6.1 Créer le workflow GitHub Actions pour iOS (trigger push/PR/tag, runner macos-latest) — Vérifier : le workflow apparaît dans l'onglet Actions — NOTE 2026-09-22 : `.github/workflows/player.yml` actif (runs visibles, déclencheur corrigé `main`→`master`, actions bumpées v5) ; jobs android-debug, ios-build, ios-testflight (sur tag)
 - [ ] 6.2 Configurer les secrets GitHub (certificat de signature, profil de provisioning) — Vérifier : les secrets sont référencés dans le workflow
-- [ ] 6.3 Tester le build iOS sur GitHub Actions (push sur branche de test) — Vérifier : le build passe et produit un artefact
+- [x] 6.3 Tester le build iOS sur GitHub Actions (push sur branche de test) — Vérifier : le build passe et produit un artefact — NOTE 2026-09-22 : run vert 8efb322 (link framework + build Xcode simulateur OK) après fix `org.gradle.java.home`, `compose.ios.resources.sync=false`, cible `iosX64`
 - [ ] 6.4 Tester l'installation sur iPhone 12 physique (via TestFlight ou Xcode) — Vérifier : l'app s'installe et se lance
 - [ ] 6.5 Prérequis distribution iOS : enrôlement Apple Developer + groupe de testeurs internes TestFlight — Vérifier : le build 6.3 est visible dans App Store Connect et distribué au groupe interne
 - [ ] 6.6 Écran d'import du pack sur iOS (fichier et/ou QR/URL, même format JSON qu'Android) — Vérifier : un testeur iPhone importe `game-5poi` sans Xcode et joue jusqu'à FIN
