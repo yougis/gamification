@@ -9,7 +9,7 @@ name: player
 
 on:
   push:
-    branches: [main]
+    branches: [master]
     tags: ["v*"]
   pull_request:
     paths: ["player/**", ".github/workflows/player.yml"]
