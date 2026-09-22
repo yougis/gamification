@@ -6,8 +6,8 @@
 ## 2. Chevrons, rails et cascade
 
 - [ ] 2.1 Créer les composants `ChevronRepli` (direction, tooltip, état) et `RailReplie` (icône + tooltip + chevron inverse, focusables, `aria-expanded`) — Vérifier : rendus isolés corrects (story ou page de test), `tsc --noEmit` passe
-- [ ] 2.2 Remplacer les boutons texte « Replier »/« Déplier »/« Détail » par chevrons + rails (graphe→gauche, liste/détail→droite, rails `[L][D]` empilés), étendre `mep.repliees` en localStorage rétro-compatible — Vérifier : les 8 cas (ouvert/replié × 3 panneaux) affichent le bon chevron/rail, persistance après rechargement
-- [ ] 2.3 Nettoyer les props `boutonPlier`/`boutonMolette`/`panneauMolette` de `NodeList` et les appels associés — Vérifier : aucune référence restante (`grep`), `tsc --noEmit` passe
+- [x] 2.2 Remplacer les boutons texte « Replier »/« Déplier »/« Détail » par chevrons + rails (graphe→gauche, liste/détail→droite, rails `[L][D]` empilés), étendre `mep.repliees` en localStorage rétro-compatible — Vérifier : les 8 cas (ouvert/replié × 3 panneaux) affichent le bon chevron/rail, persistance après rechargement
+- [x] 2.3 Nettoyer les props `boutonPlier`/`boutonMolette`/`panneauMolette` de `NodeList` et les appels associés — Vérifier : aucune référence restante (`grep`), `tsc --noEmit` passe
 
 ## 3. Suppression molette
 

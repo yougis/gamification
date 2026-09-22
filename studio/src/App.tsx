@@ -1265,14 +1265,9 @@ const noeuds: Node[] = useMemo(
           <Icon name="fin" size={14} /> Fin
         </button>
       </div>
-      <NodeList game={game} statuts={st.present.meta.status} impasses={impasses} sel={sel} selMulti={selMulti} onChoisir={choisirNoeud} onBasculer={(id) => choisirNoeud(id, true)} onToutBasculer={basculerTout} toutSelectionne={toutEstSelectionne} erreursParNoeud={erreursParNoeud} lectureSeule={relecture} boutonPlier={<button className="btn min-h-8 px-2 text-[8px]" onClick={() => basculerSection("liste")} title="Replier la liste">Replier</button>} boutonMolette={<button className="btn min-h-8 px-2" onClick={() => basculerMolette("liste")} title="Réglages de la liste" aria-label="Réglages de la liste" aria-expanded={molette === "liste"}><Icon name="engrenage" size={14} /></button>} panneauMolette={molette === "liste" && (
-        <div className="flex gap-2 px-2 pb-2" role="dialog" aria-label="Réglages de la liste">
-          <button className="btn min-h-8 px-2 text-[8px]" onClick={() => basculerSection("liste")} title="Replier la liste">Replier</button>
-          <button className="btn min-h-8 px-2 text-[8px]" onClick={() => { setMep((m) => ({ ...m, liste: 340 })); setMolette(null); }} title="Restaurer la largeur par défaut de la liste">Largeur 340</button>
-        </div>
-      )} onSupprimer={!relecture ? (id) => editGame((g) => removeNode(g, id), "removeNode") : undefined} />
+      <NodeList game={game} statuts={st.present.meta.status} impasses={impasses} sel={sel} selMulti={selMulti} onChoisir={choisirNoeud} onBasculer={(id) => choisirNoeud(id, true)} onToutBasculer={basculerTout} toutSelectionne={toutEstSelectionne} erreursParNoeud={erreursParNoeud} lectureSeule={relecture} onReplier={() => basculerSection("liste")} onSupprimer={!relecture ? (id) => editGame((g) => removeNode(g, id), "removeNode") : undefined} />
     </div>
-  ), [game, st.present.meta.status, impasses, sel, selMulti, erreursParNoeud, relecture, molette, choisirNoeud, basculerTout, toutEstSelectionne, ajouterEtape]);
+  ), [game, st.present.meta.status, impasses, sel, selMulti, erreursParNoeud, relecture, choisirNoeud, basculerTout, toutEstSelectionne, ajouterEtape]);
   const listeSimple = useMemo(() => (
     <div className="flex flex-col min-h-0">
       <div className="flex items-center gap-1 px-2 py-1 border-b border-rule">
@@ -1698,9 +1693,7 @@ HOLD est un mode système : il se configure dans Configuration globale, pas ici.
                   <button className="btn min-h-8 px-2.5" onClick={() => basculerMolette("graphe")} title="Réglages du graphe" aria-label="Réglages du graphe" aria-expanded={molette === "graphe"}>
                     <Icon name="engrenage" size={15} />
                   </button>
-                  <button className="btn min-h-8 px-2.5 text-[8px]" onClick={() => basculerSection("graphe")} title="Replier le graphe">
-                    Replier
-                  </button>
+                  <ChevronRepli direction="gauche" titre="Replier le graphe" replie={false} onBasculer={() => basculerSection("graphe")} />
                 </div>
                 {molette === "graphe" && (
                   <div className="carte absolute right-2 top-12 z-6 flex flex-col gap-1.5 p-2" role="dialog" aria-label="Réglages du graphe">
@@ -1722,11 +1715,7 @@ HOLD est un mode système : il se configure dans Configuration globale, pas ici.
             )}
             <Splitter label="Ajuster la largeur de la liste" onDelta={(dx) => setMep((m) => ({ ...m, liste: Math.min(520, Math.max(220, m.liste - dx)) }))} />
             {mep.repliees.liste ? (
-              <div className="carte flex w-12 shrink-0 flex-col items-center p-2" aria-label="Liste repliée">
-                <button className="btn px-2.5" onClick={() => basculerSection("liste")} title="Déplier la liste" aria-label="Déplier la liste">
-                  <Icon name="liste" size={17} />
-                </button>
-              </div>
+              <RailReplie icone="liste" titre="Liste des étapes — cliquer pour déplier" directionRetour="gauche" onDeplier={() => basculerSection("liste")} />
             ) : (
               <div id="section-liste" className="flex min-w-0 flex-col" style={{ width: mep.liste, ...surlignage("liste") }}>
                 {liste}
@@ -1735,22 +1724,16 @@ HOLD est un mode système : il se configure dans Configuration globale, pas ici.
           </div>
         </main>
         <Splitter label="Ajuster la largeur du panneau latéral" onDelta={(dx) => setMep((m) => ({ ...m, droite: Math.min(640, Math.max(280, m.droite - dx)) }))} />
+        {mep.repliees.detail ? (
+          <RailReplie icone="detail" titre="Détail de l'étape — cliquer pour déplier" directionRetour="gauche" onDeplier={() => basculerSection("detail")} />
+        ) : (
         <div className="flex min-w-0 flex-col gap-3 overflow-auto" style={{ width: mep.droite }}>
-          {mep.repliees.detail ? (
-            <div className="carte flex shrink-0 items-center gap-2 p-2" aria-label="Détail replié">
-              <button className="btn min-h-8 px-2.5 text-[8px]" onClick={() => basculerSection("detail")} title="Déplier le détail">
-                Détail
-              </button>
-            </div>
-          ) : (
             <div id="section-detail" className="flex min-h-0 flex-1 flex-col gap-1" style={surlignage("detail")}>
               <div className="flex justify-end gap-1">
                 <button className="btn min-h-8 px-2.5" onClick={() => basculerMolette("detail")} title="Réglages du détail" aria-label="Réglages du détail" aria-expanded={molette === "detail"}>
                   <Icon name="engrenage" size={15} />
                 </button>
-                <button className="btn min-h-8 px-2.5 text-[8px]" onClick={() => basculerSection("detail")} title="Replier le détail">
-                  Replier
-                </button>
+                <ChevronRepli direction="droite" titre="Replier le détail" replie={false} onBasculer={() => basculerSection("detail")} />
               </div>
               {molette === "detail" && (
                 <div className="flex gap-2" role="dialog" aria-label="Réglages du détail">
@@ -1760,8 +1743,8 @@ HOLD est un mode système : il se configure dans Configuration globale, pas ici.
               )}
               {detail}
             </div>
-          )}
         </div>
+        )}
         </>) : (
         <main className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-auto p-3" aria-label="Écran courant">
           {ecranCourant}

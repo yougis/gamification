@@ -5,6 +5,7 @@
 
 import { useMemo, useState } from "react";
 import { Icon } from "./icons";
+import { ChevronRepli } from "./Repli";
 import { CONDITIONS_FR, ETATS_FR, MODULES_FR } from "../game/i18n-ui";
 import type { Game } from "../game/types";
 import { removeNode } from "../game/mcp";
@@ -33,9 +34,7 @@ export function NodeList({
   toutSelectionne = false,
   erreursParNoeud,
   lectureSeule,
-  boutonPlier,
-  boutonMolette,
-  panneauMolette,
+  onReplier,
   onSupprimer,
 }: {
   game: Game;
@@ -54,9 +53,7 @@ export function NodeList({
   toutSelectionne?: boolean;
   erreursParNoeud: Map<string, string[]>;
   lectureSeule: boolean;
-  boutonPlier?: React.ReactNode;
-  boutonMolette?: React.ReactNode;
-  panneauMolette?: React.ReactNode;
+  onReplier?: () => void;
   onSupprimer?: (id: string) => void;
 }) {
   const selectionnes = new Set([...selMulti, ...(sel ? [sel] : [])]);
@@ -96,10 +93,10 @@ export function NodeList({
               Clic = modifier · Maj+clic = ajouter
             </span>
           )}
-          {boutonMolette}
-          {boutonPlier}
+          {onReplier && (
+            <ChevronRepli direction="droite" titre="Replier la liste" replie={false} onBasculer={onReplier} />
+          )}
         </div>
-        {panneauMolette}
         <div className="flex gap-2">
           <label className="flex flex-1 items-center gap-2">
             <span className="sr-only">Rechercher une étape</span>
