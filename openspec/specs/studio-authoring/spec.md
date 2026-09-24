@@ -148,19 +148,142 @@ sur les events.** La fixture neutre 1/5→FIN SHALL être rejouable en un clic c
 
 Le Studio SHALL organiser son interface en 6 écrans — Composer, Importer, Relire, Valider, Prévisualiser, Exporter — accessibles depuis une navigation latérale. Les préoccupations transverses (i18n, difficultés/modes) SHALL être des calques superposés, jamais des écrans séparés.
 
-Une barre globale SHALL afficher en permanence : le nom du jeu, son statut (`draft`/`reviewed`), l'indicateur de validation C1/C2, l'undo/redo et l'accès à l'export.
+Une barre globale SHALL afficher en permanence : le nom du jeu (champ auto-largeur suivant son contenu), son statut (`draft`/`reviewed`), les compteurs (nœuds, draft, reviewed), la pastille validation C1/C2, l'undo/redo sous forme d'icônes flèches et l'accès à l'export.
 
-La navigation latérale SHALL être repliable en une colonne d'icônes sur grand écran, avec accès direct aux actions de création (Étape, Lieu, Tirage, Fin) dans l'état replié.
+La navigation latérale SHALL être repliable en une colonne d'icônes sur grand écran, sans actions de création (la création vit dans la box des étapes et le rail replié).
+
+Le détail de validation (verdicts C1/C2, listes d'erreurs, impasses navigables) SHALL vivre exclusivement dans l'écran Valider. Le Composer SHALL ne jamais afficher de liste d'erreurs détaillée : il affiche uniquement une pastille compacte d'état (ex. `⚠ N problèmes` / `✓ Valide`), cliquable vers l'écran Valider.
 
 #### Scenario: Navigation sans perte d'état
 - **GIVEN** un auteur ayant composé 3 nœuds dans Composer
 - **WHEN** il navigue vers Valider puis revient vers Composer
 - **THEN** les 3 nœuds, la sélection et l'historique undo/redo sont inchangés
 
-#### Scenario: Menu replié avec actions de création
+#### Scenario: Menu replié sans création
 - **GIVEN** le Studio en mode grand écran avec le menu latéral replié
 - **WHEN** l'auteur regarde la barre latérale
-- **THEN** les boutons de création (Étape, Lieu, Tirage, Fin) sont visibles en tant qu'icônes cliquables, même sans nœud sélectionné
+- **THEN** seuls les écrans sont visibles en tant qu'icônes cliquables ; la création se fait dans la box des étapes ou le rail replié
+
+#### Scenario: Pastille compacte vers Valider
+- **GIVEN** un jeu avec 3 erreurs de validation affiché dans le Composer
+- **WHEN** l'auteur regarde le Composer
+- **THEN** aucune liste d'erreurs n'est affichée, seule une pastille `⚠ 3 problèmes` est visible
+- **WHEN** l'auteur clique la pastille
+- **THEN** l'écran Valider s'ouvre avec le détail des 3 erreurs
+
+#### Scenario: Pastille en entête
+- **GIVEN** n'importe quel écran du Studio avec un jeu invalide
+- **WHEN** l'auteur regarde la barre globale
+- **THEN** la pastille `⚠ N problèmes` est visible à côté du nom du jeu et des compteurs, cliquable vers Valider
+
+#### Scenario: Nom auto-largeur et undo flèches
+- **GIVEN** un jeu nommé « La malédiction du studio Rathaway »
+- **WHEN** l'auteur regarde la barre globale
+- **THEN** le champ nom affiche le titre entier sans troncature, et undo/redo sont des icônes flèches avec tooltips
+
+### Requirement: Repli en cascade des panneaux du Composer
+
+Le Composer SHALL appliquer une règle de repli unique : le graphe se rétracte vers la gauche (contre la navigation), la liste et le détail se rétractent vers la droite. Un panneau replié SHALL laisser un rail fin à son emplacement et les panneaux voisins SHALL s'étendre ; quand liste et détail sont repliés, leurs rails SHALL s'empiler à droite dans l'ordre (liste puis détail).
+
+La commande de repli SHALL être un chevron ancré au bord du panneau, dont le sens indique la direction du mouvement (`>` sur le bord droit d'un panneau ouvert, `<` sur son rail pour déplier). Aucun bouton texte « Replier » / « Déplier » / « Détail » ne SHALL exister dans le Composer.
+
+Le rail replié SHALL afficher la seule icône du panneau avec un tooltip (« Liste des étapes — cliquer pour déplier »), selon la même logique icône + tooltip que la navigation des écrans et les tabs de l'Inspecteur. Aucun menu « molette » (engrenage) ne SHALL exister dans le Composer.
+
+Les actions de réglage autrefois dans la molette SHALL être relocalisées : Recentrer/Aligner vers les contrôles natifs ReactFlow du canvas (Aligner reste désactivé si moins de 2 nœuds sélectionnés), réinitialisation des largeurs vers un double-clic sur le Splitter (découvrable via tooltip). L'état replié/déplié SHALL persister en localStorage.
+
+#### Scenario: Cascade liste puis détail
+- **GIVEN** le Composer avec graphe, liste et détail ouverts
+- **WHEN** l'auteur replie la liste puis le détail
+- **THEN** deux rails `[L][D]` s'empilent à droite dans cet ordre et le graphe occupe l'espace libéré
+
+#### Scenario: Chevron directionnel
+- **GIVEN** le panneau détail ouvert
+- **WHEN** l'auteur regarde son bord droit
+- **THEN** un chevron `>` est visible (le contenu partira à droite)
+- **WHEN** l'auteur clique le chevron puis regarde le rail
+- **THEN** le rail affiche l'icône du panneau et un chevron `<` (le contenu reviendra)
+
+#### Scenario: Rail icon-only avec tooltip
+- **GIVEN** la liste repliée en rail
+- **WHEN** l'auteur survole le rail
+- **THEN** un tooltip « Liste des étapes — cliquer pour déplier » s'affiche, sans aucun label texte permanent
+
+#### Scenario: Persistance du repli
+- **GIVEN** un Composer avec la liste repliée
+- **WHEN** l'auteur recharge la page
+- **THEN** la liste est toujours repliée, le graphe et le détail inchangés
+
+### Requirement: Rail d'actions de la liste
+
+Le rail de la liste repliée SHALL exposer, outre l'icône du panneau (déplier tel quel), les 4 icônes de création (Étape, Lieu, Tirage, Fin) avec leurs tooltips. Cliquer une icône de création SHALL créer le nœud correspondant **sans déplier** la liste (via l'action de création existante). Les champs texte (recherche, filtre) SHALL rester panneau-ouvert uniquement et n'ont aucun équivalent dans le rail.
+
+#### Scenario: Création sans déplier
+- **GIVEN** la liste repliée en rail
+- **WHEN** l'auteur clique l'icône Lieu
+- **THEN** un nœud lieu est créé et sélectionné, la liste reste repliée
+
+#### Scenario: Déplier tel quel
+- **GIVEN** la liste repliée en rail
+- **WHEN** l'auteur clique l'icône du panneau liste
+- **THEN** la liste se déploie dans son état précédent (recherche, filtre et sélection inchangés)
+
+### Requirement: Rail d'actions du détail
+
+Le rail du détail replié SHALL exposer, outre l'icône du panneau, les 9 icônes de familles de l'Inspecteur (mêmes icônes et tooltips que les tabs) quand un nœud est sélectionné. Cliquer une icône de famille SHALL déplier le détail **et** activer cette famille. Sans nœud sélectionné (placeholder, WYSIWYG), le rail SHALL se replier sur la seule icône du panneau.
+
+#### Scenario: Famille depuis le rail
+- **GIVEN** le détail replié avec un nœud sélectionné
+- **WHEN** l'auteur clique l'icône « Effets » du rail
+- **THEN** le détail se déploie avec la famille Effets active
+
+#### Scenario: Repli sans sélection
+- **GIVEN** le détail replié sans nœud sélectionné
+- **WHEN** l'auteur regarde le rail
+- **THEN** seule l'icône du panneau est affichée, avec le tooltip de dépliage
+
+### Requirement: Rail d'actions du graphe
+
+Le rail du graphe replié SHALL exposer, outre l'icône du panneau (déplier tel quel), les 3 icônes de vues (Graphe, Carte, Screen) et la pastille validation. Cliquer une icône de vue SHALL déplier le graphe **et** commuter vers cette vue. Cliquer la pastille SHALL naviguer vers l'écran Valider sans déplier (comme en panneau ouvert).
+
+#### Scenario: Vue depuis le rail
+- **GIVEN** le graphe replié en vue graphe
+- **WHEN** l'auteur clique l'icône Carte du rail
+- **THEN** le graphe se déploie directement en vue carte
+
+#### Scenario: Pastille depuis le rail
+- **GIVEN** le graphe replié avec 2 erreurs
+- **WHEN** l'auteur clique la pastille du rail
+- **THEN** l'écran Valider s'ouvre, le graphe reste replié
+
+### Requirement: Toolbar graphe conditionnelle à la vue
+
+Recentrer / Aligner H / Aligner V SHALL être intégrés aux contrôles natifs ReactFlow du canvas (`Controls` + `ControlButton`, bouton fit natif pour Recentrer). Aucune toolbar flottante custom ne SHALL exister sur le panneau graphe : seul le chevron de repli reste en overlay. Dans les vues carte et screen, les contrôles natifs restent disponibles selon leur sens (Recentrer sans objet hors canvas). La règle d'activation Aligner (désactivé si moins de 2 nœuds sélectionnés, tooltip explicatif) SHALL être inchangée.
+
+#### Scenario: Aligner masqué en vue carte
+- **GIVEN** le panneau graphe ouvert en vue carte
+- **WHEN** l'auteur regarde les contrôles natifs
+- **THEN** Recentrer et Aligner sont absents, le chevron de repli reste visible
+
+#### Scenario: Aligner présent en vue graphe
+- **GIVEN** le panneau graphe ouvert en vue graphe avec 1 nœud sélectionné
+- **WHEN** l'auteur regarde les contrôles natifs
+- **THEN** Recentrer, Aligner H et Aligner V sont visibles, Aligner désactivés avec le tooltip de sélection
+
+### Requirement: Pastille validation dans le Composer
+
+Le Composer SHALL afficher une pastille compacte d'état de validation dans la barre globale de l'application (à côté du nom du jeu et des compteurs) : `✓ Valide` si aucune erreur, `⚠ N problèmes` sinon (N = nombre total d'erreurs C1 + C2). La pastille SHALL être cliquable vers l'écran Valider et SHALL porter un tooltip explicite (« Voir le détail dans Valider »).
+
+La pastille ne SHALL jamais afficher le détail des erreurs (messages, nœuds fautifs, impasses) — ce détail vit exclusivement dans l'écran Valider. Le rail du graphe replié conserve sa pastille (navigation sans déplier).
+
+#### Scenario: Pastille verte sans erreur
+- **GIVEN** un jeu valide affiché dans le Composer
+- **WHEN** l'auteur regarde la barre globale
+- **THEN** la pastille affiche `✓ Valide`
+
+#### Scenario: Pastille cliquable avec erreurs
+- **GIVEN** un jeu avec 2 erreurs C2 affiché dans le Composer
+- **WHEN** l'auteur clique la pastille `⚠ 2 problèmes`
+- **THEN** l'écran Valider s'ouvre avec les 2 erreurs groupées par catégorie
 
 ### Requirement: Canvas graphe détaillé
 
@@ -254,6 +377,29 @@ Le panneau détail SHALL suivre le nœud primaire (dernier nœud cliqué) ; une 
 - **WHEN** l'auteur clique sur le 2e élément de la liste des étapes
 - **THEN** le 2e nœud est surligné sur le canvas et le panneau détail l'affiche
 
+### Requirement: Accordéon des sections
+
+Le Studio SHALL offrir un composant accordéon unique pour compacter les sections verticales : en-tête chevron + titre + badge résumé (compte d'éléments, origine d'héritage Global/Écran/Widget, état), contenu repliable. L'accordéon SHALL s'appliquer au `PropertiesPanel` WYSIWYG, aux formulaires de configuration des modules (quiz, puzzle, paramètres mini-jeux) et aux sous-sections à l'intérieur d'une famille de l'Inspecteur.
+
+À la sélection d'un nœud ou d'un widget, seule la section pertinente au contexte SHALL s'ouvrir (« contexte seul »), les autres restant fermées. L'état ouvert/fermé de chaque section SHALL persister en localStorage et être restauré à la sélection suivante.
+
+Les tabs à icônes des 9 familles de l'Inspecteur SHALL être conservés (navigation rapide entre concerns) : l'accordéon compacte *dans* une famille, il ne remplace jamais les tabs.
+
+#### Scenario: Contexte seul à la sélection
+- **GIVEN** un nœud QUIZ avec style personnalisé, toutes sections fermées en mémoire
+- **WHEN** l'auteur clique un widget texte dans le canvas
+- **THEN** seule la section « Contenu » s'ouvre, « Module », « Style — Écran » et « Avancé » restent fermés
+
+#### Scenario: Badge sans ouverture
+- **GIVEN** un module QUIZ avec 5 questions, section « Module » fermée
+- **WHEN** l'auteur regarde l'en-tête
+- **THEN** le badge affiche « 5 questions » sans qu'il soit nécessaire d'ouvrir
+
+#### Scenario: Mémoire de l'accordéon
+- **GIVEN** un auteur ayant ouvert « Avancé » puis rechargé la page
+- **WHEN** il sélectionne le même nœud
+- **THEN** « Avancé » est ouvert comme avant, les autres sections suivent la règle du contexte
+
 ### Requirement: Inspecteur de nœud
 
 Le panneau d'inspection SHALL présenter des sections fixes dans cet ordre : `module` (type + version) → `activation` → `latch`/rejeu → `discovery` → `effects` → `inventoryRef` → `position`, générées depuis le registre de modules sans aucun champ codé en dur dans l'UI.
@@ -328,7 +474,9 @@ L'overlay de relecture SHALL montrer la source et les données du module associ�
 
 Le passage `draft → reviewed` SHALL être une action explicite enregistrant `reviewedBy` (utilisateur courant), non modifiable a posteriori sans action distincte d'annulation de relecture.
 
-Un compteur global des éléments encore `draft` SHALL rester visible en permanence, car il bloque l'export en HOLD.
+Un compteur global des éléments encore `draft` SHALL rester visible en permanence, car il bloque l'export hors mode animateur.
+
+Le message de blocage affiché dans Relire SHALL nommer la règle applicable : « aucun brouillon hors mode animateur » en général, et SHALL mentionner l'exigence kiosque (« jeu relu exigé ») uniquement quand `holdMode != "none"`. Le message SHALL jamais présenter le kiosque comme cause du blocage quand `holdMode` vaut `"none"`.
 
 #### Scenario: Relecture avec overlay module
 - **GIVEN** une étape 7-erreurs en statut `draft`
@@ -339,6 +487,24 @@ Un compteur global des éléments encore `draft` SHALL rester visible en permane
 - **GIVEN** un jeu avec 2 éléments `draft` et `holdMode != "none"`
 - **WHEN** l'auteur consulte n'importe quel écran
 - **THEN** le compteur affiche 2 et l'export reste bloqué
+
+#### Scenario: Compteur draft et blocage hors animateur
+
+- **GIVEN** un jeu avec 2 éléments `draft`, `holdMode: "none"`, hors mode animateur
+- **WHEN** l'auteur consulte n'importe quel écran
+- **THEN** le compteur affiche 2 et l'export reste bloqué
+
+#### Scenario: Message sans mention kiosque quand HOLD inactif
+
+- **GIVEN** un jeu avec 1 nœud `draft` et `holdMode: "none"`
+- **WHEN** l'auteur lit le message de blocage dans Relire
+- **THEN** le message cite le nœud `draft` et ne mentionne pas le kiosque
+
+#### Scenario: Message kiosque quand HOLD actif
+
+- **GIVEN** un jeu avec 1 nœud `draft` et `holdMode: "lockTask"`
+- **WHEN** l'auteur lit le message de blocage dans Relire
+- **THEN** le message cite le nœud `draft` et l'exigence « jeu relu » du kiosque
 
 ### Requirement: Verdicts séparés et actionnables
 
@@ -362,7 +528,7 @@ Tout event simulé SHALL porter visuellement le flag triche (badge distinct, ex.
 Un bouton dédié SHALL relancer la fixture neutre 1/5→FIN en un clic avec résultat pass/fail immédiat.
 Un rappel permanent SHALL indiquer que la prévisualisation n'écrit jamais dans le JSON source.
 
-Le mode « Jeux » plein écran SHALL afficher le terminal joueur simulé : l'écran du Nœud ACTIVE, résolu global → Nœud et rendu en lecture seule (édition et sélection désactivées, zones fantômes masquées), avec le renderer joueur du Module quand le registre en déclare un, sinon un état non bloquant proposant la sortie par triche (terminer/abandonner). Valider dans le renderer joueur SHALL produire les mêmes transitions que le simulateur (Nœud COMPLETED, effets appliqués, event SIMULÉ journalisé). Le changement d'écran SHALL suivre le Nœud ACTIVE selon la file FIFO (1 modale max) ; la sortie du mode (Échap ou bouton) SHALL restaurer la vue auteur sans perdre l'état de simulation.
+Le mode « Jeux » plein écran SHALL afficher le terminal joueur simulé : l'écran du Nœud ACTIVE, résolu global → Nœud et rendu en lecture seule (édition et sélection désactivées, zones fantômes masquées), avec le renderer joueur du Module quand le registre en déclare un, sinon un état non bloquant proposant la sortie par triche (terminer/abandonner). Valider dans le renderer joueur SHALL produire les mêmes transitions que le simulateur (Nœud COMPLETED, effets appliqués, event SIMULÉ journalisé). Terminer (triche ou validation jouée) SHALL rouvrir automatiquement le Nœud ACTIVE suivant éligible au lieu de retomber sur l'attente. Le changement d'écran SHALL suivre le Nœud ACTIVE selon la file FIFO (1 modale max) ; la sortie du mode (Échap ou bouton) SHALL restaurer la vue auteur sans perdre l'état de simulation.
 
 #### Scenario: Event simulé distinct d'un event réel
 
@@ -381,6 +547,12 @@ Le mode « Jeux » plein écran SHALL afficher le terminal joueur simulé : l'é
 - **GIVEN** le quiz de `baker` affiché dans le terminal simulé
 - **WHEN** l'auteur répond et valide
 - **THEN** `baker` passe COMPLETED, ses effets sont appliqués et un event SIMULÉ est journalisé, comme via « Terminer »
+
+#### Scenario: Terminer avance au suivant
+
+- **GIVEN** le mode « Jeux » ouvert avec `baker` ACTIVE puis terminé (triche ou validation jouée), un Nœud suivant éligible existant
+- **WHEN** la complétion est enregistrée
+- **THEN** le terminal affiche l'écran du Nœud ACTIVE suivant sans repasser par l'attente
 
 #### Scenario: Changement d'écran piloté par le moteur
 
@@ -404,14 +576,43 @@ Le mode « Jeux » plein écran SHALL afficher le terminal joueur simulé : l'é
 
 Le bouton d'export SHALL être désactivé (jamais caché) tant que la validation échoue ou qu'un nœud est `draft` hors mode animateur, avec un message indiquant laquelle des deux conditions bloque.
 
-Avant génération, l'écran SHALL afficher le résumé des fichiers à produire ; après génération, chaque fichier SHALL afficher son `{path, version, size, sha256}` réel.
+La checklist « Contrôle pré-export » de l'écran Exporter SHALL être calculée depuis l'état réel du jeu et SHALL afficher au minimum : le verdict C1 (Draft-07), le verdict C2 (applicative), le décompte et les noms des nœuds encore `draft`, et les verdicts par canal d'export (NATIVE, PWA). Aucune ligne de la checklist SHALL être un texte statique : chaque ligne reflète le jeu courant et se met à jour à chaque modification.
 
-L'interface SHALL n'exposer qu'une seule action d'export visible par défaut. Si la porte historique `exportPack` coexiste temporairement avec `exportPackFull`, elle SHALL être marquée dépréciée et masquée derrière un accès explicite.
+La ligne relative à la relecture SHALL appliquer la règle kiosque uniquement quand `holdMode != "none"` : avec `holdMode: "none"`, seul le blocage « aucun brouillon hors mode animateur » SHALL apparaître ; avec `holdMode != "none"`, l'exigence « jeu relu » SHALL apparaître comme condition kiosque distincte.
+
+Avant génération, l'écran SHALL afficher le résumé des fichiers à produire calculé depuis le jeu courant (jamais un exemple statique) ; après génération, chaque fichier SHALL afficher son `{path, version, size, sha256}` réel.
+
+Le bouton d'export de l'écran Exporter SHALL déclencher la génération du pack (même opération que la règle centrale `canExport` autorise) quand il est actif. Le bouton Exporter de la barre globale SHALL ouvrir l'écran Exporter, qui reste la porte unique : l'interface SHALL n'exposer qu'une seule action d'export visible par défaut. Si la porte historique `exportPack` coexiste temporairement avec `exportPackFull`, elle SHALL être marquée dépréciée et masquée derrière un accès explicite.
 
 #### Scenario: Export bloqué avec raison visible
+
 - **GIVEN** un jeu valide C1+C2 mais avec 1 nœud `draft` hors mode animateur
 - **WHEN** l'auteur ouvre l'écran Exporter
 - **THEN** le bouton est désactivé et le message nomme le nœud `draft` comme cause du blocage
+
+#### Scenario: Checklist reflétant l'état réel
+
+- **GIVEN** un jeu avec 2 nœuds `draft` et `holdMode: "none"`
+- **WHEN** l'auteur ouvre l'écran Exporter
+- **THEN** la checklist affiche « 2 nœuds en statut draft » avec leurs noms, aucun texte statique, et aucune mention du kiosque
+
+#### Scenario: Ligne kiosque seulement en HOLD actif
+
+- **GIVEN** un jeu avec `holdMode: "guidedAccess"` et 1 nœud `draft`
+- **WHEN** l'auteur ouvre l'écran Exporter
+- **THEN** la checklist affiche la condition kiosque « jeu relu exigé » en plus du nœud `draft` nommé
+
+#### Scenario: Export réussi depuis l'écran Exporter
+
+- **GIVEN** un jeu valide C1+C2 sans nœud `draft`
+- **WHEN** l'auteur clique le bouton d'export de l'écran Exporter
+- **THEN** le pack est généré et chaque fichier affiche son `{path, version, size, sha256}` réel
+
+#### Scenario: Barre globale vers la porte unique
+
+- **GIVEN** l'auteur dans n'importe quel écran du Studio
+- **WHEN** il clique Exporter dans la barre globale
+- **THEN** l'écran Exporter s'ouvre (aucun transfert direct), avec la checklist à jour
 
 ### Requirement: Calques transverses
 
@@ -615,9 +816,7 @@ Un raccourci clavier ou bouton SHALL permet basculer rapidement entre la vue gra
 
 ### Requirement: Barre d'outils de création dans la liste
 
-L'écran Composer, lorsque l'onglet "Liste" est actif, SHALL afficher une barre d'outils de création au-dessus de la liste des nœuds. Cette barre SHALL proposer les mêmes actions que la palette du graphe : Étape de jeu, Lieu GPS, Tirage au sort, Fin du jeu.
-
-La barre de création SHALL être visible en permanence lorsque l'onglet Liste est actif, indépendamment de la sélection de nœud.
+Les 4 actions de création (Étape de jeu, Lieu GPS, Tirage au sort, Fin du jeu) SHALL vivre à un seul endroit : en haut de la box des étapes (`NodeList`), visibles en permanence indépendamment de la sélection de nœud. Aucun doublon ne SHALL exister dans les mémos App ni dans la navigation repliée ; les icônes du rail replié (accès état replié) sont l'unique exception admise.
 
 #### Scenario: Création depuis la liste
 - **GIVEN** l'auteur dans l'onglet "Liste" du Composer
@@ -628,6 +827,11 @@ La barre de création SHALL être visible en permanence lorsque l'onglet Liste e
 - **GIVEN** l'onglet "Liste" actif sans nœud sélectionné
 - **WHEN** l'auteur regarde la barre d'outils
 - **THEN** les 4 boutons de création sont visibles et cliquables
+
+#### Scenario: Point d'entrée unique
+- **GIVEN** le Composer avec tous les panneaux ouverts
+- **WHEN** l'auteur cherche où créer une étape
+- **THEN** un seul groupe de 4 boutons existe (haut de la box des étapes), hors rail replié
 
 ### Requirement: Suppression de l'onglet Essai du Composer
 
@@ -644,3 +848,43 @@ L'écran Prévisualiser SHALL intégrer le simulateur Apercu avec les mêmes fon
 - **GIVEN** le Composer ouvert
 - **WHEN** l'auteur regarde les onglets disponibles
 - **THEN** seuls les onglets "Graphe", "Liste" et "Détail" sont affichés (pas "Essai")
+
+### Requirement: Hiérarchie de priorité des contrôles
+
+Chaque contrôle du Studio (bouton, menu, action, champ de configuration, message, information) SHALL appartenir à exactement un tier de priorité, dérivé du `WorkflowStepper` 1→5 (Graphe → Épreuves → Relecture → Validation → Export) :
+- **P0 « prioritaire »** : fait avancer l'étape courante du workflow (créer un nœud, renseigner un mini-jeu, passer en relu, corriger une erreur, lancer la fixture, exporter). Toujours visible.
+- **P1 « contextuel »** : n'a de sens que pour la sélection courante (config du widget cliqué, famille du nœud, pastille). Visible quand pertinent, jamais autrement.
+- **P2 « avancé »** : exige de comprendre le schéma ou a un effet dangereux en production (édition JSON experte, rotation d'identifiant radio, secours par code, overrides, viewports d'aperçu, reset de layout, effacement du brouillon, triche de prévisualisation). Replié par défaut.
+
+Les tiers P0/P1/P2 (visibilité des contrôles) sont sans rapport avec les « Garanties P0 » (traçabilité des opérations MCP), qui restent inchangées.
+
+Sont sanctuarisés tel quel (hors tri) : le menu principal de gauche (7 écrans), la pastille validation, les rails d'actions, les tabs de l'Inspecteur et les accordéons « contexte seul ».
+
+#### Scenario: Bouton destructif classé avancé
+- **GIVEN** l'action « Effacer brouillon » (suppression locale irréversible)
+- **WHEN** sa priorité est évaluée
+- **THEN** elle est classée P2 (n'avance aucune étape, effet dangereux) et vit repliée avec confirmation
+
+#### Scenario: Création classée prioritaire
+- **GIVEN** les boutons Étape/Lieu/Tirage/Fin à l'étape 1 (Graphe)
+- **WHEN** leur priorité est évaluée
+- **THEN** ils sont classés P0 (font avancer l'étape courante) et restent visibles en permanence
+
+#### Scenario: Config module classée contextuelle
+- **GIVEN** les champs d'un widget texte quand aucun widget n'est sélectionné
+- **WHEN** leur priorité est évaluée
+- **THEN** ils sont classés P1 et restent masqués tant que le widget n'est pas sélectionné
+
+### Requirement: Regroupement avancé par module
+
+Les contrôles P2 SHALL vivre repliés dans des sections « Avancé » en bas de chaque module/famille (composant `Accordeon` existant, fermé par défaut, badge d'état, mémoire locale réutilisée), jamais au premier plan des formulaires. Les contrôles P2 transverses (bbox/zooms bruts, tileStrategy, glossaire verrouillé, reset de layout) SHALL vivre dans une section avancée de l'écran Config. Déplacer un contrôle en Avancé ne SHALL jamais changer son effet (même opération MCP, mêmes validations).
+
+#### Scenario: Rotation master repliée
+- **GIVEN** le bouton « Changer d'identifiant » (rotation = révocation radio terrain)
+- **WHEN** l'auteur ouvre la famille Position d'un nœud PROXIMITY_MASTER
+- **THEN** le bouton est dans la section « Avancé » fermée, le reste de la famille restant identique et fonctionnel
+
+#### Scenario: Effet inchangé après déplacement
+- **GIVEN** un contrôle P2 déplacé en section Avancé
+- **WHEN** l'auteur l'ouvre et l'utilise
+- **THEN** la même opération MCP est journalisée avec les mêmes validations qu'avant le déplacement

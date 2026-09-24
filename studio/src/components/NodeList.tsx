@@ -35,6 +35,7 @@ export function NodeList({
   erreursParNoeud,
   lectureSeule,
   onReplier,
+  onAjouter,
   onSupprimer,
 }: {
   game: Game;
@@ -54,6 +55,7 @@ export function NodeList({
   erreursParNoeud: Map<string, string[]>;
   lectureSeule: boolean;
   onReplier?: () => void;
+  onAjouter?: (preset: "etape" | "tirage" | "fin" | "lieu") => void;
   onSupprimer?: (id: string) => void;
 }) {
   const selectionnes = new Set([...selMulti, ...(sel ? [sel] : [])]);
@@ -75,6 +77,23 @@ export function NodeList({
 
   return (
     <section aria-label="Liste des étapes" className="carte flex min-h-0 flex-1 flex-col overflow-hidden">
+      {onAjouter && !lectureSeule && (
+        <div className="flex items-center gap-1 px-2 py-1 border-b border-rule">
+          <span className="text-[8px] font-bold uppercase text-fog mr-1">Ajouter</span>
+          <button className="btn min-h-8 px-2 text-[8px]" onClick={() => onAjouter("etape")} title="Créer une étape Quiz / jeu" aria-label="Étape de jeu">
+            <Icon name="etape" size={14} /> Étape
+          </button>
+          <button className="btn min-h-8 px-2 text-[8px]" onClick={() => onAjouter("lieu")} title="Créer un lieu avec zone GPS" aria-label="Lieu GPS">
+            <Icon name="lieu" size={14} /> Lieu
+          </button>
+          <button className="btn min-h-8 px-2 text-[8px]" onClick={() => onAjouter("tirage")} title="Créer un tirage au sort parmi des étapes" aria-label="Tirage au sort">
+            <Icon name="tirage" size={14} /> Tirage
+          </button>
+          <button className="btn min-h-8 px-2 text-[8px]" onClick={() => onAjouter("fin")} title="Créer l'étape de fin du jeu" aria-label="Fin du jeu">
+            <Icon name="fin" size={14} /> Fin
+          </button>
+        </div>
+      )}
       <header className="flex flex-col gap-2 border-b border-rule p-2">
         <div className="flex items-center gap-2">
           <Icon name="liste" size={16} />

@@ -1,0 +1,26 @@
+{
+  "$comment": "Matrice des capacités par canal player (change player-pwa-shell). Lue comme donnée versionnée, jamais codée en dur. La PWA ne déclare ni GPS de fond ni verrouillage OS.",
+  "version": 1,
+  "channels": {
+    "NATIVE": {
+      "gpsForeground": true,
+      "gpsBackground": true,
+      "compass": true,
+      "cameraAr": true,
+      "ble": true,
+      "offlineMaps": true,
+      "osLock": true,
+      "storageGuaranteed": true
+    },
+    "PWA": {
+      "gpsForeground": true,
+      "gpsBackground": false,
+      "compass": true,
+      "cameraAr": false,
+      "ble": false,
+      "offlineMaps": true,
+      "osLock": false,
+      "storageGuaranteed": false
+    }
+  }
+}

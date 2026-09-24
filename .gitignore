@@ -21,6 +21,7 @@ npm-debug.log*
 
 # Kotlin
 **/.kotlin/
+**/kotlin-js-store/
 
 # IDE
 **/.idea/

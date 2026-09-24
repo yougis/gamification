@@ -36,17 +36,24 @@ kotlin {
 
     jvm()
 
+    // Cible navigateur (PWA) : pas de Room ici (room-runtime n'a aucun
+    // variant wasmJs) — persistance web en clé-valeur, voir design D2.
+    wasmJs {
+        browser { }
+        binaries.executable()
+    }
+
     sourceSets {
         commonMain.dependencies {
             implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
             implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
-            implementation("androidx.room:room-runtime:2.8.5")
             implementation(compose.runtime)
             implementation(compose.ui)
             implementation(compose.foundation)
             implementation(compose.material3)
             implementation("org.jetbrains.androidx.navigation:navigation-compose:2.9.2")
         }
+
         commonTest.dependencies {
             implementation(kotlin("test"))
             implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")

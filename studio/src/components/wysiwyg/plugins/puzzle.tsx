@@ -3,6 +3,12 @@
 // 2-6, apercu de la grille (pieces = lignes x colonnes), refus hors bornes.
 // L'image est referencee par chemin d'asset : son enregistrement au manifest
 // passe par le pipeline `registerAsset` existant (ecran Exporter).
+// Jeu (change studio-puzzle-code-input) : tuiles decoupees par
+// background-position, melange Fisher-Yates anti-resolu, deplacement `slide`
+// (tap-a-tap + clavier) ou `drag` (pointeur tactile/souris), completion ->
+// onComplete, essais/temps -> verrouillage interne (le Noeud reste ACTIVE,
+// l'auteur tranche via Terminer/Abandonner comme pour les autres modules).
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   ModuleEditorPreviewProps,
   ModulePropertiesPanelProps,
@@ -22,6 +28,9 @@ interface PuzzleData {
   tileCols?: number;
   rows?: number;
   cols?: number;
+  mode?: string;
+  maxAttempts?: number;
+  timeLimitSeconds?: number;
 }
 
 export function puzzleDecoupe(data: Record<string, unknown>): { lignes: number; colonnes: number } {
@@ -42,9 +51,54 @@ export function puzzleDecoupeValide(lignes: number, colonnes: number): boolean {
   );
 }
 
-// Apercu statique : grille lignes x colonnes sur l'image source.
+export function puzzleMode(data: Record<string, unknown>): "slide" | "drag" {
+  return (data as PuzzleData).mode === "drag" ? "drag" : "slide";
+}
+
+// --- Utilitaires purs (testables sans React) ---
+
+// Melange Fisher-Yates des index d'origine [0..n-1]. Ne retourne jamais
+// l'ordre resolu (garde anti-resolu), sauf n <= 1.
+export function melangerPieces(n: number, tirage: () => number = Math.random): number[] {
+  const ordre = Array.from({ length: n }, (_, i) => i);
+  for (let i = n - 1; i > 0; i--) {
+    const j = Math.floor(tirage() * (i + 1));
+    [ordre[i], ordre[j]] = [ordre[j], ordre[i]];
+  }
+  if (n > 1 && puzzleEstResolu(ordre)) [ordre[n - 1], ordre[n - 2]] = [ordre[n - 2], ordre[n - 1]];
+  return ordre;
+}
+
+export function puzzleEstResolu(ordre: number[]): boolean {
+  return ordre.every((origine, position) => origine === position);
+}
+
+export function echangerPieces(ordre: number[], a: number, b: number): number[] {
+  const next = [...ordre];
+  [next[a], next[b]] = [next[b], next[a]];
+  return next;
+}
+
+// Fond CSS d'une tuile : l'image source est affichee en grand derriere la
+// grille, chaque tuile n'en montre que sa part (origine = index resolu).
+export function tuileFond(image: string, lignes: number, colonnes: number, origine: number): React.CSSProperties {
+  const col = colonnes > 1 ? (origine % colonnes) / (colonnes - 1) : 0;
+  const lig = lignes > 1 ? Math.floor(origine / colonnes) / (lignes - 1) : 0;
+  return {
+    backgroundImage: `url("${image}")`,
+    backgroundSize: `${colonnes * 100}% ${lignes * 100}%`,
+    backgroundPosition: `${col * 100}% ${lig * 100}%`,
+    backgroundRepeat: "no-repeat",
+  };
+}
+
+// Apercu statique : image decoupee en tuiles melangees (jamais la grille
+// numerotee). Re-melange a chaque changement de config, stable sinon.
 export function PuzzleEditorPreview({ data }: ModuleEditorPreviewProps) {
   const d = data as PuzzleData;
+  const { lignes, colonnes } = puzzleDecoupe(data);
+  const pieces = lignes * colonnes;
+  const melange = useMemo(() => melangerPieces(pieces), [d.image, lignes, colonnes, pieces]);
   if (!d.image) {
     return (
       <div className="rounded border border-dashed border-line px-3 py-4 text-center">
@@ -53,22 +107,23 @@ export function PuzzleEditorPreview({ data }: ModuleEditorPreviewProps) {
       </div>
     );
   }
-  const { lignes, colonnes } = puzzleDecoupe(data);
-  const pieces = lignes * colonnes;
   return (
     <div className="flex flex-col gap-2 rounded bg-surface-2/50 px-3 py-3">
       <p className="text-[10px] text-fog">
-        Puzzle {lignes}×{colonnes} — {pieces} pièces
+        Puzzle {lignes}×{colonnes} — {pieces} pièces mélangées
       </p>
       <div
         className="grid gap-0.5 overflow-hidden rounded border border-line"
         style={{ gridTemplateColumns: `repeat(${colonnes}, minmax(0, 1fr))` }}
-        aria-label={`Aperçu grille ${lignes} par ${colonnes}`}
+        aria-label={`Aperçu mélangé ${lignes} par ${colonnes}`}
       >
-        {Array.from({ length: pieces }, (_, i) => (
-          <div key={i} className="flex aspect-square items-center justify-center bg-surface text-[10px] text-fog">
-            {i + 1}
-          </div>
+        {melange.map((origine, position) => (
+          <div
+            key={position}
+            className="aspect-square bg-surface"
+            style={tuileFond(d.image!, lignes, colonnes, origine)}
+            title={`Tuile ${position + 1}`}
+          />
         ))}
       </div>
       <p className="truncate text-[10px] text-fog" title={d.image}>
@@ -159,6 +214,18 @@ export function PuzzlePropertiesPanel({ data, onChange, readOnly, minigameDefaul
                 Découpe hors bornes : lignes et colonnes entre {DECOUPE_MIN} et {DECOUPE_MAX} (ex. 1×1 refusé).
               </p>
             ) : null}
+            <label className="flex flex-col gap-1 text-xs">
+              Déplacement des tuiles
+              <select
+                className="champ"
+                value={puzzleMode(data)}
+                aria-label="Mode de déplacement des tuiles"
+                onChange={(e) => onChange({ ...data, mode: e.target.value })}
+              >
+                <option value="slide">Tap-à-tap (sélection + échange, clavier OK)</option>
+                <option value="drag">Glisser-déposer (tactile + souris)</option>
+              </select>
+            </label>
           </div>
         </Accordeon>
         <MinigameParamsAccordeon data={data} defaults={minigameDefaults} onChange={onChange} readOnly={readOnly} />
@@ -167,9 +234,144 @@ export function PuzzlePropertiesPanel({ data, onChange, readOnly, minigameDefaul
   );
 }
 
-// Rendu joueur : apercu de la grille et progression (moteur de jeu natif hors socle).
-export function PuzzlePlayerRenderer({ data }: ModulePlayerRendererProps) {
-  return <PuzzleEditorPreview data={data} />;
+// Rendu joueur interactif : melange initial, deplacement slide (tap-a-tap,
+// clavier via focus + Entree) ou drag (pointeur), completion -> onComplete,
+// essais/temps -> verrouillage interne avec message.
+export function PuzzlePlayerRenderer({ data, branding, onComplete }: ModulePlayerRendererProps) {
+  const d = data as PuzzleData;
+  const { lignes, colonnes } = puzzleDecoupe(data);
+  const pieces = lignes * colonnes;
+  const mode = puzzleMode(data);
+  const maxEssais = typeof d.maxAttempts === "number" && d.maxAttempts >= 1 ? d.maxAttempts : null;
+  const limite = typeof d.timeLimitSeconds === "number" && d.timeLimitSeconds > 0 ? d.timeLimitSeconds : null;
+  const accent = branding?.primaryColor ?? "var(--couleur-accent)";
+
+  const [ordre, setOrdre] = useState<number[]>(() => melangerPieces(pieces));
+  const [selection, setSelection] = useState<number | null>(null);
+  const [essais, setEssais] = useState(0);
+  const [termine, setTermine] = useState(false);
+  const [blocage, setBlocage] = useState<string | null>(null);
+  const [restant, setRestant] = useState<number | null>(limite);
+  const fini = useRef(false);
+  const presse = useRef<{ position: number; x: number; y: number } | null>(null);
+  const [fantome, setFantome] = useState<{ x: number; y: number } | null>(null);
+
+  // Compte a rebours : a zero, verrouillage interne (onTimeout).
+  useEffect(() => {
+    if (limite == null) return;
+    setRestant(limite);
+    const t = window.setInterval(() => {
+      setRestant((r) => {
+        if (r == null || r <= 1) {
+          window.clearInterval(t);
+          setBlocage("Temps écoulé — manche terminée (l'auteur tranche : Terminer / Abandonner).");
+          return 0;
+        }
+        return r - 1;
+      });
+    }, 1000);
+    return () => window.clearInterval(t);
+  }, [limite, d.image, lignes, colonnes]);
+
+  if (!d.image) return <p className="text-sm">Puzzle sans image source.</p>;
+
+  const permuter = (a: number, b: number) => {
+    if (a === b || termine || blocage) return;
+    if (maxEssais != null && essais + 1 > maxEssais) {
+      setBlocage(`Essais épuisés (${maxEssais}) — manche terminée (l'auteur tranche : Terminer / Abandonner).`);
+      return;
+    }
+    const next = echangerPieces(ordre, a, b);
+    setOrdre(next);
+    setEssais((e) => e + 1);
+    setSelection(null);
+    if (puzzleEstResolu(next) && !fini.current) {
+      fini.current = true;
+      setTermine(true);
+      onComplete?.(pieces);
+    }
+  };
+
+  // Tap-a-tap (mode slide, et repli clavier/souris en mode drag).
+  const taper = (position: number) => {
+    if (termine || blocage) return;
+    if (selection == null) {
+      setSelection(position);
+      return;
+    }
+    permuter(selection, position);
+  };
+
+  // Drag au pointeur : suivi du doigt/souris puis ancrage sur la cible.
+  const pointeurBas = (position: number) => (e: React.PointerEvent) => {
+    presse.current = { position, x: e.clientX, y: e.clientY };
+  };
+  const pointeurBouge = (e: React.PointerEvent) => {
+    const p = presse.current;
+    if (!p || termine || blocage) return;
+    if (Math.hypot(e.clientX - p.x, e.clientY - p.y) > 6) setFantome({ x: e.clientX, y: e.clientY });
+  };
+  const pointeurHaut = (position: number) => (e: React.PointerEvent) => {
+    const p = presse.current;
+    presse.current = null;
+    const glisse = fantome != null;
+    setFantome(null);
+    if (!p || termine || blocage) return;
+    if (mode === "drag" && glisse) {
+      const cible = document.elementFromPoint(e.clientX, e.clientY)?.closest("[data-pos]");
+      const vers = cible ? Number(cible.getAttribute("data-pos")) : NaN;
+      if (!Number.isNaN(vers)) permuter(p.position, vers);
+      else taper(position);
+      return;
+    }
+    taper(position);
+  };
+
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-xs text-fog">
+        Puzzle {lignes}×{colonnes} — {pieces} pièces{maxEssais != null ? ` — essai ${Math.min(essais + 1, maxEssais)}/${maxEssais}` : ""}
+        {restant != null ? ` — ${restant}s` : ""}
+      </p>
+      <div
+        className="relative grid gap-0.5 overflow-hidden rounded border border-line"
+        style={{ gridTemplateColumns: `repeat(${colonnes}, minmax(0, 1fr))`, touchAction: mode === "drag" ? "none" : undefined }}
+        aria-label={`Puzzle ${mode === "drag" ? "glisser-déposer" : "tap-à-tap"}`}
+        onPointerMove={pointeurBouge}
+      >
+        {ordre.map((origine, position) => (
+          <button
+            key={position}
+            type="button"
+            data-pos={position}
+            onClick={() => taper(position)}
+            onPointerDown={pointeurBas(position)}
+            onPointerUp={pointeurHaut(position)}
+            disabled={termine || blocage != null}
+            aria-label={`Tuile ${position + 1}${origine === position ? " (bien placée)" : ""}${selection === position ? " (sélectionnée)" : ""}`}
+            className="aspect-square bg-surface disabled:cursor-default"
+            style={{
+              ...tuileFond(d.image!, lignes, colonnes, origine),
+              outline: selection === position ? `3px solid ${accent}` : undefined,
+              outlineOffset: "-3px",
+              opacity: origine === position ? 1 : 0.92,
+            }}
+          />
+        ))}
+        {fantome && (
+          <div
+            className="pointer-events-none fixed z-50 h-12 w-12 rounded border-2 opacity-80"
+            style={{ left: fantome.x - 24, top: fantome.y - 24, borderColor: accent }}
+          />
+        )}
+      </div>
+      {selection != null && !termine && !blocage ? (
+        <p className="text-[11px] text-fog">Tuile {selection + 1} sélectionnée — tapez sa destination.</p>
+      ) : null}
+      {termine ? <p className="text-xs font-semibold text-pass" role="status">Puzzle complété !</p> : null}
+      {blocage ? <p className="text-xs text-fail" role="alert">{blocage}</p> : null}
+    </div>
+  );
 }
 
 export const puzzleScreenPlugin: ModuleScreenPlugin = {

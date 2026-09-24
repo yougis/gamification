@@ -10,6 +10,7 @@ import differenceGame from "./schema/difference-game.json";
 import puzzle from "./schema/puzzle.json";
 import arMarker from "./schema/ar-marker.json";
 import boussole from "./schema/boussole.json";
+import codeInput from "./schema/code-input.json";
 import type { Game, GameNode, Condition, ExperienceStyle, Branding, GameMode, Difficulty } from "./types";
 import { MODULE_REGISTRY } from "./modules";
 
@@ -305,6 +306,13 @@ export function validateLayer2(game: Game): LayerReport {
         errors.push(`C2 ${n.id} : TIMER anchorNodeId=${c.anchorNodeId} inexistant`);
       }
     }
+    // Module CODE_INPUT : code attendu requis (symetrique de la condition).
+    if (n.module.type === "CODE_INPUT") {
+      const code = (n.module.data as { code?: unknown } | undefined)?.code;
+      if (typeof code !== "string" || code.length === 0) {
+        errors.push(`C2 ${n.id} : module CODE_INPUT requiert un code attendu (module.data.code)`);
+      }
+    }
     if (n.discovery) {
       if (n.discovery.mode === "ON_ITEM" && n.discovery.itemId && !items.has(n.discovery.itemId)) {
         errors.push(`C2 ${n.id} : discovery ON_ITEM itemId=${n.discovery.itemId} inexistant`);
@@ -353,16 +361,30 @@ ajv.addSchema(differenceGame, "modules/difference-game.json");
 ajv.addSchema(puzzle, "modules/puzzle.json");
 ajv.addSchema(arMarker, "modules/ar-marker.json");
 ajv.addSchema(boussole, "modules/boussole.json");
+ajv.addSchema(codeInput, "modules/code-input.json");
 const validateSchema = ajv.compile(schema);
 
 function validateLayer1(game: unknown): LayerReport {
   const errors: string[] = [];
   const valid = validateSchema(game);
+  const g = game as { nodes?: { id?: string; activation?: { requires?: unknown[]; operator?: string } }[] };
   if (!valid && validateSchema.errors) {
     for (const e of validateSchema.errors) {
       const loc = e.instancePath ? e.instancePath.replace(/^\//, "") : "";
-      const msg = e.message ?? "erreur de validation";
-      errors.push(`C1 ${loc ? loc + " : " : ""}${msg}`);
+      let msg = e.message ?? "erreur de validation";
+      // Résout nodes/<index>/… vers l'id du nœud pour des messages actionnables.
+      const m = /^nodes\/(\d+)(?=\/|$)/.exec(loc);
+      const node = m ? g.nodes?.[Number(m[1])] : undefined;
+      const locId = node?.id ? `${node.id} (${loc})` : loc;
+      // Règle operator (if/then) : AJV ne dit que « must match "then" schema » /
+      // « must NOT be valid » — précise le sens avec les données du nœud.
+      if (node && /\/activation$/.test(loc) && (msg.includes('must match "then" schema') || msg.includes("must NOT be valid"))) {
+        const k = node.activation?.requires?.length ?? 0;
+        const hasOp = node.activation?.operator != null;
+        if (k >= 2 && !hasOp) msg = "operator manquant (2 déclencheurs ou plus exigent AND/OR)";
+        else if (k <= 1 && hasOp) msg = "operator interdit (un seul déclencheur : retire operator)";
+      }
+      errors.push(`C1 ${locId ? locId + " : " : ""}${msg}`);
     }
   }
   return { layer: 1, errors };

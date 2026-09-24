@@ -1,6 +1,7 @@
 // Commande de repli unique des panneaux (change studio-composer-ux) :
 // chevron ancré au bord (sens = direction du mouvement) + rail icon-only.
 // Remplace les boutons texte « Replier »/« Déplier » et la molette.
+import { Fragment } from "react";
 import { Icon, type IconName } from "./icons";
 
 export type DirectionRepli = "gauche" | "droite" | "haut" | "bas";
@@ -40,18 +41,26 @@ export function ChevronRepli({
   );
 }
 
-/** Rail fin laissé par un panneau replié : icône seule + tooltip, clic = déplier. */
+/** Action d'un rail replié : soit icône cliquable, soit rendu custom (ex. pastille). */
+export type ActionRail =
+  | { kind: "icone"; icone: IconName; titre: string; actif?: boolean; onAction: () => void }
+  | { kind: "rendu"; rendu: React.ReactNode; cle: string };
+
+/**
+ * Rail fin laissé par un panneau replié (change studio-action-rails) : icône
+ * du panneau (déplier tel quel) + actions du panneau. Plus de chevron ici :
+ * l'icône panneau suffit (les chevrons restent sur les panneaux ouverts).
+ */
 export function RailReplie({
   icone,
   titre,
-  directionRetour,
+  actions = [],
   onDeplier,
 }: {
   icone: IconName;
   /** Tooltip + label accessible (« … — cliquer pour déplier »). */
   titre: string;
-  /** Sens du retour du contenu (graphe replié à gauche → "droite", liste/détail → "gauche"). */
-  directionRetour: DirectionRepli;
+  actions?: ActionRail[];
   onDeplier: () => void;
 }) {
   return (
@@ -59,7 +68,22 @@ export function RailReplie({
       <button className="btn px-2.5" onClick={onDeplier} title={titre} aria-label={titre} aria-expanded={false}>
         <Icon name={icone} size={17} />
       </button>
-      <ChevronRepli direction={directionRetour} titre={titre} replie onBasculer={onDeplier} />
+      {actions.map((a) =>
+        a.kind === "rendu" ? (
+          <Fragment key={a.cle}>{a.rendu}</Fragment>
+        ) : (
+          <button
+            key={a.titre}
+            className="btn px-2"
+            onClick={a.onAction}
+            title={a.titre}
+            aria-label={a.titre}
+            aria-current={a.actif ? true : undefined}
+          >
+            <Icon name={a.icone} size={15} />
+          </button>
+        ),
+      )}
     </div>
   );
 }

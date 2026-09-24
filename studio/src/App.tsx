@@ -3,6 +3,7 @@ import {
   ReactFlow,
   Background,
   Controls,
+  ControlButton,
   MiniMap,
   applyNodeChanges,
   type Edge,
@@ -17,6 +18,7 @@ import { validateGame, deadEnds } from "./game/validate";
 import { evaluate, drawPool, type Sim } from "./game/evaluate";
 import { composeNodes, setActivation, registerAsset, exportPackFull, canExport, addSecoursCode, importGame, addObject, setObjects, setReview, removeNode, renameNode, duplicateNode, patchScreenZone, addScreenWidget, setScreenWidget as mcpSetScreenWidget, removeScreenWidget, moveScreenWidget, moveScreenWidgetAcross, setNodeScreen, setScreenBackground, setScreenStyles, setGlobalScreenStyles, setMinigameDefaults, type ManifestFile } from "./game/mcp";
 import { emptyMeta, type Condition, type Effect, type Game, type GameNode, type MinigameDefaults, type Predicate, type StudioMeta, type ExperienceStyle, type Branding, type GameMode, type Difficulty, type ZoneId } from "./game/types";
+import { buildCompatSidecar, canExportToChannel, type ChannelId } from "./game/compat";
 import { sha256Hex } from "./game/pack";
 import { FONT_OPTIONS, estPoliceConnue } from "./game/fonts";
 import {
@@ -195,8 +197,44 @@ const ECRANS: { id: Ecran; nom: string; icone: IconName }[] = [
   { id: "config", nom: "Configuration", icone: "engrenage" },
 ];
 
-export default function App() {
-  const [st, dispatch] = useReducer(reduce, undefined, initDraft);
+// Barre des viewports d'aperçu (change studio-control-priority) : P2 replié
+// avec badge du viewport courant. Enfant dédié car zoneGraphe est un useMemo.
+function BarreViewports({ viewport, onChoisir }: { viewport: ViewportId; onChoisir: (v: ViewportId) => void }) {
+  const [ouvert, basculer] = useAccordeon("apercu-viewports", false);
+  const courant = VIEWPORTS.find((v) => v.id === viewport) ?? VIEWPORTS[0];
+  return (
+    <Accordeon
+      id="apercu-viewports"
+      titre="Aperçu"
+      badge={
+        courant ? (
+          <span className="puce" title={`${courant.libelle} (${courant.largeur}×${courant.hauteur})`}>
+            {courant.largeur}×{courant.hauteur}
+          </span>
+        ) : undefined
+      }
+      ouvert={ouvert}
+      onToggle={basculer}
+    >
+      <div className="flex shrink-0 items-center gap-1" role="toolbar" aria-label="Viewport d'aperçu">
+        {VIEWPORTS.map((v) => (
+          <button
+            key={v.id}
+            type="button"
+            className={`btn text-[8px] ${viewport === v.id ? "btn-active" : ""}`}
+            aria-pressed={viewport === v.id}
+            title={`${v.libelle} (${v.largeur}×${v.hauteur})`}
+            onClick={() => onChoisir(v.id)}
+          >
+            {v.libelle}
+          </button>
+        ))}
+      </div>
+    </Accordeon>
+  );
+}
+
+export default function App() {  const [st, dispatch] = useReducer(reduce, undefined, initDraft);
   const { game } = st.present;
   const [sel, setSel] = useState<string | null>(null);
   // Sélection multiple (Shift+clic, native ReactFlow) + recherche dans le graphe.
@@ -243,6 +281,10 @@ export default function App() {
   const [etapeWorkflow, setEtapeWorkflow] = useState<EtapeWorkflow>(1);
   const [onglet, setOnglet] = useState<Onglet>("graphe");
   const [ecran, setEcran] = useState<Ecran>("composer");
+  // Canal d'export (change player-pwa-shell) : NATIVE par défaut, PWA pour
+  // la coquille web. Le verdict de compatibilité est affiché à l'écran
+  // Exporter et embarqué (compat.json) ; un canal refusé bloque son export.
+  const [canalExport, setCanalExport] = useState<ChannelId>("NATIVE");
   // Verdicts C1/C2 pour la barre globale (null = couche non exécutée).
   const [couches, setCouches] = useState<{ c1: boolean; c2: boolean | null }>({ c1: true, c2: true });
   // Détail par couche pour l'écran Valider (erreurs brutes, groupées au rendu).
@@ -251,6 +293,13 @@ export default function App() {
   const [calque, setCalque] = useState<null | "i18n" | "modes">(null);
   // Vue centrale : graphe ReactFlow, carte MapView (geo/indoor) ou ecran WYSIWYG du noeud selectionne
   const [vueCentrale, setVueCentrale] = useState<"graphe" | "carte" | "screen">("graphe");
+  // Famille active de l'Inspecteur (change studio-action-rails) : remontée ici
+  // pour que le rail détail puisse déplier + activer une famille directement.
+  const [activeFamille, setActiveFamille] = useState<string>(FAMILLES[0].id);
+  // Section Avancé de l'écran Config (change studio-control-priority), fermée.
+  const [configAvanceOuvert, basculerConfigAvance] = useAccordeon("config-avance", false);
+  // Brouillon local : effacement destructif replié (change studio-control-priority).
+  const [brouillonAvanceOuvert, basculerBrouillonAvance] = useAccordeon("importer-avance-brouillon", false);
   // Selection dans le canvas screen : zone + index de widget (pas d'id dans le schema)
   const [screenZone, setScreenZone] = useState<ZoneId | null>(null);
   const [screenWidget, setScreenWidget] = useState<number | null>(null);
@@ -720,8 +769,22 @@ const noeuds: Node[] = useMemo(
         }
       }
       setDraws(nextDraws);
-    } else journal(`${id} : abandonnée`);
-    setActiveId(null);
+      // Avance auto (change studio-correctifs-terrain) : réévalue avec les
+      // états frais (done + draws à jour) et rouvre le premier éligible ;
+      // sinon retomber sur l'attente existante.
+      const base = objetSim();
+      const sFrais: Sim = { ...base, completedAt: new Map(base.completedAt).set(id, sim.dtMin * 60000) };
+      const fraisDone = new Map(Object.entries(done));
+      fraisDone.set(id, sim.dtMin * 60000);
+      const fraisCounts = new Map(Object.entries(counts));
+      fraisCounts.set(id, fois);
+      const suivant = evaluate(game, sFrais, nextDraws, fraisDone, fraisCounts, new Set()).unlocked.find((nid) => nid !== id) ?? null;
+      if (suivant) journal(`${suivant} : ouverture auto`);
+      setActiveId(suivant);
+    } else {
+      journal(`${id} : abandonnée`);
+      setActiveId(null);
+    }
   };
 
   const nouvelleSession = () => {
@@ -773,17 +836,21 @@ const noeuds: Node[] = useMemo(
     setTestAll(out.join(" | "));
   };
 
-  const exporter = async () => {
+  // Porte unique d'export (spec studio-authoring) : la barre globale OUVRE
+  // l'écran Exporter, qui seul exécute la génération via genererPack.
+  const exporter = () => {
     setEcran("exporter");
+  };
+
+  // Génération du pack depuis l'écran Exporter. En échec on RESTE sur
+  // l'écran (la checklist reflète l'état) au lieu de repartir au Composer.
+  const genererPack = async () => {
+    if (bloqueExport && !animateur) return;
     const r = await exportPackFull(game, st.present.meta, manifest, animateur);
     if (!r.ok) {
       setBrut(r.errors);
       setRapport(r.errors.map(erreurFR));
       setEtapeWorkflow(4);
-      const m = r.errors.join(" ");
-      const fautif = game.nodes.find((n) => m.includes(n.id));
-      if (fautif) setSel(fautif.id);
-      if (!etroite) setEcran("composer");
       return;
     }
     const dl = (name: string, text: string) => {
@@ -795,6 +862,7 @@ const noeuds: Node[] = useMemo(
     dl("game.json", r.gameJson!);
     dl("manifest.json", JSON.stringify(r.manifest, null, 2));
     dl("studio-meta.json", JSON.stringify(st.present.meta, null, 2));
+    dl("compat.json", JSON.stringify(buildCompatSidecar(game), null, 2));
     // Assets choisis pendant la session (change studio-media-templates) :
     // les octets gardés en mémoire sont proposés au téléchargement avec le pack.
     let nbAssets = 0;
@@ -1067,20 +1135,8 @@ const noeuds: Node[] = useMemo(
         </div>
       ) : vueCentrale === "screen" ? (
         <div className="relative flex-1 overflow-hidden bg-surface flex flex-col">
-          <div className="flex shrink-0 items-center gap-1 px-2 py-1 border-b border-rule" role="toolbar" aria-label="Viewport d'aperçu">
-            <span className="text-[8px] font-bold uppercase text-fog mr-1">Aperçu</span>
-            {VIEWPORTS.map((v) => (
-              <button
-                key={v.id}
-                type="button"
-                className={`btn text-[8px] ${screenViewport === v.id ? "btn-active" : ""}`}
-                aria-pressed={screenViewport === v.id}
-                title={`${v.libelle} (${v.largeur}×${v.hauteur})`}
-                onClick={() => setScreenViewport(v.id)}
-              >
-                {v.libelle}
-              </button>
-            ))}
+          <div className="shrink-0 px-2 py-1 border-b border-rule">
+            <BarreViewports viewport={screenViewport} onChoisir={setScreenViewport} />
           </div>
           {etape ? (
             <PhoneCanvas
@@ -1123,7 +1179,20 @@ const noeuds: Node[] = useMemo(
         <div className="carte studio-flow relative flex-1 overflow-hidden">
           <ReactFlow nodes={noeuds} edges={aretes} onNodesChange={onNodesChange} onConnect={onConnect} onNodeClick={(e, n) => choisirNoeud(n.id, (e as unknown as { shiftKey?: boolean }).shiftKey === true)} onPaneClick={viderSelectionPane} onSelectionChange={onSelectionChange} multiSelectionKeyCode="Shift" onInit={(instance) => { rfRef.current = instance; }} minZoom={0.3} maxZoom={2} nodesConnectable={!relecture} nodesDraggable={!relecture} elementsSelectable colorMode={theme} className="w-full h-full">
             <Background gap={22} color={theme === "light" ? "#dee2e6" : "#1e2228"} />
-            <Controls showInteractive={false} />
+            <Controls showInteractive={false} showFitView={true} fitViewOptions={{ padding: 0.2 }} position="bottom-left">
+              <ControlButton
+                title={selMulti.length < 2 ? "Sélectionne au moins 2 nœuds (Shift+clic)" : `Aligner horizontalement (${selMulti.length} sélectionnés)`}
+                aria-label="Aligner horizontalement"
+                disabled={selMulti.length < 2 || relecture}
+                onClick={() => { aligner("y"); }}
+              >H</ControlButton>
+              <ControlButton
+                title={selMulti.length < 2 ? "Sélectionne au moins 2 nœuds (Shift+clic)" : `Aligner verticalement (${selMulti.length} sélectionnés)`}
+                aria-label="Aligner verticalement"
+                disabled={selMulti.length < 2 || relecture}
+                onClick={() => { aligner("x"); }}
+              >V</ControlButton>
+            </Controls>
             <MiniMap pannable zoomable nodeColor={theme === "light" ? "#adb5bd" : "#6b7280"} className="rounded-lg" aria-label="Mini-carte du graphe" />
           </ReactFlow>
         </div>
@@ -1217,7 +1286,8 @@ const noeuds: Node[] = useMemo(
               <Inspecteur
                 game={game} node={etape} meta={st.present.meta} editGame={editGame} edit={edit}
                 nouveauType={nouveauType} setNouveauType={setNouveauType} lectureSeule={relecture}
-                onAllerConfig={() => setEcran("config")}
+                onAllerConfig={() => setEcran("config")} onPickFile={prendreImage}
+                activeFamille={activeFamille} setActiveFamille={setActiveFamille}
               />
             }
             onPatchZone={(z, patch) => editGame((g) => patchScreenZone(g, etape.id, z, patch), "patchScreenZone")}
@@ -1228,11 +1298,12 @@ const noeuds: Node[] = useMemo(
             onPatchWidget={(z, i, w) => editGame((g) => mcpSetScreenWidget(g, etape.id, z, i, w), "setScreenWidget")}
           />
         ) : (
-          <Inspecteur
-            game={game} node={etape} meta={st.present.meta} editGame={editGame} edit={edit}
-            nouveauType={nouveauType} setNouveauType={setNouveauType} lectureSeule={relecture}
-            onAllerConfig={() => setEcran("config")}
-          />
+            <Inspecteur
+              game={game} node={etape} meta={st.present.meta} editGame={editGame} edit={edit}
+              nouveauType={nouveauType} setNouveauType={setNouveauType} lectureSeule={relecture}
+              onAllerConfig={() => setEcran("config")} onPickFile={prendreImage}
+              activeFamille={activeFamille} setActiveFamille={setActiveFamille}
+            />
         )
       ) : (
         <div className="p-3 text-[9px]">
@@ -1241,48 +1312,18 @@ const noeuds: Node[] = useMemo(
         </div>
       )}
     </aside>
-  ), [etape, game, st.present.meta, edit, editGame, nouveauType, relecture, vueCentrale, screenZone, screenWidget, screenBg, prendreImage]);
+  ), [etape, game, st.present.meta, edit, editGame, nouveauType, relecture, vueCentrale, screenZone, screenWidget, screenBg, prendreImage, activeFamille]);
 
   // Listes mémoïsées (change studio-graph-selection) : mêmes dépendances de données
   // que le détail, pour ne pas re-rendre à chaque frame de drag.
   const liste = useMemo(() => (
     <div className="flex flex-col min-h-0">
-      <div className="flex items-center gap-1 px-2 py-1 border-b border-rule">
-        <span className="text-[8px] font-bold uppercase text-fog mr-1">Ajouter</span>
-        <button className="btn min-h-8 px-2 text-[8px]" onClick={() => ajouterEtape("etape")} disabled={relecture} title="Créer une étape Quiz / jeu" aria-label="Étape de jeu">
-          <Icon name="etape" size={14} /> Étape
-        </button>
-        <button className="btn min-h-8 px-2 text-[8px]" onClick={() => ajouterEtape("lieu")} disabled={relecture} title="Créer un lieu avec zone GPS" aria-label="Lieu GPS">
-          <Icon name="lieu" size={14} /> Lieu
-        </button>
-        <button className="btn min-h-8 px-2 text-[8px]" onClick={() => ajouterEtape("tirage")} disabled={relecture} title="Créer un tirage au sort parmi des étapes" aria-label="Tirage au sort">
-          <Icon name="tirage" size={14} /> Tirage
-        </button>
-        <button className="btn min-h-8 px-2 text-[8px]" onClick={() => ajouterEtape("fin")} disabled={relecture} title="Créer l'étape de fin du jeu" aria-label="Fin du jeu">
-          <Icon name="fin" size={14} /> Fin
-        </button>
-      </div>
-      <NodeList game={game} statuts={st.present.meta.status} impasses={impasses} sel={sel} selMulti={selMulti} onChoisir={choisirNoeud} onBasculer={(id) => choisirNoeud(id, true)} onToutBasculer={basculerTout} toutSelectionne={toutEstSelectionne} erreursParNoeud={erreursParNoeud} lectureSeule={relecture} onReplier={() => basculerSection("liste")} onSupprimer={!relecture ? (id) => editGame((g) => removeNode(g, id), "removeNode") : undefined} />
+      <NodeList game={game} statuts={st.present.meta.status} impasses={impasses} sel={sel} selMulti={selMulti} onChoisir={choisirNoeud} onBasculer={(id) => choisirNoeud(id, true)} onToutBasculer={basculerTout} toutSelectionne={toutEstSelectionne} erreursParNoeud={erreursParNoeud} lectureSeule={relecture} onReplier={() => basculerSection("liste")} onAjouter={(preset) => ajouterEtape(preset)} onSupprimer={!relecture ? (id) => editGame((g) => removeNode(g, id), "removeNode") : undefined} />
     </div>
   ), [game, st.present.meta.status, impasses, sel, selMulti, erreursParNoeud, relecture, choisirNoeud, basculerTout, toutEstSelectionne, ajouterEtape]);
   const listeSimple = useMemo(() => (
     <div className="flex flex-col min-h-0">
-      <div className="flex items-center gap-1 px-2 py-1 border-b border-rule">
-        <span className="text-[8px] font-bold uppercase text-fog mr-1">Ajouter</span>
-        <button className="btn min-h-8 px-2 text-[8px]" onClick={() => ajouterEtape("etape")} disabled={relecture} title="Créer une étape Quiz / jeu" aria-label="Étape de jeu">
-          <Icon name="etape" size={14} /> Étape
-        </button>
-        <button className="btn min-h-8 px-2 text-[8px]" onClick={() => ajouterEtape("lieu")} disabled={relecture} title="Créer un lieu avec zone GPS" aria-label="Lieu GPS">
-          <Icon name="lieu" size={14} /> Lieu
-        </button>
-        <button className="btn min-h-8 px-2 text-[8px]" onClick={() => ajouterEtape("tirage")} disabled={relecture} title="Créer un tirage au sort parmi des étapes" aria-label="Tirage au sort">
-          <Icon name="tirage" size={14} /> Tirage
-        </button>
-        <button className="btn min-h-8 px-2 text-[8px]" onClick={() => ajouterEtape("fin")} disabled={relecture} title="Créer l'étape de fin du jeu" aria-label="Fin du jeu">
-          <Icon name="fin" size={14} /> Fin
-        </button>
-      </div>
-      <NodeList game={game} statuts={st.present.meta.status} impasses={impasses} sel={sel} selMulti={selMulti} onChoisir={choisirNoeud} onBasculer={(id) => choisirNoeud(id, true)} onToutBasculer={basculerTout} toutSelectionne={toutEstSelectionne} erreursParNoeud={erreursParNoeud} lectureSeule={relecture} onSupprimer={!relecture ? (id) => editGame((g) => removeNode(g, id), "removeNode") : undefined} />
+      <NodeList game={game} statuts={st.present.meta.status} impasses={impasses} sel={sel} selMulti={selMulti} onChoisir={choisirNoeud} onBasculer={(id) => choisirNoeud(id, true)} onToutBasculer={basculerTout} toutSelectionne={toutEstSelectionne} erreursParNoeud={erreursParNoeud} lectureSeule={relecture} onAjouter={(preset) => ajouterEtape(preset)} onSupprimer={!relecture ? (id) => editGame((g) => removeNode(g, id), "removeNode") : undefined} />
     </div>
   ), [game, st.present.meta.status, impasses, sel, selMulti, erreursParNoeud, relecture, choisirNoeud, basculerTout, toutEstSelectionne, ajouterEtape]);
 
@@ -1342,9 +1383,17 @@ const noeuds: Node[] = useMemo(
           <div className="mt-4 border-t border-rule pt-3">
             <div className="text-[8px] font-mono uppercase tracking-widest text-fog mb-2">Brouillon local</div>
             <p className="text-[9px] font-mono text-fog mb-2">Le jeu en cours est sauvegardé automatiquement dans ce navigateur.</p>
-            <button className="btn-danger min-h-8 px-2.5 text-[8px]" onClick={effacerBrouillon} disabled={relecture} title="Supprimer la sauvegarde locale et repartir sur un jeu vide">
-              Effacer le brouillon
-            </button>
+            <Accordeon
+              id="importer-avance-brouillon"
+              titre="Avancé"
+              badge={<span className="puce puce-erreur">Destructif</span>}
+              ouvert={brouillonAvanceOuvert}
+              onToggle={basculerBrouillonAvance}
+            >
+              <button className="btn-danger min-h-8 px-2.5 text-[8px]" onClick={effacerBrouillon} disabled={relecture} title="Supprimer la sauvegarde locale et repartir sur un jeu vide">
+                Effacer le brouillon
+              </button>
+            </Accordeon>
           </div>
         </div>
       )}
@@ -1360,50 +1409,7 @@ const noeuds: Node[] = useMemo(
             <h2 className="font-display font-extrabold text-2xl tracking-widest uppercase text-snow mb-6">Validation</h2>
             {pied}
             {listeErreurs}
-            <div className="grid grid-cols-2 gap-4 mb-5">
-              <div className="bg-panel border border-rule rounded-md p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-[8px] font-mono uppercase tracking-widest text-fog">C1 — Schéma AJV</span>
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-2 h-2 rounded-full bg-pass" />
-                    <span className="font-mono text-[8px] text-pass uppercase">Pass</span>
-                  </div>
-                </div>
-                <p className="text-[11px] text-fog leading-relaxed">Draft-07 conforme. Tous les champs requis présents.</p>
-                <div className="mt-3 font-mono text-[8px] text-fog bg-canvas rounded px-2 py-1.5">{erreurs.filter(e => e.type === 'C1').length} erreur · 0 avertissement</div>
-              </div>
-              <div className="bg-panel border border-fail/20 rounded-md p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-[8px] font-mono uppercase tracking-widest text-fog">C2 — Applicative</span>
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-2 h-2 rounded-full bg-fail" />
-                    <span className="font-mono text-[8px] text-fail uppercase">Fail</span>
-                  </div>
-                </div>
-                <p className="text-[11px] text-fog leading-relaxed">Cycles, atteignabilité isEnding, cohérence HOLD.</p>
-                <div className="mt-3 font-mono text-[8px] text-fog bg-canvas rounded px-2 py-1.5">{erreurs.length} erreur(s)</div>
-              </div>
-            </div>
-            {erreurs.map((e, i) => (
-              <div key={i} className={`flex items-start gap-3 bg-panel border rounded px-4 py-3 mb-2 ${e.sev === 'error' ? 'border-fail/20' : 'border-caution/20'}`}>
-                <div className={`mt-1 w-1.5 h-1.5 rounded-full shrink-0 ${e.sev === 'error' ? 'bg-fail' : 'bg-caution'}`} />
-                <div>
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <span className="font-mono text-[8px] text-fog">{e.id}</span>
-                    <span className={`font-mono text-[8px] uppercase ${e.sev === 'error' ? 'text-fail' : 'text-caution'}`}>{e.sev}</span>
-                    <span className="font-mono text-[8px] text-neon">→ {e.nodeId}</span>
-                  </div>
-                  <span className="text-[11px] text-snow">{e.message}</span>
-                </div>
-              </div>
-            ))}
-            <div className="flex items-center gap-3 p-3 bg-fail/5 border border-fail/15 rounded">
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                <circle cx="7" cy="7" r="6" stroke="#ef4444" strokeWidth="1.2"/>
-                <path d="M7 4.5v2.5M7 10v.4" stroke="#ef4444" strokeWidth="1.2" strokeLinecap="round"/>
-              </svg>
-              <span className="font-mono text-[9px] text-fail">Export bloqué — corriger les erreurs C2 avant de continuer.</span>
-            </div>
+            <BlocValidation couches={detailCouches} verdicts={couches} game={game} onVoir={(id) => { choisirNoeud(id); setEcran("composer"); }} />
           </div>
         </div>
       )}
@@ -1457,41 +1463,115 @@ const noeuds: Node[] = useMemo(
             <h2 className="font-display font-extrabold text-2xl tracking-widest uppercase text-snow mb-6">Exporter</h2>
             <div className="text-[8px] font-mono uppercase tracking-widest text-fog mb-3">Contrôle pré-export</div>
             <div className="bg-panel border border-rule rounded-md overflow-hidden mb-5">
-              {[
-                { ok: true, label: 'Schéma C1 conforme (AJV Draft-07)' },
-                { ok: true, label: 'Tous les nœuds atteignables depuis START' },
-                { ok: true, label: 'Nœud isEnding présent (FIN)' },
-                { ok: false, label: '2 nœuds en statut draft' },
-                { ok: false, label: 'holdMode: none — kiosque nécessite reviewed' },
-              ].map((p, i) => (
-                <div key={i} className={`flex items-center gap-3 px-4 py-3 ${i < 4 ? 'border-b border-rule/40' : ''}`}>
-                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                    {p.ok ? (
-                      <>
-                        <circle cx="7" cy="7" r="6" stroke="#10b981" strokeWidth="1.2"/>
-                        <path d="M4.5 7l2 2 3-3" stroke="#10b981" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-                      </>
-                    ) : (
-                      <>
-                        <circle cx="7" cy="7" r="6" stroke="#ef4444" strokeWidth="1.2"/>
-                        <path d="M5 5l4 4M9 5l-4 4" stroke="#ef4444" strokeWidth="1.2" strokeLinecap="round"/>
-                      </>
-                    )}
-                  </svg>
-                  <span className={`text-[11px] ${p.ok ? 'text-snow' : 'text-fail'}`}>{p.label}</span>
-                </div>
-              ))}
+              {(() => {
+                const brouillons = game.nodes
+                  .filter((n) => (st.present.meta.status[n.id]?.state ?? "draft") === "draft")
+                  .map((n) => n.id);
+                const hold = game.global?.holdMode ?? "none";
+                const c1err = detailCouches.find((l) => l.layer === 1)?.errors.length ?? 0;
+                const c2 = detailCouches.find((l) => l.layer === 2);
+                const c2err = c2?.errors.length ?? 0;
+                const lignes: { ok: boolean | null; label: string }[] = [
+                  { ok: couches.c1, label: `Schéma C1 conforme (AJV Draft-07)${c1err ? ` — ${c1err} erreur(s), voir Valider` : ""}` },
+                  { ok: couches.c2, label: couches.c2 == null ? "C2 applicative — non exécutée (C1 en échec)" : `C2 applicative (cycles, atteignabilité, pools, HOLD, références)${c2err ? ` — ${c2err} erreur(s), voir Valider` : ""}` },
+                  { ok: finPresente, label: finPresente ? "Nœud isEnding présent (FIN)" : "Nœud isEnding manquant (désigne une Fin du jeu)" },
+                  { ok: brouillons.length === 0, label: brouillons.length === 0 ? "Aucun nœud en statut draft" : `${brouillons.length} nœud(s) en statut draft : ${brouillons.join(", ")}` },
+                  ...(hold !== "none"
+                    ? [{ ok: (brouillons.length === 0) as boolean | null, label: `Kiosque HOLD (${hold}) — jeu relu exigé${brouillons.length ? " : relecture en cours" : ""}` }]
+                    : []),
+                ];
+                return lignes.map((p, i) => (
+                  <div key={i} className={`flex items-center gap-3 px-4 py-3 ${i < lignes.length - 1 ? 'border-b border-rule/40' : ''}`}>
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                      {p.ok == null ? (
+                        <circle cx="7" cy="7" r="6" stroke="#8b8f98" strokeWidth="1.2" strokeDasharray="2 2" />
+                      ) : p.ok ? (
+                        <>
+                          <circle cx="7" cy="7" r="6" stroke="#10b981" strokeWidth="1.2" />
+                          <path d="M4.5 7l2 2 3-3" stroke="#10b981" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+                        </>
+                      ) : (
+                        <>
+                          <circle cx="7" cy="7" r="6" stroke="#ef4444" strokeWidth="1.2" />
+                          <path d="M5 5l4 4M9 5l-4 4" stroke="#ef4444" strokeWidth="1.2" strokeLinecap="round" />
+                        </>
+                      )}
+                    </svg>
+                    <span className={`text-[11px] ${p.ok == null ? 'text-fog' : p.ok ? 'text-snow' : 'text-fail'}`}>{p.label}</span>
+                  </div>
+                ));
+              })()}
             </div>
+            <div className="text-[8px] font-mono uppercase tracking-widest text-fog mb-2">Canal player (compatibilité)</div>
+            {(() => {
+              const verdicts = (["NATIVE", "PWA"] as ChannelId[]).map((c) => ({ canal: c, ...canExportToChannel(game, c) }));
+              const courant = verdicts.find((v) => v.canal === canalExport)!;
+              return (
+                <div className="bg-panel border border-rule rounded-md overflow-hidden mb-5">
+                  <div className="flex gap-2 px-4 py-3 border-b border-rule/40" role="radiogroup" aria-label="Canal d'export">
+                    {(["NATIVE", "PWA"] as ChannelId[]).map((c) => (
+                      <button
+                        key={c}
+                        role="radio"
+                        aria-checked={canalExport === c}
+                        className={`btn min-h-8 px-2.5 text-[8px] ${canalExport === c ? "btn-active" : ""}`}
+                        onClick={() => setCanalExport(c)}
+                      >
+                        {c === "NATIVE" ? "Natif" : "PWA"}
+                      </button>
+                    ))}
+                  </div>
+                  {verdicts.map((v) => (
+                    <div key={v.canal} className="px-4 py-2 border-b border-rule/40 last:border-0">
+                      <span className={`puce ${v.ok ? (v.replis.length ? "puce-caution" : "puce-ok") : "puce-erreur"}`}>
+                        {v.canal} : {v.ok ? (v.replis.length ? "dégradé" : "compatible") : "refusé"}
+                      </span>
+                      {v.motifs.map((m, i) => (
+                        <p key={i} className="text-[10px] text-fail mt-1">• {m}</p>
+                      ))}
+                      {v.replis.map((r, i) => (
+                        <p key={i} className="text-[10px] text-caution mt-1">• repli : {r}</p>
+                      ))}
+                    </div>
+                  ))}
+                  {!courant.ok && (
+                    <p className="px-4 py-2 text-[10px] text-fail" role="alert">
+                      Export {courant.canal} bloqué : corriger les motifs ci-dessus ou choisir l'autre canal.
+                    </p>
+                  )}
+                </div>
+              );
+            })()}
             <div className="text-[8px] font-mono uppercase tracking-widest text-fog mb-2">Manifeste (aperçu)</div>
             <div className="bg-canvas border border-rule rounded p-3 mb-5 font-mono text-[9px] space-y-1">
-              <div className="flex"><span className="text-neon flex-1">game.json</span><span className="text-fog mr-4">v2.4.1</span><span className="text-fog">12.4 KB</span></div>
-              <div className="flex"><span className="text-neon flex-1">assets/intro.mp4</span><span className="text-fog">4.2 MB</span></div>
-              <div className="flex"><span className="text-neon flex-1">assets/map.png</span><span className="text-fog">340 KB</span></div>
-              <div className="pt-2 border-t border-rule text-fog">sha256: <span className="text-dim">a3f2c1d8…e9c8e1</span> · 3 fichiers · 4.56 MB</div>
+              <div className="flex"><span className="text-neon flex-1">game.json</span><span className="text-fog mr-4">v{game.schemaVersion}</span><span className="text-fog">taille calculée à la génération</span></div>
+              {manifest.map((m) => (
+                <div key={m.path} className="flex"><span className="text-neon flex-1">{m.path}</span><span className="text-fog mr-4">v{m.version}</span><span className="text-fog">taille calculée à la génération</span></div>
+              ))}
+              {dernierExport ? (
+                <div className="pt-2 border-t border-rule text-fog">Dernier export : {new Date(dernierExport.date).toLocaleString()} — {dernierExport.files.map((f) => `${f.path} (sha256: ${f.sha256.slice(0, 8)}…)`).join(" · ")}</div>
+              ) : (
+                <div className="pt-2 border-t border-rule text-fog">{manifest.length + 1} fichier(s) · tailles et sha256 calculés à la génération</div>
+              )}
             </div>
-            <button disabled={true} className={`w-full py-3 rounded font-display font-bold text-[9px] uppercase tracking-widest transition-all ${true ? 'bg-fail/8 border border-fail/20 text-fail/50 cursor-not-allowed' : 'bg-neon text-canvas hover:brightness-110'}`}>
-              Export bloqué — corriger les erreurs
-            </button>
+            {(() => {
+              const bloque = bloqueExport && !animateur;
+              return (
+                <>
+                  <button disabled={bloque} onClick={genererPack} title={bloque ? raisonsBlocage.join("\n") : "Générer le pack offline"}
+                    className={`w-full py-3 rounded font-display font-bold text-[9px] uppercase tracking-widest transition-all ${bloque ? 'bg-fail/8 border border-fail/20 text-fail/50 cursor-not-allowed' : 'bg-neon text-canvas hover:brightness-110'}`}>
+                    {bloque ? "Export bloqué — corriger les erreurs" : "Générer le pack"}
+                  </button>
+                  {bloque && (
+                    <ul className="mt-2 font-mono text-[8px] text-fail space-y-1" aria-label="Causes du blocage">
+                      {raisonsBlocage.map((r, i) => (
+                        <li key={i}>• {erreurFR(r)}</li>
+                      ))}
+                    </ul>
+                  )}
+                </>
+              );
+            })()}
           </div>
         </div>
       )}
@@ -1503,7 +1583,15 @@ const noeuds: Node[] = useMemo(
             <ExperienceStylePanel game={game} edit={edit} lectureSeule={relecture} />
             <BrandingPanel game={game} edit={edit} lectureSeule={relecture} onPickFile={prendreImage} />
             <ScreenGlobalPanel game={game} edit={edit} lectureSeule={relecture} onPickFile={prendreImage} />
-            <MinigameDefaultsPanel game={game} editGame={editGame} lectureSeule={relecture} />
+            <Accordeon
+              id="config-avance"
+              titre="Avancé"
+              badge={<span className="puce">Défauts mini-jeux</span>}
+              ouvert={configAvanceOuvert}
+              onToggle={basculerConfigAvance}
+            >
+              <MinigameDefaultsPanel game={game} editGame={editGame} lectureSeule={relecture} />
+            </Accordeon>
             <ObjetsPanel game={game} editGame={editGame} lectureSeule={relecture} onChoisir={choisirNoeud} />
             {(() => {
               const holdMode = game.global?.holdMode ?? "none";
@@ -1561,13 +1649,16 @@ const noeuds: Node[] = useMemo(
           onChange={(e) => edit((s) => ({ ...s, branding: { ...s.branding, name: e.target.value } }), "setBranding")}
           placeholder="Nom du jeu"
           disabled={relecture}
-          className="bg-transparent border-b border-rule text-snow font-display text-[10px] tracking-wide w-40 outline-none focus:border-snow placeholder:text-fog/40 disabled:opacity-40"
+          size={Math.max(4, (game.branding?.name ?? "").length + 2)}
+          title={game.branding?.name ?? "Nom du jeu"}
+          className="bg-transparent border-b border-rule text-snow font-display text-[10px] tracking-wide min-w-0 max-w-[280px] outline-none focus:border-snow placeholder:text-fog/40 disabled:opacity-40"
         />
         <div className="h-3 w-px bg-rule" />
         <div className="flex items-center gap-4 font-mono text-[8px] text-fog">
           <span><span className="text-snow">{game.nodes.length}</span> nœuds</span>
           <span><span className="text-caution">{nbBrouillons}</span> draft</span>
           <span><span className="text-pass">{game.nodes.length - nbBrouillons}</span> reviewed</span>
+          <PastilleValidation nbErreurs={erreurs.length} onVoir={() => setEcran("valider")} />
         </div>
         <div className="ml-auto flex items-center gap-1.5">
           <button
@@ -1575,8 +1666,8 @@ const noeuds: Node[] = useMemo(
             onClick={() => setTheme((t) => t === "dark" ? "light" : "dark")}
             aria-label={theme === "dark" ? "Basculer en mode clair" : "Basculer en mode sombre"}
           ><Icon name={theme === "dark" ? "soleil" : "lune"} size={13} /></button>
-          <button className="px-2.5 py-1 text-[7px] font-mono uppercase tracking-wider border border-rule rounded text-fog hover:text-snow transition-colors" disabled={!st.past.length || relecture} onClick={() => dispatch({ t: "undo" })}>Undo</button>
-          <button className="px-2.5 py-1 text-[7px] font-mono uppercase tracking-wider border border-rule rounded text-fog hover:text-snow transition-colors" disabled={!st.future.length || relecture} onClick={() => dispatch({ t: "redo" })}>Redo</button>
+          <button className="px-2.5 py-1 text-[7px] font-mono uppercase tracking-wider border border-rule rounded text-fog hover:text-snow transition-colors" disabled={!st.past.length || relecture} onClick={() => dispatch({ t: "undo" })} title="Annuler" aria-label="Annuler"><Icon name="annuler" size={13} /></button>
+          <button className="px-2.5 py-1 text-[7px] font-mono uppercase tracking-wider border border-rule rounded text-fog hover:text-snow transition-colors" disabled={!st.future.length || relecture} onClick={() => dispatch({ t: "redo" })} title="Rétablir" aria-label="Rétablir"><Icon name="retablir" size={13} /></button>
           <button disabled={bloqueExport && !animateur}
             className="px-2.5 py-1 text-[7px] font-mono uppercase tracking-wider border border-fail/20 rounded text-fail/45 cursor-not-allowed"
             onClick={exporter}>Exporter</button>
@@ -1675,28 +1766,64 @@ HOLD est un mode système : il se configure dans Configuration globale, pas ici.
         <main className="flex min-h-0 min-w-0 flex-[3] flex-col gap-2" aria-label="Graphe et liste">
           <div className="flex min-h-0 flex-1 gap-3">
             {mep.repliees.graphe ? (
-              <RailReplie icone="graphe" titre="Graphe — cliquer pour déplier" directionRetour="droite" onDeplier={() => basculerSection("graphe")} />
+              <RailReplie
+                icone="graphe"
+                titre="Graphe — cliquer pour déplier"
+                onDeplier={() => basculerSection("graphe")}
+                actions={[
+                  {
+                    kind: "icone",
+                    icone: "graphe",
+                    titre: "Graphe d'étapes",
+                    actif: vueCentrale === "graphe",
+                    onAction: () => { setVueCentrale("graphe"); if (mep.repliees.graphe) basculerSection("graphe"); },
+                  },
+                  {
+                    kind: "icone",
+                    icone: "lieu",
+                    titre: "Carte interactive",
+                    actif: vueCentrale === "carte",
+                    onAction: () => { setVueCentrale("carte"); if (mep.repliees.graphe) basculerSection("graphe"); },
+                  },
+                  {
+                    kind: "icone",
+                    icone: "oeil",
+                    titre: "Écran du nœud sélectionné",
+                    actif: vueCentrale === "screen",
+                    onAction: () => { setVueCentrale("screen"); if (mep.repliees.graphe) basculerSection("graphe"); },
+                  },
+                  {
+                    kind: "rendu",
+                    cle: "pastille",
+                    rendu: <PastilleValidation nbErreurs={erreurs.length} onVoir={() => setEcran("valider")} />,
+                  },
+                ]}
+              />
             ) : (
               <div id="section-graphe" className="relative flex min-h-0 min-w-0 flex-1 flex-col" style={surlignage("graphe")}>
                 {zoneGraphe}
                 <div className="absolute right-2 top-2 z-5 flex gap-1">
-                  <PastilleValidation nbErreurs={erreurs.length} onVoir={() => setEcran("valider")} />
-                  <button className="btn min-h-8 px-2 text-[8px]" onClick={() => { rfRef.current?.fitView({ padding: 0.2 }); }} title="Recentrer le graphe">
-                    Recentrer
-                  </button>
-                  <button className="btn min-h-8 px-2 text-[8px]" onClick={() => { aligner("y"); }} disabled={selMulti.length < 2 || relecture} title={selMulti.length < 2 ? "Sélectionne au moins 2 nœuds (Shift+clic)" : `Aligner horizontalement (${selMulti.length} sélectionnés)`}>
-                    Aligner H
-                  </button>
-                  <button className="btn min-h-8 px-2 text-[8px]" onClick={() => { aligner("x"); }} disabled={selMulti.length < 2 || relecture} title={selMulti.length < 2 ? "Sélectionne au moins 2 nœuds (Shift+clic)" : `Aligner verticalement (${selMulti.length} sélectionnés)`}>
-                    Aligner V
-                  </button>
                   <ChevronRepli direction="gauche" titre="Replier le graphe" replie={false} onBasculer={() => basculerSection("graphe")} />
                 </div>
               </div>
             )}
             <Splitter label="Ajuster la largeur de la liste" onDelta={(dx) => setMep((m) => ({ ...m, liste: Math.min(520, Math.max(220, m.liste - dx)) }))} onReset={() => setMep((m) => ({ ...m, liste: LAYOUT_DEFAUT.liste }))} />
             {mep.repliees.liste ? (
-              <RailReplie icone="liste" titre="Liste des étapes — cliquer pour déplier" directionRetour="gauche" onDeplier={() => basculerSection("liste")} />
+              <RailReplie
+                icone="liste"
+                titre="Liste des étapes — cliquer pour déplier"
+                onDeplier={() => basculerSection("liste")}
+                actions={
+                  relecture
+                    ? []
+                    : [
+                        { kind: "icone", icone: "etape", titre: "Créer une étape Quiz / jeu", onAction: () => ajouterEtape("etape") },
+                        { kind: "icone", icone: "lieu", titre: "Créer un lieu avec zone GPS", onAction: () => ajouterEtape("lieu") },
+                        { kind: "icone", icone: "tirage", titre: "Créer un tirage au sort parmi des étapes", onAction: () => ajouterEtape("tirage") },
+                        { kind: "icone", icone: "fin", titre: "Créer l'étape de fin du jeu", onAction: () => ajouterEtape("fin") },
+                      ]
+                }
+              />
             ) : (
               <div id="section-liste" className="flex min-w-0 flex-col" style={{ width: mep.liste, ...surlignage("liste") }}>
                 {liste}
@@ -1706,7 +1833,25 @@ HOLD est un mode système : il se configure dans Configuration globale, pas ici.
         </main>
         <Splitter label="Ajuster la largeur du panneau latéral" onDelta={(dx) => setMep((m) => ({ ...m, droite: Math.min(640, Math.max(280, m.droite - dx)) }))} onReset={() => setMep((m) => ({ ...m, droite: LAYOUT_DEFAUT.droite }))} />
         {mep.repliees.detail ? (
-          <RailReplie icone="detail" titre="Détail de l'étape — cliquer pour déplier" directionRetour="gauche" onDeplier={() => basculerSection("detail")} />
+          <RailReplie
+            icone="detail"
+            titre="Détail de l'étape — cliquer pour déplier"
+            onDeplier={() => basculerSection("detail")}
+            actions={
+              etape == null
+                ? []
+                : FAMILLES.map((f) => ({
+                    kind: "icone" as const,
+                    icone: f.icone,
+                    titre: `${f.titre} — ${f.aide}`,
+                    actif: activeFamille === f.id,
+                    onAction: () => {
+                      if (mep.repliees.detail) basculerSection("detail");
+                      setActiveFamille(f.id);
+                    },
+                  }))
+            }
+          />
         ) : (
         <div className="flex min-w-0 flex-col gap-3 overflow-auto" style={{ width: mep.droite }}>
             <div id="section-detail" className="flex min-h-0 flex-1 flex-col gap-1" style={surlignage("detail")}>
@@ -1988,17 +2133,19 @@ function PanneauModule({ node, globalDefaults, onPickFile, lectureSeule, editGam
   );
 }
 
-function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauType, lectureSeule, onAllerConfig }: {
+function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauType, lectureSeule, onAllerConfig, activeFamille, setActiveFamille, onPickFile }: {
   game: Game; node: GameNode; meta: StudioMeta;
-  editGame: (fn: (g: Game) => Game) => void;
+  editGame: (fn: (g: Game) => Game, op?: string) => void;
   edit: (fn: (s: { game: Game; meta: StudioMeta }) => { game: Game; meta: StudioMeta }) => void;
   nouveauType: string; setNouveauType: (s: string) => void;
   lectureSeule: boolean;
   onAllerConfig?: () => void;
+  activeFamille: string; setActiveFamille: (id: string) => void;
+  onPickFile?: (file: File) => Promise<string>;
 }) {
-  const [activeFamille, setActiveFamille] = useState<string>(FAMILLES[0].id);
   const [expertModuleOuvert, basculerExpertModule] = useAccordeon("insp-expert-module", false);
   const [expertMetaOuvert, basculerExpertMeta] = useAccordeon("insp-expert-meta", false);
+  const [secoursAvanceOuvert, basculerSecoursAvance] = useAccordeon("insp-avance-secours", false);
   const upd = (patch: Partial<GameNode>) => editGame((g) => ({ ...g, nodes: g.nodes.map((n) => (n.id === node.id ? { ...n, ...patch } : n)) }), "modifierNoeud");
   const updDecl = (i: number, patch: Partial<Condition>) =>
     editGame((g) => ({
@@ -2168,28 +2315,9 @@ function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauT
             </>
           );
         })()}
-        {node.module.type === "QUIZ" && (
-          <div>
-            {(Array.isArray(node.module.data.questions) ? node.module.data.questions as { q?: string }[] : []).map((q, i) => (
-              <div key={i} className="flex gap-1">
-                <input className="champ flex-1" value={q.q ?? ""} size={24} placeholder={`Question ${i + 1}`}
-                  onChange={(e) => {
-                    const questions = [...(node.module.data.questions as { q?: string }[])];
-                    questions[i] = { q: e.target.value };
-                    upd({ module: { ...node.module, data: { ...node.module.data, questions } } });
-                  }} />
-                <button className="btn px-2.5" aria-label={`Supprimer la question ${i + 1}`} title="Supprimer" onClick={() => {
-                  const questions = (node.module.data.questions as { q?: string }[]).filter((_, j) => j !== i);
-                  upd({ module: { ...node.module, data: { ...node.module.data, questions } } });
-                }}><Icon name="fermer" size={15} /></button>
-              </div>
-            ))}
-            <button className="btn" onClick={() => {
-              const questions = [...(Array.isArray(node.module.data.questions) ? node.module.data.questions as { q?: string }[] : []), { q: "" }];
-              upd({ module: { ...node.module, data: { ...node.module.data, questions } } });
-            }}><Icon name="ajouter" size={15} /> Question</button>
-          </div>
-        )}
+        {/* Formulaire du module (registre) sous le dropdown : meme panneau que le
+            WYSIWYG, sans plugin = rien (JSON expert ci-dessous). */}
+        <PanneauModule node={node} globalDefaults={game.global?.minigameDefaults} onPickFile={onPickFile} lectureSeule={lectureSeule} editGame={editGame} />
         <Accordeon id="insp-expert-module" titre="Données expertes (JSON)" badge={<span className="puce">JSON</span>} ouvert={expertModuleOuvert} onToggle={basculerExpertModule}>
           <textarea rows={3} className="w-full champ font-mono text-[8px]" value={JSON.stringify(node.module.data)} onChange={(e) => {
             try {
@@ -2265,13 +2393,15 @@ function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauT
         </select></label>
         <i className="text-[8px] text-fog">Conseil : {MILIEUX[milieu].reco}</i>
         {node.activation.requires.some((c) => c.type === "PROXIMITY_MASTER") && (
-          <button className="btn" onClick={() => {
-            try {
-              editGame((g) => addSecoursCode(g, node.id), "addSecoursCode");
-            } catch (e) {
-              alert(String(e));
-            }
-          }}><Icon name="ajouter" size={15} /> Secours par code</button>
+          <Accordeon id="insp-avance-secours" titre="Avancé" badge={<span className="puce">Secours</span>} ouvert={secoursAvanceOuvert} onToggle={basculerSecoursAvance}>
+            <button className="btn" onClick={() => {
+              try {
+                editGame((g) => addSecoursCode(g, node.id), "addSecoursCode");
+              } catch (e) {
+                alert(String(e));
+              }
+            }}><Icon name="ajouter" size={15} /> Secours par code</button>
+          </Accordeon>
         )}
         <Accordeon id="insp-expert-meta" titre="Options expertes (JSON)" badge={<span className="puce">JSON</span>} ouvert={expertMetaOuvert} onToggle={basculerExpertMeta}>
           <textarea rows={2} className="w-full champ font-mono text-[8px]" defaultValue={JSON.stringify(meta.overrides[node.id] ?? {})} key={node.id} onBlur={(e) => {
@@ -2390,6 +2520,7 @@ function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauT
 
 function ChampsDecl({ game, c, upd }: { game: Game; c: Condition; upd: (p: Partial<Condition>) => void }) {
   const num = (v: string) => (v === "" ? undefined : Number(v));
+  const [avanceOuvert, basculerAvance] = useAccordeon("declencheur-avance-radio", false);
   switch (c.type) {
     case "GEOFENCE":
       return (
@@ -2410,7 +2541,9 @@ function ChampsDecl({ game, c, upd }: { game: Game; c: Condition; upd: (p: Parti
       return (
         <span className="flex flex-wrap gap-1 items-center">
           animateur <input className="champ min-h-10" value={c.masterId ?? ""} onChange={(e) => upd({ masterId: e.target.value })} size={10} />
-          <button className="btn min-h-9" title="Changer d'identifiant (révoque l'ancien)" onClick={() => upd({ masterId: `m-${Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, "0")}` })}>Rotation</button>
+          <Accordeon id="declencheur-avance-radio" titre="Avancé" badge={<span className="puce">Radio</span>} ouvert={avanceOuvert} onToggle={basculerAvance}>
+            <button className="btn min-h-9" title="Changer d'identifiant (révoque l'ancien)" onClick={() => upd({ masterId: `m-${Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, "0")}` })}>Rotation</button>
+          </Accordeon>
           lien <select className="champ min-h-10" value={c.transport ?? "ble"} onChange={(e) => upd({ transport: e.target.value as "ble" | "wifi" })}>
             <option value="ble">Bluetooth</option><option value="wifi">Wi-Fi</option>
           </select>
@@ -2677,7 +2810,7 @@ function ScreenGlobalPanel({ game, edit, lectureSeule, onPickFile }: {
         />
         <ScreenProperties
           background={gs?.background}
-          onPickFile={prendreImage}
+          onPickFile={onPickFile}
           onChange={(background) => appliquer({ screen: { ...(gs ?? {}), background } })}
         />
       </fieldset>
@@ -2835,8 +2968,14 @@ function FileRelire({ game, meta, edit, manifest, lectureSeule, onChoisir, estAn
         <Icon name="oeil" size={17} /> Relire — {nbDraft} brouillon{nbDraft > 1 ? "s" : ""}
       </h2>
       <p className="text-[9px] font-mono text-fog mb-3">
-        Tant qu'un élément est en brouillon, l'export est bloqué — le kiosque HOLD exige un jeu relu.
-        Export : {exportPret ? (<span className="puce puce-ok">prêt</span>) : (<span className="puce puce-erreur">bloqué</span>)}
+        {(() => {
+          const brouillons = lignes.filter((l) => l.st === "draft").map((l) => l.n.id);
+          const hold = game.global?.holdMode ?? "none";
+          if (brouillons.length === 0) return "Aucun brouillon — relecture terminée.";
+          const kiosque = hold !== "none" ? ` (kiosque HOLD ${hold} : jeu relu exigé)` : " (hors mode animateur)";
+          return `Export bloqué — ${brouillons.join(", ")} en brouillon${kiosque}.`;
+        })()}
+        {" "}Export : {exportPret ? (<span className="puce puce-ok">prêt</span>) : (<span className="puce puce-erreur">bloqué</span>)}
       </p>
       <div className="flex flex-wrap gap-1 mb-3" role="group" aria-label="Filtrer par statut">
         {(["draft", "reviewed", "published", "tous"] as const).map((f) => (
@@ -2864,11 +3003,11 @@ function FileRelire({ game, meta, edit, manifest, lectureSeule, onChoisir, estAn
                 {!lectureSeule && st === "reviewed" && (
                   <>
                     <button className="btn min-h-8 px-2.5 text-[8px]" onClick={() => passer(n.id, "published")} title="Publier">Publier</button>
-                    <button className="btn min-h-8 px-2.5 text-[8px]" onClick={() => passer(n.id, "draft")} title="Annuler la relecture (action distincte)">Annuler</button>
+                    <button className="btn min-h-8 px-2.5 text-[8px]" onClick={() => { if (window.confirm(`Annuler la relecture de « ${n.id} » ? Le nœud repassera en brouillon.`)) passer(n.id, "draft"); }} title="Annuler la relecture (action distincte)">Annuler</button>
                   </>
                 )}
                 {!lectureSeule && st === "published" && (
-                  <button className="btn min-h-8 px-2.5 text-[8px]" onClick={() => passer(n.id, "draft")} title="Annuler la relecture (action distincte)">Annuler</button>
+                  <button className="btn min-h-8 px-2.5 text-[8px]" onClick={() => { if (window.confirm(`Annuler la relecture de « ${n.id} » ? Le nœud repassera en brouillon.`)) passer(n.id, "draft"); }} title="Annuler la relecture (action distincte)">Annuler</button>
                 )}
               </span>
               {detail && (
@@ -2899,70 +3038,96 @@ function categorieC2(e: string): string {
   return "Autres";
 }
 
-function BlocValidation({ couches, game, onVoir }: {
+function BlocValidation({ couches, verdicts, game, onVoir }: {
   couches: { layer: number; errors: string[] }[];
+  verdicts: { c1: boolean; c2: boolean | null };
   game: Game;
   onVoir: (id: string) => void;
 }) {
   const c1 = couches.find((l) => l.layer === 1);
   const c2 = couches.find((l) => l.layer === 2);
-  const groupes = new Map<string, string[]>();
-  for (const e of c2?.errors ?? []) {
-    const c = categorieC2(e);
-    groupes.set(c, [...(groupes.get(c) ?? []), e]);
-  }
+  // Pile unique C1 + C2 : chaque carte porte sa couche, sa catégorie, son texte
+  // clair, la règle brute et — quand un nœud est identifié — un bouton Voir.
+  const pile: { couche: number; cat: string; brut: string }[] = [
+    ...(c1?.errors ?? []).map((e) => ({ couche: 1, cat: "Schéma", brut: e })),
+    ...(c2?.errors ?? []).map((e) => ({ couche: 2, cat: categorieC2(e), brut: e })),
+  ];
+  const groupes = new Map<string, number>();
+  for (const p of pile) groupes.set(`${p.couche} · ${p.cat}`, (groupes.get(`${p.couche} · ${p.cat}`) ?? 0) + 1);
+  const puce = (ok: boolean | null) =>
+    ok == null ? (
+      <>
+        <div className="w-2 h-2 rounded-full bg-fog" />
+        <span className="font-mono text-[8px] text-fog uppercase">Non exécutée</span>
+      </>
+    ) : ok ? (
+      <>
+        <div className="w-2 h-2 rounded-full bg-pass" />
+        <span className="font-mono text-[8px] text-pass uppercase">Pass</span>
+      </>
+    ) : (
+      <>
+        <div className="w-2 h-2 rounded-full bg-fail" />
+        <span className="font-mono text-[8px] text-fail uppercase">Fail</span>
+      </>
+    );
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="p-6 max-w-2xl">
-        <h2 className="font-display font-extrabold text-2xl tracking-widest uppercase text-snow mb-6">Validation</h2>
-        <div className="grid grid-cols-2 gap-4 mb-5">
-          <div className="bg-panel border border-rule rounded-md p-4">
+    <>
+      <div className="grid grid-cols-2 gap-4 mb-5">
+          <div className={`bg-panel border rounded-md p-4 ${verdicts.c1 ? "border-rule" : "border-fail/20"}`}>
             <div className="flex items-center justify-between mb-3">
               <span className="text-[8px] font-mono uppercase tracking-widest text-fog">C1 — Schéma AJV</span>
-              <div className="flex items-center gap-1.5">
-                <div className="w-2 h-2 rounded-full bg-pass" />
-                <span className="font-mono text-[8px] text-pass uppercase">Pass</span>
-              </div>
+              <div className="flex items-center gap-1.5">{puce(verdicts.c1)}</div>
             </div>
             <p className="text-[11px] text-fog leading-relaxed">Draft-07 conforme. Tous les champs requis présents.</p>
             <div className="mt-3 font-mono text-[8px] text-fog bg-canvas rounded px-2 py-1.5">{c1?.errors.length ?? 0} erreur · 0 avertissement</div>
           </div>
-          <div className="bg-panel border border-fail/20 rounded-md p-4">
+          <div className={`bg-panel border rounded-md p-4 ${verdicts.c2 === false ? "border-fail/20" : "border-rule"}`}>
             <div className="flex items-center justify-between mb-3">
               <span className="text-[8px] font-mono uppercase tracking-widest text-fog">C2 — Applicative</span>
-              <div className="flex items-center gap-1.5">
-                <div className="w-2 h-2 rounded-full bg-fail" />
-                <span className="font-mono text-[8px] text-fail uppercase">Fail</span>
-              </div>
+              <div className="flex items-center gap-1.5">{puce(verdicts.c2)}</div>
             </div>
             <p className="text-[11px] text-fog leading-relaxed">Cycles, atteignabilité, pools, HOLD, références.</p>
             <div className="mt-3 font-mono text-[8px] text-fog bg-canvas rounded px-2 py-1.5">{c2?.errors.length ?? 0} erreur(s)</div>
           </div>
         </div>
         <div className="flex flex-col gap-2 mb-5">
-          {[...(groupes.entries())].map(([cat, errs]) => (
-            <div key={cat} className="text-[8px] font-mono uppercase tracking-widest text-fog mb-2">{cat} ({errs.length})</div>
+          {[...(groupes.entries())].map(([cat, n]) => (
+            <div key={cat} className="text-[8px] font-mono uppercase tracking-widest text-fog mb-2">{cat} ({n})</div>
           ))}
-          {c2?.errors.map((e, i) => {
-            const cible = game.nodes.find((n) => e.includes(n.id));
+          {pile.map((p, i) => {
+            const cible = game.nodes.find((n) => p.brut.includes(n.id));
             return (
               <div key={i} className="flex items-start gap-3 bg-panel border border-rule rounded px-4 py-3 mb-2">
                 <div className="mt-1 w-1.5 h-1.5 rounded-full shrink-0 bg-fail" />
-                <div>
+                <div className="flex-1">
                   <div className="flex items-center gap-2 mb-0.5">
-                    <span className="font-mono text-[8px] text-fog">ERR-{i}</span>
+                    <span className="font-mono text-[8px] text-fog">C{p.couche} — {p.cat}</span>
                     <span className="font-mono text-[8px] uppercase text-fail">erreur</span>
                     <span className="font-mono text-[8px] text-neon">→ {cible?.id ?? "?"}</span>
                   </div>
-                  <span className="text-[11px] text-snow">{e}</span>
+                  <span className="text-[11px] text-snow block">{erreurFR(p.brut)}</span>
+                  <span className="font-mono text-[8px] text-fog block">Règle : {p.brut}</span>
+                  {cible && (
+                    <button className="btn min-h-8 px-2.5 text-[8px] mt-1" onClick={() => onVoir(cible.id)} title={`Aller à ${cible.id}`}>
+                      Voir {cible.id}
+                    </button>
+                  )}
                 </div>
               </div>
             );
           })}
+          {pile.length === 0 && (
+            <p className="text-[11px] text-fog">Aucune erreur : schéma conforme et graphe structurellement valide (sous hypothèse d'environnement favorable).</p>
+          )}
         </div>
         <p className="text-[8px] text-fog">Export possible = C1 OK ∧ C2 OK ∧ aucun brouillon (hors animateur).</p>
-      </div>
-    </div>
+        {(!verdicts.c1 || verdicts.c2 === false) && (
+          <div className="flex items-center gap-3 p-3 bg-fail/5 border border-fail/15 rounded mt-2">
+            <span className="font-mono text-[9px] text-fail">Export bloqué — corriger les erreurs avant de continuer.</span>
+          </div>
+        )}
+    </>
   );
 }
 
@@ -3018,12 +3183,28 @@ function Apercu(props: {
   const sig = SIGNAUX.find((s) => s.m === props.sim.precision) ?? SIGNAUX[0];
   const bascule = (k: "present" | "dwell" | "through", id: string) =>
     props.setSim((s) => ({ ...s, [k]: s[k].includes(id) ? s[k].filter((x) => x !== id) : [...s[k], id] }));
+  // Triche repliée (change studio-control-priority) : fermée par défaut.
+  const [tricheOuverte, basculerTriche] = useAccordeon("apercu-triche", false);
+  const nbForced = Object.values(props.forced).filter(Boolean).length;
   return (
     <div className="carte p-3 flex flex-col gap-2">
       <h3 className="flex items-center gap-1.5 font-display font-extrabold text-2xl tracking-widest uppercase text-snow">
         <Icon name="essai" size={15} /> Essai du parcours (triche tracée)
       </h3>
       <p className="text-[9px] font-mono text-fog">La prévisualisation n'écrit jamais dans le JSON source : tout ici est simulation.</p>
+      <Accordeon
+        id="apercu-triche"
+        titre="Triche"
+        badge={
+          props.holdSim === "locked" ? (
+            <span className="puce puce-erreur">HOLD verrouillé</span>
+          ) : nbForced > 0 ? (
+            <span className="puce">{nbForced} forcé{nbForced > 1 ? "s" : ""}</span>
+          ) : undefined
+        }
+        ouvert={tricheOuverte}
+        onToggle={basculerTriche}
+      >
       <div className="carte p-2 shadow-none" aria-label="Panneau de triche">
         <h4 className="text-[8px] font-mono uppercase tracking-widest text-fog mb-2">Panneau de triche — chaque event porte le flag triche</h4>
       <div className="flex gap-1 items-center flex-wrap">
@@ -3035,7 +3216,6 @@ function Apercu(props: {
           {SIGNAUX.map((s) => <option key={s.m} value={s.m}>{s.nom}</option>)}
         </select>
         <span>partie <input className="champ min-h-10" value={props.sessionId} onChange={(e) => props.setSessionId(e.target.value)} size={10} aria-label="Identifiant de session" /></span>
-        <button className="btn" onClick={props.nouvelleSession}><Icon name="ajouter" size={15} /> Nouvelle partie</button>
         <span>temps +<input className="champ w-16 min-h-10" type="number" value={props.sim.dtMin} onChange={(e) => props.setSim((s) => ({ ...s, dtMin: Number(e.target.value) }))} aria-label="Temps écoulé en minutes" /> min</span>
       </div>
       {pools.map((p) => (
@@ -3050,8 +3230,10 @@ function Apercu(props: {
         <button className="btn min-h-9" onClick={props.onHoldExit} disabled={props.holdSim === "none"}>Simuler sortie animateur</button>
       </div>
       </div>
+      </Accordeon>
       <div className="font-mono text-[9px] text-fog">File d'attente : {props.file.length ? props.file.join(", ") : "—"} | Ouverte : {props.activeId ?? "—"}</div>
       <div className="flex gap-1">
+        <button className="btn" onClick={props.nouvelleSession}><Icon name="ajouter" size={15} /> Nouvelle partie</button>
         <button className="btn min-h-9" onClick={() => { if (!props.activeId && props.file[0]) props.ouvrir(props.file[0]); }} disabled={!!props.activeId || !props.file.length}>Avancer d'un pas</button>
         <button className="btn min-h-9" onClick={props.reculer} disabled={props.nbTermines === 0}>Reculer d'un pas</button>
       </div>

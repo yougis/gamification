@@ -83,6 +83,8 @@ Le principe d'architecture du projet (kmp-native-boundary) impose : base KMP par
 
 **Décision :** iOS via TestFlight interne (groupe de testeurs, pas de review Apple) ; Android via sideload APK debug + pack de test à URL stable. Pas de Firebase App Distribution à ce stade.
 
+**Décision 2026-09-22 (phase de test, sans compte Apple) :** installation Xcode directe (Mac + Apple ID gratuit + câble), sans enrôlement Developer ni TestFlight. Certificat personnel 7 jours → re-installation hebdomadaire. TestFlight/App Store réservés à la production (change ultérieur).
+
 **Rationale :** TestFlight interne et sideload couvrent les deux plateformes sans infra ni compte supplémentaire au-delà de l'enrôlement Apple Developer (requis dans tous les cas, même en Ad Hoc). Firebase ajouterait un projet et un SDK pour un gain nul à ce stade. Le déploiement production (Play Store, App Store) fera l'objet d'un change ultérieur avec son écran de configuration dans le Studio.
 
 **Alternatives considérées :**

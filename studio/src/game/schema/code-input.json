@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://geoplay.example/schemas/modules/code-input.json",
+  "title": "CODE_INPUT module data (change studio-puzzle-code-input)",
+  "type": "object",
+  "required": ["schemaVersion", "code"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {"const": "1.0.0"},
+    "code": {"type": "string", "minLength": 1},
+    "hint": {"type": "string"},
+    "successMessage": {"type": "string"},
+    "failureMessage": {"type": "string"},
+    "maxAttempts": {"type": "integer", "minimum": 1},
+    "timeLimitSeconds": {"type": "integer", "minimum": 0}
+  },
+  "x-needs": {"gps": false, "compass": false, "camera": false, "map": false},
+  "x-fallback": "indice auteur + essais (tactile + clavier)"
+}

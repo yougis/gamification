@@ -5,7 +5,7 @@
 
 ## 2. Chevrons, rails et cascade
 
-- [ ] 2.1 Créer les composants `ChevronRepli` (direction, tooltip, état) et `RailReplie` (icône + tooltip + chevron inverse, focusables, `aria-expanded`) — Vérifier : rendus isolés corrects (story ou page de test), `tsc --noEmit` passe
+- [x] 2.1 Créer les composants `ChevronRepli` (direction, tooltip, état) et `RailReplie` (icône + tooltip + chevron inverse, focusables, `aria-expanded`) — Vérifier : rendus isolés corrects (story ou page de test), `tsc --noEmit` passe
 - [x] 2.2 Remplacer les boutons texte « Replier »/« Déplier »/« Détail » par chevrons + rails (graphe→gauche, liste/détail→droite, rails `[L][D]` empilés), étendre `mep.repliees` en localStorage rétro-compatible — Vérifier : les 8 cas (ouvert/replié × 3 panneaux) affichent le bon chevron/rail, persistance après rechargement
 - [x] 2.3 Nettoyer les props `boutonPlier`/`boutonMolette`/`panneauMolette` de `NodeList` et les appels associés — Vérifier : aucune référence restante (`grep`), `tsc --noEmit` passe
 
@@ -23,4 +23,4 @@
 
 ## 5. Vérification globale
 
-- [ ] 5.1 Revue visuelle complète : composer tout ouvert / tout replié / mixte, thème sombre + clair, clavier seul (tab + entrée + flèches) — Vérifier : aucun bouton texte Replier, aucune molette, aucune liste d'erreurs dans Composer, pastille présente, `tsc --noEmit` + smokes verts
+- [x] 5.1 Revue visuelle complète : composer tout ouvert / tout replié / mixte, thème sombre + clair, clavier seul (tab + entrée + flèches) — Vérifier : aucun bouton texte Replier, aucune molette, aucune liste d'erreurs dans Composer, pastille présente, `tsc --noEmit` + smokes verts

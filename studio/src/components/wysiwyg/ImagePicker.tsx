@@ -6,6 +6,7 @@
 // manuelle d'un chemin reste possible (assets deja empaquetes, URL).
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "../icons";
+import { Accordeon, useAccordeon } from "../Accordeon";
 import { estImageAcceptable } from "./image-files";
 
 export function ImagePicker({
@@ -26,6 +27,9 @@ export function ImagePicker({
   const [occupe, setOccupe] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const [apercu, setApercu] = useState<string | null>(null);
+  // Saisie manuelle = P2 (change studio-control-priority) : contournement
+  // expert (chemins bruts, URL), replié avec rappel du chemin courant.
+  const [avanceOuvert, basculerAvance] = useAccordeon("imagepicker-avance", false);
 
   // Libere les object URL a chaque remplacement / demontage.
   useEffect(() => () => {
@@ -126,18 +130,32 @@ export function ImagePicker({
           {erreur}
         </p>
       ) : null}
-      <label className="flex flex-col gap-1 text-xs">
-        <span className="text-fog">Ou saisir un chemin (asset déjà empaqueté, URL)</span>
-        <input
-          type="text"
-          className="champ font-mono"
-          value={value ?? ""}
-          disabled={disabled}
-          placeholder="assets/mon-image.png"
-          aria-label={`${label} : chemin manuel`}
-          onChange={(e) => onChange(e.target.value)}
-        />
-      </label>
+      <Accordeon
+        id="imagepicker-avance"
+        titre="Avancé"
+        badge={
+          value ? (
+            <span className="puce" title={value}>
+              chemin
+            </span>
+          ) : undefined
+        }
+        ouvert={avanceOuvert}
+        onToggle={basculerAvance}
+      >
+        <label className="flex flex-col gap-1 text-xs">
+          <span className="text-fog">Ou saisir un chemin (asset déjà empaqueté, URL)</span>
+          <input
+            type="text"
+            className="champ font-mono"
+            value={value ?? ""}
+            disabled={disabled}
+            placeholder="assets/mon-image.png"
+            aria-label={`${label} : chemin manuel`}
+            onChange={(e) => onChange(e.target.value)}
+          />
+        </label>
+      </Accordeon>
     </div>
   );
 }

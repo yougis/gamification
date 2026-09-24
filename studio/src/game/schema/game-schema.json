@@ -180,7 +180,8 @@
             {"if": {"properties": {"type": {"const": "DIFFERENCE_GAME"}}}, "then": {"properties": {"data": {"$ref": "modules/difference-game.json"}}}},
             {"if": {"properties": {"type": {"const": "PUZZLE"}}}, "then": {"properties": {"data": {"$ref": "modules/puzzle.json"}}}},
             {"if": {"properties": {"type": {"const": "AR_MARKER"}}}, "then": {"properties": {"data": {"$ref": "modules/ar-marker.json"}}}},
-            {"if": {"properties": {"type": {"const": "BOUSSOLE"}}}, "then": {"properties": {"data": {"$ref": "modules/boussole.json"}}}}
+            {"if": {"properties": {"type": {"const": "BOUSSOLE"}}}, "then": {"properties": {"data": {"$ref": "modules/boussole.json"}}}},
+            {"if": {"properties": {"type": {"const": "CODE_INPUT"}}}, "then": {"properties": {"data": {"$ref": "modules/code-input.json"}}}}
           ]
         },
         "activation": {

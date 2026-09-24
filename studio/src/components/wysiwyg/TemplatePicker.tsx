@@ -5,6 +5,7 @@
 // (declinaison ulterieure sans mutation) ; l'appelant clone en profondeur.
 import { useEffect, useState } from "react";
 import { Icon } from "../icons";
+import { Accordeon, useAccordeon } from "../Accordeon";
 import { PhoneCanvas } from "./PhoneCanvas";
 import {
   allScreenTemplates,
@@ -28,6 +29,10 @@ export function TemplatePicker({
 }) {
   const [modeles, setModeles] = useState(() => allScreenTemplates());
   const [choix, setChoix] = useState(currentLayout ?? allScreenTemplates()[0]?.id ?? "");
+  // Création de modèle perso = P2 (change studio-control-priority) : rare,
+  // replié avec compteur.
+  const [avanceOuvert, basculerAvance] = useAccordeon("template-avance", false);
+  const nbPerso = modeles.filter((t) => t.id.startsWith("custom-")).length;
   useEffect(() => {
     if (currentLayout) setChoix(currentLayout);
   }, [currentLayout]);
@@ -104,9 +109,17 @@ export function TemplatePicker({
         </div>
       ) : null}
       {screenCourant ? (
-        <button type="button" className="btn" onClick={enregistrer} title="Figer l'écran courant comme modèle réutilisable">
-          <Icon name="ajouter" size={13} /> Enregistrer comme modèle
-        </button>
+        <Accordeon
+          id="template-avance"
+          titre="Avancé"
+          badge={nbPerso > 0 ? <span className="puce">{nbPerso} perso</span> : undefined}
+          ouvert={avanceOuvert}
+          onToggle={basculerAvance}
+        >
+          <button type="button" className="btn" onClick={enregistrer} title="Figer l'écran courant comme modèle réutilisable">
+            <Icon name="ajouter" size={13} /> Enregistrer comme modèle
+          </button>
+        </Accordeon>
       ) : null}
     </div>
   );

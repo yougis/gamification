@@ -1,0 +1,19 @@
+{
+  "name": "GeoPlay — joueur web",
+  "short_name": "GeoPlay",
+  "description": "Joueur GeoPlay hors-ligne : packs Studio vérifiés, progression persistée.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#08090b",
+  "theme_color": "#1a7f37",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

@@ -1,17 +1,26 @@
 import type { ModuleScreenPlugin } from "./module-screen-plugin";
+import { MODULE_REGISTRY_BASE, type ModuleRegistryEntry } from "./module-registry";
 import { quizScreenPlugin } from "../components/wysiwyg/plugins/quiz";
 import { puzzleScreenPlugin } from "../components/wysiwyg/plugins/puzzle";
+import { codeInputScreenPlugin } from "../components/wysiwyg/plugins/code-input";
+import { differenceGameScreenPlugin } from "../components/wysiwyg/plugins/difference-game";
+import { arMarkerScreenPlugin } from "../components/wysiwyg/plugins/ar-marker";
+import { boussoleScreenPlugin } from "../components/wysiwyg/plugins/boussole";
 
-export interface ModuleRegistryEntry {
-  type: string;
-  render?: (data: Record<string, unknown>) => unknown;
-  needsLock?: boolean;
-  needsInventory?: boolean;
-  presentationNeeds?: string[];
-  experienceNeeds?: string[];
-  producesEffects?: string[];
-  screenPlugin?: ModuleScreenPlugin;
-}
+export type { ModuleRegistryEntry };
+
+// Registre complet côté Studio (données pures + plugins d'écran React).
+// Le validateur, l'évaluateur de compatibilité et les tests tsx importent
+// `module-registry.ts` directement pour éviter la chaîne JSX.
+export const MODULE_REGISTRY: Record<string, ModuleRegistryEntry> = {
+  ...MODULE_REGISTRY_BASE,
+  QUIZ: { ...MODULE_REGISTRY_BASE.QUIZ, screenPlugin: quizScreenPlugin },
+  PUZZLE: { ...MODULE_REGISTRY_BASE.PUZZLE, screenPlugin: puzzleScreenPlugin },
+  CODE_INPUT: { ...MODULE_REGISTRY_BASE.CODE_INPUT, screenPlugin: codeInputScreenPlugin },
+  DIFFERENCE_GAME: { ...MODULE_REGISTRY_BASE.DIFFERENCE_GAME, screenPlugin: differenceGameScreenPlugin },
+  AR_MARKER: { ...MODULE_REGISTRY_BASE.AR_MARKER, screenPlugin: arMarkerScreenPlugin },
+  BOUSSOLE: { ...MODULE_REGISTRY_BASE.BOUSSOLE, screenPlugin: boussoleScreenPlugin },
+};
 
 // Tap valide si dans un polygone dilate (unites % : meme espace que les polygones).
 export function hitTest(polygons: { x: number; y: number; w: number; h: number }[], px: number, py: number, dilatation: number): boolean {
@@ -35,15 +44,3 @@ export function arMode(caps: ArCaps): { mode: "ar" | "fallback2D"; motif: string
   }
   return { mode: "ar", motif: "capteurs et budget OK" };
 }
-
-export const MODULE_REGISTRY: Record<string, ModuleRegistryEntry> = {
-  QUIZ: { type: "QUIZ", schema: "quiz.json", version: "1.0.0", screenPlugin: quizScreenPlugin },
-  DIFFERENCE_GAME: { type: "DIFFERENCE_GAME", schema: "difference-game.json", version: "1.0.0" },
-  PUZZLE: { type: "PUZZLE", schema: "puzzle.json", version: "1.0.0", screenPlugin: puzzleScreenPlugin },
-  AR_MARKER: { type: "AR_MARKER", schema: "ar-marker.json", version: "1.0.0", needsLock: true },
-  BOUSSOLE: { type: "BOUSSOLE", schema: "boussole.json", version: "1.0.0" },
-  CODE_INPUT: { type: "CODE_INPUT", schema: "code-input.json", version: "1.0.0", needsInventory: true, presentationNeeds: ["CLUE"], producesEffects: ["MODIFY_VARIABLE"] },
-  CLUE_RESOLVER: { type: "CLUE_RESOLVER", schema: "clue-resolver.json", version: "1.0.0", presentationNeeds: ["CLUE"], producesEffects: ["REVEAL_NODE"] },
-  ITEM_DROPPER: { type: "ITEM_DROPPER", schema: "item-dropper.json", version: "1.0.0", needsInventory: true, presentationNeeds: ["TOOLBOX"], producesEffects: ["GIVE_ITEM"] },
-  ITEM_CONSUMER: { type: "ITEM_CONSUMER", schema: "item-consumer.json", version: "1.0.0", needsInventory: true, presentationNeeds: ["TOOLBOX"], producesEffects: ["REMOVE_ITEM"] }
-};
