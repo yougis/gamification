@@ -69,6 +69,9 @@ export function WidgetRenderer({
   // Contexte de sous-page (change screen-subpages) : transmis au widget
   // progress pour refléter l'avancement. Absent = échantillon statique.
   contextePage?: { index: number; total: number };
+  // Borne viewport pour le fit (change screen-subpages), transmise aux
+  // rendus image/module. Absente = pas de borne.
+  hauteurMaxMedia?: number;
 }) {
   const [edition, setEdition] = useState(false);
   const [survol, setSurvol] = useState(false);
@@ -155,10 +158,10 @@ export function WidgetRenderer({
           onCancel={() => setEdition(false)}
         />
       ) : null}
-      {widget.type === "image" ? <ImageWidgetRenderer widget={widget} /> : null}
+      {widget.type === "image" ? <ImageWidgetRenderer widget={widget} hauteurMax={hauteurMaxMedia} /> : null}
       {widget.type === "button" ? <ButtonWidgetRenderer widget={widget} /> : null}
       {widget.type === "progress" ? <ProgressBarWidgetRenderer widget={widget} contextePage={contextePage} /> : null}
-      {widget.type === "module" ? (renderModule ? renderModule(widget) : <ModuleWidgetRenderer widget={widget} moduleType={moduleType} moduleData={moduleData} />) : null}
+      {widget.type === "module" ? (renderModule ? renderModule(widget) : <ModuleWidgetRenderer widget={widget} moduleType={moduleType} moduleData={moduleData} hauteurMax={hauteurMaxMedia} />) : null}
       {widget.type === "spacer" ? <SpacerWidgetRenderer widget={widget} /> : null}
     </div>
   );

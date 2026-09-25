@@ -1255,6 +1255,7 @@ const noeuds: Node[] = useMemo(
                 screen={resolveScreen(etape, game.global?.screen)}
                 moduleType={etape.module.type}
                 moduleData={etape.module.data}
+                cleContexte={etape.id}
                 selectedZoneId={screenZone}
                 selectedWidgetIndex={screenWidget}
                 viewport={screenViewport}

@@ -99,7 +99,7 @@ export function TemplatePicker({
       {modele ? (
         <div className="flex items-start gap-2">
           <span className="pointer-events-none overflow-hidden rounded border border-line" style={{ width: 90, height: 120 }}>
-            <PhoneCanvas screen={modele.screen} scale={0.24} showGhosts={false} />
+            <PhoneCanvas screen={modele.screen} scale={0.24} showGhosts={false} afficherPagination={false} />
           </span>
           <span className="min-w-0 flex-1">
             <span className="block text-xs font-semibold text-snow">{modele.name}</span>

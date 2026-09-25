@@ -5,8 +5,8 @@
 
 ## 2. Canvas auteur
 
-- [ ] 2.1 Afficher onglets/pastilles + Suivant/Précédent avec navigation active (état local, sélection suivant la page) et auto-création visible à l'ajout d'un widget `module`/`image`, et vérifier : 3 sous-pages navigables sans modification JSON
-- [ ] 2.2 Passer les widgets `image`/`module` en fit (`contain` + bornes viewport, ratio conservé) sur les 4 viewports, texte long en scroll, et vérifier : panoramique 2:1 entière en portrait, puzzle entier en paysage
+- [x] 2.1 Afficher onglets/pastilles + Suivant/Précédent avec navigation active (état local, sélection suivant la page) et auto-création visible à l'ajout d'un widget `module`/`image`, et vérifier : 3 sous-pages navigables sans modification JSON — onglets + ←/→, mapping global/local des indices (sélection, commit, DnD), reset au changement de nœud, `tsc` vert
+- [x] 2.2 Passer les widgets `image`/`module` en fit (`contain` + bornes viewport, ratio conservé) sur les 4 viewports, texte long en scroll, et vérifier : panoramique 2:1 entière en portrait, puzzle entier en paysage — défaut image `cover`→`contain` + `hauteurMaxMedia` (cadre−220, plancher 140) threadé jusqu'aux rendus, aperçu module en scroll borné, contrat Fit documenté côté seam partagé, `tsc` + 3 cibles OK
 
 ## 3. Joueur
 

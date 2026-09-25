@@ -2,8 +2,11 @@ package com.geoplay.shared.ui.screen
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -26,11 +29,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.geoplay.shared.game.paginateContent
 import com.geoplay.shared.model.Branding
 import com.geoplay.shared.model.ScreenDefinition
 import com.geoplay.shared.model.ScreenWidget
@@ -84,6 +90,9 @@ fun ScreenRenderer(
     screen: ScreenDefinition,
     branding: Branding? = null,
     moduleSlot: @Composable () -> Unit = {},
+    // Contenu d'image (contrat de fit, change screen-subpages) : le shell
+    // SHALL rendre `src` en entier, réduit au viewport en respectant le
+    // ratio (ContentScale.Fit + bornes), jamais rogné. Défaut = rien.
     imageContent: @Composable (src: String, alt: String?) -> Unit = { _, _ -> },
     styleOf: (ScreenWidget) -> WidgetStyles = { it.styles ?: WidgetStyles() },
     onButtonAction: (action: String?) -> Unit = {},
@@ -93,11 +102,28 @@ fun ScreenRenderer(
     // explicite (ex. score) garde la priorité.
     pageIndex: Int? = null,
     pageTotal: Int? = null,
+    // Pagination des sous-pages (change screen-subpages) : quand le contenu
+    // se découpe en plusieurs pages, navigation swipe + Suivant/Précédent/
+    // Terminer + compteur. `false` = rendu intégral (défaut inchangé).
+    sousPages: Boolean = false,
+    onTerminer: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val zones = screen.zones
     val bg = screen.background
     var overlayDismissed by remember(screen) { mutableStateOf(false) }
+    // Sous-pages du content (change screen-subpages) : état local, jamais
+    // persisté. Sans pagination demandée ou page unique : rendu inchangé.
+    val widgetsContenu = zones?.content?.widgets ?: emptyList()
+    val sousPages = remember(widgetsContenu, sousPages) {
+        if (sousPages) paginateContent(widgetsContenu) else listOf(widgetsContenu)
+    }
+    var indexPage by remember(widgetsContenu, sousPages) { mutableStateOf(0) }
+    val pageSure = indexPage.coerceIn(0, (sousPages.size - 1).coerceAtLeast(0))
+    val paginer = sousPages && sousPages.size > 1
+    val idxProgress = pageIndex ?: if (paginer) pageSure else null
+    val totalProgress = pageTotal ?: if (paginer) sousPages.size else null
+    val seuilSwipe = with(LocalDensity.current) { 40.dp.toPx() }
     Box(modifier = modifier.fillMaxSize()) {
         when (bg?.type) {
             "image" -> if (!bg.value.isBlank()) imageContent(bg.value, null)
@@ -111,13 +137,46 @@ fun ScreenRenderer(
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = scrim!!.toFloat().coerceIn(0f, 1f))))
         }
         Column(Modifier.fillMaxSize()) {
-            zones?.header?.let { ZoneBlock(it, branding, moduleSlot, imageContent, styleOf, onButtonAction, progressFraction, pageIndex, pageTotal) }
-            Box(Modifier.weight(1f).fillMaxWidth()) {
-                zones?.content?.let {
-                    ZoneBlock(it, branding, moduleSlot, imageContent, styleOf, onButtonAction, progressFraction, pageIndex, pageTotal)
+            zones?.header?.let { ZoneBlock(it, branding, moduleSlot, imageContent, styleOf, onButtonAction, progressFraction, idxProgress, totalProgress) }
+            Box(
+                Modifier.weight(1f).fillMaxWidth()
+                    .pointerInput(paginer, pageSure) {
+                        if (!paginer) return@pointerInput
+                        detectHorizontalDragGestures { _, ecart ->
+                            if (ecart <= -seuilSwipe && pageSure < sousPages.size - 1) indexPage = pageSure + 1
+                            else if (ecart >= seuilSwipe && pageSure > 0) indexPage = pageSure - 1
+                        }
+                    },
+            ) {
+                val zonePage = if (paginer) {
+                    (zones?.content ?: ZoneContent()).copy(widgets = sousPages[pageSure])
+                } else {
+                    zones?.content
+                }
+                zonePage?.let {
+                    ZoneBlock(it, branding, moduleSlot, imageContent, styleOf, onButtonAction, progressFraction, idxProgress, totalProgress)
                 }
             }
-            zones?.footer?.let { ZoneBlock(it, branding, moduleSlot, imageContent, styleOf, onButtonAction, progressFraction, pageIndex, pageTotal) }
+            if (paginer) {
+                androidx.compose.foundation.layout.Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (pageSure > 0) {
+                        OutlinedButton(onClick = { indexPage = pageSure - 1 }) { Text("← Précédent") }
+                    }
+                    Text(
+                        "${pageSure + 1}/${sousPages.size}",
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Button(onClick = {
+                        if (pageSure >= sousPages.size - 1) onTerminer() else indexPage = pageSure + 1
+                    }) { Text(if (pageSure >= sousPages.size - 1) "Terminer" else "Suivant →") }
+                }
+            }
+            zones?.footer?.let { ZoneBlock(it, branding, moduleSlot, imageContent, styleOf, onButtonAction, progressFraction, idxProgress, totalProgress) }
         }
         val overlay = zones?.overlay
         if (overlay != null && !overlayDismissed) {

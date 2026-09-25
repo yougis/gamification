@@ -106,6 +106,42 @@ export function PhoneCanvas({
   }, [cleContexte]);
   const overlayFermable = zones.overlay?.fermable === true;
   const dissimulable = dissimulationJoueur === true && overlayFermable;
+  // Sous-pages de content (change screen-subpages) : état local d'édition,
+  // jamais persisté. La sélection suit la page (et inversement) ; une
+  // nouvelle page (ajout auto à la création d'un widget module/image)
+  // s'affiche aussitôt ; reset au changement de contexte.
+  const widgetsContenu = zones.content?.widgets ?? [];
+  const sousPages = paginateContent(widgetsContenu);
+  const [pageContenu, setPageContenu] = useState(0);
+  const nbPagesRef = useRef(sousPages.length);
+  useEffect(() => {
+    setPageContenu(0);
+    nbPagesRef.current = sousPages.length;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cleContexte]);
+  useEffect(() => {
+    if (sousPages.length > nbPagesRef.current) setPageContenu(sousPages.length - 1);
+    nbPagesRef.current = sousPages.length;
+  }, [sousPages.length]);
+  const indexSur = Math.min(pageContenu, sousPages.length - 1);
+  const decalage = sousPages.slice(0, indexSur).reduce((n, p) => n + p.length, 0);
+  useEffect(() => {
+    if (selectedZoneId !== "content" || selectedWidgetIndex == null) return;
+    let cumul = 0;
+    for (let p = 0; p < sousPages.length; p++) {
+      if (selectedWidgetIndex < cumul + sousPages[p].length) {
+        if (p !== indexSur) setPageContenu(p);
+        break;
+      }
+      cumul += sousPages[p].length;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedZoneId, selectedWidgetIndex, widgetsContenu.length]);
+  const paginer = afficherPagination && sousPages.length > 1;
+  const contextePage = { index: indexSur, total: sousPages.length };
+  // Borne viewport pour le fit image/module (change screen-subpages) :
+  // cadre moins chrome (zones, onglets, marges), plancher lisible.
+  const hauteurMaxMedia = Math.max(140, format.hauteur - 220);
   // Couleur de texte par défaut (change studio-lot-correctifs) : contraste
   // calculé sur le fond résolu, héritée par tous les descendants sans
   // couleur explicite (couleurs auteur verbatim conservées).
@@ -142,6 +178,8 @@ export function PhoneCanvas({
                 onCommitText={onCommitText}
                 onMoveWidgetAcross={onMoveWidgetAcross}
                 renderModule={renderModule}
+                contextePage={contextePage}
+                hauteurMaxMedia={hauteurMaxMedia}
               />
             </div>
           ) : showGhosts && onCreateZone ? (
@@ -150,19 +188,68 @@ export function PhoneCanvas({
             </div>
           ) : null}
           <div className="relative min-h-0 flex-1 overflow-y-auto">
+            {paginer ? (
+              <div
+                className="flex items-center gap-1 px-2 pt-1"
+                role="tablist"
+                aria-label="Sous-pages du contenu"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  className="btn min-h-7 px-2 text-[10px]"
+                  disabled={indexSur === 0}
+                  onClick={(e) => { e.stopPropagation(); setPageContenu(indexSur - 1); }}
+                  aria-label="Sous-page précédente"
+                >
+                  ←
+                </button>
+                {sousPages.map((_, p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    role="tab"
+                    aria-selected={p === indexSur}
+                    aria-label={`Sous-page ${p + 1}`}
+                    onClick={(e) => { e.stopPropagation(); setPageContenu(p); }}
+                    className={`min-h-7 min-w-7 rounded px-1 text-[10px] ${p === indexSur ? "bg-neon font-bold text-canvas" : "text-fog hover:text-snow"}`}
+                  >
+                    {p + 1}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className="btn min-h-7 px-2 text-[10px]"
+                  disabled={indexSur >= sousPages.length - 1}
+                  onClick={(e) => { e.stopPropagation(); setPageContenu(indexSur + 1); }}
+                  aria-label="Sous-page suivante"
+                >
+                  →
+                </button>
+              </div>
+            ) : null}
             <ZoneRenderer
-              zone={zones.content ?? { layout: "stack", widgets: [] }}
+              zone={{ layout: zones.content?.layout ?? "stack", widgets: sousPages[indexSur] ?? [] }}
               zoneId="content"
               moduleType={moduleType}
               moduleData={moduleData}
               selected={selectedZoneId === "content"}
-              selectedWidgetIndex={selectedZoneId === "content" ? selectedWidgetIndex : null}
-                onSelectZone={(z) => onSelectZone?.(z)}
-                onSelectWidget={onSelectWidget}
-                onCommitText={onCommitText}
-                onMoveWidgetAcross={onMoveWidgetAcross}
-                renderModule={renderModule}
-              />
+              selectedWidgetIndex={selectedZoneId === "content" && selectedWidgetIndex != null ? selectedWidgetIndex - decalage : null}
+              onSelectZone={(z) => onSelectZone?.(z)}
+              onSelectWidget={(i) => onSelectWidget?.(decalage + i)}
+              onCommitText={(z, i, text) => onCommitText?.(z, decalage + i, text)}
+              onMoveWidgetAcross={(fz, fi, tz, ti) =>
+                onMoveWidgetAcross?.(
+                  fz,
+                  fz === "content" ? fi + decalage : fi,
+                  tz,
+                  tz === "content" ? (ti === "end" ? widgetsContenu.length : ti + decalage) : ti,
+                )
+              }
+              renderModule={renderModule}
+              contextePage={contextePage}
+                hauteurMaxMedia={hauteurMaxMedia}
+            />
           </div>
           {!zones.overlay && showGhosts && onCreateZone ? (
             <div className="relative shrink-0 px-2 py-1">
@@ -183,6 +270,8 @@ export function PhoneCanvas({
                 onCommitText={onCommitText}
                 onMoveWidgetAcross={onMoveWidgetAcross}
                 renderModule={renderModule}
+                contextePage={contextePage}
+                hauteurMaxMedia={hauteurMaxMedia}
               />
             </div>
           ) : showGhosts && onCreateZone ? (
@@ -239,6 +328,7 @@ export function PhoneCanvas({
                   onCommitText={onCommitText}
                   onMoveWidgetAcross={onMoveWidgetAcross}
                   renderModule={renderModule}
+                  hauteurMaxMedia={hauteurMaxMedia}
                 />
               </div>
             </div>
