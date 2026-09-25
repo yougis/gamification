@@ -28,6 +28,7 @@ export const MODULE_REGISTRY_BASE: Record<string, ModuleRegistryEntry> = {
   AR_MARKER: { type: "AR_MARKER", schema: "ar-marker.json", version: "1.0.0", needsCamera: true, needsLock: true },
   BOUSSOLE: { type: "BOUSSOLE", schema: "boussole.json", version: "1.0.0", needsCompass: true },
   CODE_INPUT: { type: "CODE_INPUT", schema: "code-input.json", version: "1.0.0", needsInventory: true, presentationNeeds: ["CLUE"], producesEffects: ["MODIFY_VARIABLE"] },
+  INFO: { type: "INFO", schema: "info.json", version: "1.0.0" },
   CLUE_RESOLVER: { type: "CLUE_RESOLVER", schema: "clue-resolver.json", version: "1.0.0", presentationNeeds: ["CLUE"], producesEffects: ["REVEAL_NODE"] },
   ITEM_DROPPER: { type: "ITEM_DROPPER", schema: "item-dropper.json", version: "1.0.0", needsInventory: true, presentationNeeds: ["TOOLBOX"], producesEffects: ["GIVE_ITEM"] },
   ITEM_CONSUMER: { type: "ITEM_CONSUMER", schema: "item-consumer.json", version: "1.0.0", needsInventory: true, presentationNeeds: ["TOOLBOX"], producesEffects: ["REMOVE_ITEM"] }

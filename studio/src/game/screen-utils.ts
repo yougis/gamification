@@ -29,6 +29,28 @@ export function screenBackgroundStyle(bg?: ScreenBackground): CSSProperties {
   return { backgroundImage: bg.value };
 }
 
+// Couleur de texte par défaut d'un écran (change studio-lot-correctifs) :
+// couleur auteur = verbatim (gérée par l'appelant) ; sinon contraste calculé
+// sur le fond couleur résolu (fond sombre → texte clair et inversement) ;
+// sinon undefined = héritage du thème du Studio. Pur et testable.
+export function couleurTexteDefaut(bg?: ScreenBackground): string | undefined {
+  if (!bg || bg.type !== "color") return undefined;
+  const lum = luminanceHex(bg.value);
+  if (lum == null) return undefined;
+  return lum < 0.45 ? "#eef1f6" : "#212529";
+}
+
+function luminanceHex(hex: string): number | null {
+  const m = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.exec(hex.trim());
+  if (!m) return null;
+  const h = m[1].length === 3 ? m[1].split("").map((c) => c + c).join("") : m[1];
+  const r = parseInt(h.slice(0, 2), 16) / 255;
+  const g = parseInt(h.slice(2, 4), 16) / 255;
+  const b = parseInt(h.slice(4, 6), 16) / 255;
+  const lin = (c: number) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+
 // Heritage des styles global → ecran → widget, par propriete (change
 // studio-screen-editor, design D3) : a chaque niveau, seules les proprietes
 // renseignees surchargent ; les autres sont heritees. Pur et testable.

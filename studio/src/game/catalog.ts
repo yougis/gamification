@@ -47,6 +47,26 @@ export function setCatalogUrl(url: string): void {
 
 const sansSlash = (url: string): string => url.replace(/\/+$/, "");
 
+// Normalisation de l'URL saisie (change studio-lot-correctifs) : espaces
+// rognés, slash final retiré, suffixe `/publish` final retiré (il désigne
+// l'endpoint, pas le service — sans quoi l'appel doublerait le segment).
+export function normaliserUrlService(url: string): string {
+  return sansSlash(url.trim()).replace(/\/publish$/, "");
+}
+
+// Enveloppe fetch (change studio-lot-correctifs) : un échec réseau (service
+// éteint, CORS, DNS) devient un message actionnable au lieu d'une
+// `NetworkError` brute.
+async function appelerService(action: string, url: string, init?: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, init);
+  } catch {
+    throw new Error(
+      `Service catalogue injoignable (${action} ${url}) : vérifiez que le service tourne et que l'URL est celle du service (ex. http://localhost:3000), pas celle d'un endpoint.`,
+    );
+  }
+}
+
 async function lireErreur(r: Response): Promise<string> {
   try {
     const j = (await r.json()) as { error?: string };
@@ -66,13 +86,13 @@ function octetsVersBase64(bytes: Uint8Array): string {
 }
 
 export async function listGames(serviceUrl: string): Promise<CatalogEntry[]> {
-  const r = await fetch(`${sansSlash(serviceUrl)}/games`);
+  const r = await appelerService("liste", `${normaliserUrlService(serviceUrl)}/games`);
   if (!r.ok) throw new Error(await lireErreur(r));
   return (await r.json()) as CatalogEntry[];
 }
 
 export async function fetchPack(serviceUrl: string, code: string): Promise<CatalogPack> {
-  const r = await fetch(`${sansSlash(serviceUrl)}/games/${code}`);
+  const r = await appelerService("récupération", `${normaliserUrlService(serviceUrl)}/games/${code}`);
   if (r.status === 404) throw new Error("code inconnu");
   if (!r.ok) throw new Error(await lireErreur(r));
   return (await r.json()) as CatalogPack;
@@ -83,7 +103,7 @@ export async function fetchPack(serviceUrl: string, code: string): Promise<Catal
 // objet importé dans le manifest du jeu courant (pack autonome, jamais de
 // référence externe).
 export async function fetchAsset(serviceUrl: string, code: string, path: string): Promise<Uint8Array> {
-  const r = await fetch(`${sansSlash(serviceUrl)}/games/${code}/assets/${path.split("/").map(encodeURIComponent).join("/")}`);
+  const r = await appelerService("asset", `${normaliserUrlService(serviceUrl)}/games/${code}/assets/${path.split("/").map(encodeURIComponent).join("/")}`);
   if (r.status === 404) throw new Error("asset introuvable");
   if (!r.ok) throw new Error(await lireErreur(r));
   return new Uint8Array(await r.arrayBuffer());
@@ -98,7 +118,7 @@ export async function publishGame(
     const bytes = new Uint8Array(await a.file.arrayBuffer());
     assets.push({ path: a.path, base64: octetsVersBase64(bytes) });
   }
-  const r = await fetch(`${sansSlash(serviceUrl)}/publish`, {
+  const r = await appelerService("publication", `${normaliserUrlService(serviceUrl)}/publish`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ gameId: opts.gameId, gameJson: opts.gameJson, manifest: opts.manifest, assets }),

@@ -43,7 +43,14 @@
       "id": "start",
       "module": {
         "type": "INFO",
-        "data": {}
+        "data": {
+          "schemaVersion": "1.0.0",
+          "steps": [
+            {
+              "text": "Bienvenue — suivez les étapes du parcours."
+            }
+          ]
+        }
       },
       "activation": {
         "requires": [

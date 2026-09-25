@@ -2,7 +2,8 @@
 // inventory-crafting : résolution d'indices (dernier gagne, pur) et
 // recettes (proposer + appliquer atomiquement).
 import { strict as assert } from "node:assert";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { availableRecipes, applyRecipe, resolveInventoryHint, toolboxIconVisible } from "./src/game/inventory.ts";
 import { evaluate } from "./src/game/evaluate.ts";
 import { createInventoryEvent, present, INVENTORY_EVENT_TYPES } from "./src/game/runtime.ts";
@@ -53,7 +54,7 @@ const PRECISES = [
     gameId: "pur",
     schemaVersion: "1.0.0",
     nodes: [noeudQuiz(avecHints ? [{ event: "ITEM_SELECTED", itemId: "loupe", hint: "Regarde." }] : null),
-      { id: "fin", isEnding: true, module: { type: "INFO", data: {} }, activation: { requires: [{ type: "NODE_COMPLETED", nodeId: "q" }] } }],
+      { id: "fin", isEnding: true, module: { type: "INFO", data: { schemaVersion: "1.0.0", steps: [{ text: "x" }] } }, activation: { requires: [{ type: "NODE_COMPLETED", nodeId: "q" }] } }],
   }) as unknown as Game;
   const sim = { present: new Set<string>(), dwellOk: new Set<string>(), throughOk: new Set<string>(), nowMs: 60_000, completedAt: new Map(), accuracyM: 5 };
   const sans = evaluate(jeu(false), sim as never, {}, new Map(), new Map(), new Set());
@@ -81,7 +82,7 @@ const PRECISES = [
     objects: [{ id: "loupe", name: "Loupe" }, { id: "cle", name: "Clé" }],
     nodes: [
       { id: "q", module: { type: "QUIZ", data: quizData }, activation: { requires: [{ type: "TIMER", anchor: "GAME_START", delaySeconds: 0 }] } },
-      { id: "fin", isEnding: true, module: { type: "INFO", data: {} }, activation: { requires: [{ type: "NODE_COMPLETED", nodeId: "q" }] } },
+      { id: "fin", isEnding: true, module: { type: "INFO", data: { schemaVersion: "1.0.0", steps: [{ text: "x" }] } }, activation: { requires: [{ type: "NODE_COMPLETED", nodeId: "q" }] } },
     ],
   } as unknown as Game;
   assert.deepEqual(validateGame(jeu).layers.flatMap((l) => l.errors), []);
@@ -117,7 +118,7 @@ const PRECISES = [
     objects: [{ id: "colle", name: "Colle", consumable: true }],
     nodes: [
       { id: "p", module: { type: "PUZZLE", data: puzzleData }, activation: { requires: [{ type: "TIMER", anchor: "GAME_START", delaySeconds: 0 }] } },
-      { id: "fin", isEnding: true, module: { type: "INFO", data: {} }, activation: { requires: [{ type: "NODE_COMPLETED", nodeId: "p" }] } },
+      { id: "fin", isEnding: true, module: { type: "INFO", data: { schemaVersion: "1.0.0", steps: [{ text: "x" }] } }, activation: { requires: [{ type: "NODE_COMPLETED", nodeId: "p" }] } },
     ],
   } as unknown as Game;
   const erreurs = validateGame(jeu).layers.flatMap((l) => l.errors);
@@ -161,8 +162,8 @@ const PRECISES = [
     objects,
     recipes,
     nodes: [
-      { id: "a", module: { type: "INFO", data: {} }, activation: { requires: [{ type: "TIMER", anchor: "GAME_START", delaySeconds: 0 }] } },
-      { id: "fin", isEnding: true, module: { type: "INFO", data: {} }, activation: { requires: [{ type: "NODE_COMPLETED", nodeId: "a" }] } },
+      { id: "a", module: { type: "INFO", data: { schemaVersion: "1.0.0", steps: [{ text: "x" }] } }, activation: { requires: [{ type: "TIMER", anchor: "GAME_START", delaySeconds: 0 }] } },
+      { id: "fin", isEnding: true, module: { type: "INFO", data: { schemaVersion: "1.0.0", steps: [{ text: "x" }] } }, activation: { requires: [{ type: "NODE_COMPLETED", nodeId: "a" }] } },
     ],
   }) as unknown as Game;
   const OBJETS = [
@@ -237,8 +238,8 @@ const PRECISES = [
       { id: "annoter", inputs: [{ itemId: "loupe", consume: false }, { itemId: "carte", consume: true }], output: "carte-annotee" },
     ],
     nodes: [
-      { id: "a", module: { type: "INFO", data: {} }, activation: { requires: [{ type: "TIMER", anchor: "GAME_START", delaySeconds: 0 }] } },
-      { id: "fin", isEnding: true, module: { type: "INFO", data: {} }, activation: { requires: [{ type: "NODE_COMPLETED", nodeId: "a" }] } },
+      { id: "a", module: { type: "INFO", data: { schemaVersion: "1.0.0", steps: [{ text: "x" }] } }, activation: { requires: [{ type: "TIMER", anchor: "GAME_START", delaySeconds: 0 }] } },
+      { id: "fin", isEnding: true, module: { type: "INFO", data: { schemaVersion: "1.0.0", steps: [{ text: "x" }] } }, activation: { requires: [{ type: "NODE_COMPLETED", nodeId: "a" }] } },
     ],
   } as unknown as Game;
   assert.deepEqual(validateGame(jeu).layers.flatMap((l) => l.errors), []);
@@ -278,6 +279,27 @@ const PRECISES = [
   // BASIC sans objet du tout → aucune icône.
   assert(!toolboxIconVisible({ ...poi, objects: [] }, null), "BASIC sans objet");
   console.log("toolbox 2.1 : OK (Sherlock icône, 5poi aucune, isolé masqué)");
+}
+
+// 1.2 (lot-correctifs) : garde-fou — aucune couleur de texte codée en dur
+// dans les renderers d'écran (les couleurs auteur viennent des données).
+{
+  const root = new URL(".", import.meta.url).pathname;
+  const fichiers: string[] = [];
+  const ramasser = (dir: string) => {
+    for (const e of readdirSync(dir)) {
+      const p = join(dir, e);
+      if (statSync(p).isDirectory()) ramasser(p);
+      else if (p.endsWith(".tsx")) fichiers.push(p);
+    }
+  };
+  ramasser(join(root, "src/components/wysiwyg"));
+  const fautifs = fichiers.filter((f) => {
+    const code = readFileSync(f, "utf8").split("\n").filter((l) => !l.trim().startsWith("//"));
+    return code.some((l) => /text-white|text-black|color:\s*["']#/.test(l));
+  });
+  assert.deepEqual(fautifs, []);
+  console.log(`écrans 1.2 : OK (0 couleur texte codée en dur sur ${fichiers.length} renderers)`);
 }
 
 console.log("INVENTORY SMOKE OK");

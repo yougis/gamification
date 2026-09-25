@@ -4,7 +4,7 @@
 // + moveScreenWidgetAcross() (deplacement inter-zones en une operation),
 // + validation AJV des styles, minigameDefaults, QCM image et puzzle
 // (change studio-screen-editor).
-import { resolveScreen, DEFAULT_SCREEN, resolveStyles, resolveMinigameParam } from "./src/game/screen-utils";
+import { resolveScreen, DEFAULT_SCREEN, resolveStyles, resolveMinigameParam, couleurTexteDefaut } from "./src/game/screen-utils";
 import { moveScreenWidgetAcross, patchScreenZone } from "./src/game/mcp";
 import { SCREEN_TEMPLATES, getScreenTemplate, loadCustomTemplates, saveCustomTemplate, allScreenTemplates } from "./src/game/screen-templates";
 import { estImageAcceptable } from "./src/components/wysiwyg/image-files";
@@ -19,7 +19,7 @@ function assert(cond: boolean, msg: string): void {
 
 const node = (screen?: ScreenDefinition): GameNode => ({
   id: "n",
-  module: { type: "INFO", data: {} },
+  module: { type: "INFO", data: { schemaVersion: "1.0.0", steps: [{ text: "x" }] } },
   activation: { requires: [{ type: "GEOFENCE", lat: 48.01, lng: 2.01, radiusMeters: 30, predicate: "enter" }] },
   ...(screen ? { screen } : {}),
 });
@@ -94,7 +94,7 @@ const jeuDnD = (pid: string): Game => ({
   nodes: [
     {
       id: pid,
-      module: { type: "INFO", data: {} },
+      module: { type: "INFO", data: { schemaVersion: "1.0.0", steps: [{ text: "x" }] } },
       activation: { requires: [{ type: "TIMER", anchor: "GAME_START", delaySeconds: 0 }] },
       isEnding: true,
       screen: {
@@ -127,7 +127,7 @@ const jeuStyles = (patch: Record<string, unknown>): Game => ({
   nodes: [
     {
       id: "n",
-      module: { type: "INFO", data: {} },
+      module: { type: "INFO", data: { schemaVersion: "1.0.0", steps: [{ text: "x" }] } },
       activation: { requires: [{ type: "TIMER", anchor: "GAME_START", delaySeconds: 0 }] },
       isEnding: true,
       ...patch,
@@ -238,7 +238,7 @@ assert(!estImageAcceptable(fauxFichier("doc.pdf", "application/pdf")), "pdf refu
       {
         id: "fin",
         isEnding: true,
-        module: { type: "INFO", data: {} },
+        module: { type: "INFO", data: { schemaVersion: "1.0.0", steps: [{ text: "x" }] } },
         activation: { requires: [{ type: "NODE_COMPLETED", nodeId: "q" }] },
       },
     ],
@@ -255,6 +255,18 @@ assert(!estImageAcceptable(fauxFichier("doc.pdf", "application/pdf")), "pdf refu
     JSON.stringify(koRef.layers[1].errors),
   );
   console.log("ok: hints C1 type fautif nommé, C2 itemId orphelin nommé");
+}
+
+// 16. Couleur de texte par défaut (change studio-lot-correctifs) : contraste
+// calculé sur fond couleur, héritage sinon, couleurs auteur intactes.
+{
+  assert(couleurTexteDefaut({ type: "color", value: "#14141f" }) === "#eef1f6", "fond template sombre → texte clair");
+  assert(couleurTexteDefaut({ type: "color", value: "#1a1a2e" }) === "#eef1f6", "fond défaut sombre → texte clair");
+  assert(couleurTexteDefaut({ type: "color", value: "#ffffff" }) === "#212529", "fond clair → texte sombre");
+  assert(couleurTexteDefaut(undefined) === undefined, "sans fond → héritage thème");
+  assert(couleurTexteDefaut({ type: "image", value: "a.jpg" }) === undefined, "fond image → héritage thème");
+  assert(couleurTexteDefaut({ type: "color", value: "granule" }) === undefined, "couleur illisible → héritage thème");
+  console.log("ok: contraste écran calculé, héritage sinon");
 }
 
 console.log("screen.smoke: ALL OK");

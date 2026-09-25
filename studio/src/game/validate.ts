@@ -11,6 +11,7 @@ import puzzle from "./schema/puzzle.json";
 import arMarker from "./schema/ar-marker.json";
 import boussole from "./schema/boussole.json";
 import codeInput from "./schema/code-input.json";
+import info from "./schema/info.json";
 import inventoryHints from "./schema/inventory-hints.json";
 import type { Game, GameNode, Condition, ExperienceStyle, Branding, GameMode, Difficulty } from "./types";
 import { MODULE_REGISTRY } from "./modules";
@@ -409,6 +410,7 @@ ajv.addSchema(puzzle, "modules/puzzle.json");
 ajv.addSchema(arMarker, "modules/ar-marker.json");
 ajv.addSchema(boussole, "modules/boussole.json");
 ajv.addSchema(codeInput, "modules/code-input.json");
+ajv.addSchema(info, "modules/info.json");
 ajv.addSchema(inventoryHints, "modules/inventory-hints.json");
 const validateSchema = ajv.compile(schema);
 

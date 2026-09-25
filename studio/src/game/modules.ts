@@ -6,6 +6,7 @@ import { codeInputScreenPlugin } from "../components/wysiwyg/plugins/code-input"
 import { differenceGameScreenPlugin } from "../components/wysiwyg/plugins/difference-game";
 import { arMarkerScreenPlugin } from "../components/wysiwyg/plugins/ar-marker";
 import { boussoleScreenPlugin } from "../components/wysiwyg/plugins/boussole";
+import { infoScreenPlugin } from "../components/wysiwyg/plugins/info";
 
 export type { ModuleRegistryEntry };
 
@@ -20,6 +21,7 @@ export const MODULE_REGISTRY: Record<string, ModuleRegistryEntry> = {
   DIFFERENCE_GAME: { ...MODULE_REGISTRY_BASE.DIFFERENCE_GAME, screenPlugin: differenceGameScreenPlugin },
   AR_MARKER: { ...MODULE_REGISTRY_BASE.AR_MARKER, screenPlugin: arMarkerScreenPlugin },
   BOUSSOLE: { ...MODULE_REGISTRY_BASE.BOUSSOLE, screenPlugin: boussoleScreenPlugin },
+  INFO: { ...MODULE_REGISTRY_BASE.INFO, screenPlugin: infoScreenPlugin },
 };
 
 // Tap valide si dans un polygone dilate (unites % : meme espace que les polygones).

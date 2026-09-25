@@ -59,6 +59,7 @@ import { ChevronRepli, RailReplie } from "./components/Repli";
 import { Accordeon, useAccordeon } from "./components/Accordeon";
 import MapView from "./components/MapView";
 import { PhoneCanvas, VIEWPORTS, type ViewportId } from "./components/wysiwyg/PhoneCanvas";
+import { enregistrerAssetSession } from "./components/wysiwyg/image-files";
 import { ImagePicker } from "./components/wysiwyg/ImagePicker";
 import { PropertiesPanel } from "./components/wysiwyg/PropertiesPanel";
 import { TemplatePicker } from "./components/wysiwyg/TemplatePicker";
@@ -220,18 +221,27 @@ function BarreViewports({ viewport, onChoisir }: { viewport: ViewportId; onChois
       onToggle={basculer}
     >
       <div className="flex shrink-0 items-center gap-1" role="toolbar" aria-label="Viewport d'aperçu">
-        {VIEWPORTS.map((v) => (
-          <button
-            key={v.id}
-            type="button"
-            className={`btn text-[8px] ${viewport === v.id ? "btn-active" : ""}`}
-            aria-pressed={viewport === v.id}
-            title={`${v.libelle} (${v.largeur}×${v.hauteur})`}
-            onClick={() => onChoisir(v.id)}
-          >
-            {v.libelle}
-          </button>
-        ))}
+        {VIEWPORTS.map((v) => {
+          const icone =
+            v.id === "phone-portrait" ? "tel-portrait"
+            : v.id === "phone-landscape" ? "tel-paysage"
+            : v.id === "tablet-portrait" ? "tab-portrait"
+            : "tab-paysage";
+          const etiquette = `${v.libelle} (${v.largeur}×${v.hauteur})`;
+          return (
+            <button
+              key={v.id}
+              type="button"
+              className={`btn min-h-9 px-2.5 ${viewport === v.id ? "btn-active" : ""}`}
+              aria-pressed={viewport === v.id}
+              aria-label={etiquette}
+              title={etiquette}
+              onClick={() => onChoisir(v.id)}
+            >
+              <Icon name={icone} size={14} />
+            </button>
+          );
+        })}
       </div>
     </Accordeon>
   );
@@ -277,6 +287,7 @@ export default function App() {  const [st, dispatch] = useReducer(reduce, undef
     const deja = manifest.find((m) => m.sha256 === sha256);
     if (deja) {
       assetsSession.current.set(deja.path, file);
+      enregistrerAssetSession(deja.path, file);
       return deja.path;
     }
     const base = (file.name.replace(/[^a-zA-Z0-9._-]+/g, "_") || "image.png").slice(0, 80);
@@ -291,6 +302,7 @@ export default function App() {  const [st, dispatch] = useReducer(reduce, undef
     }
     setManifest((m) => registerAsset(m, { path: chemin, version: "1.0.0", size: file.size, sha256 }));
     assetsSession.current.set(chemin, file);
+    enregistrerAssetSession(chemin, file);
     return chemin;
   }, [manifest]);
   const [nouveauType, setNouveauType] = useState("GEOFENCE");
@@ -754,6 +766,14 @@ const noeuds: Node[] = useMemo(
   const ouvrir = (id: string) => {
     setActiveId(id);
     journal(`ouverture ${id}`);
+  };
+  // Entrée MODE JEUX (change studio-lot-correctifs) : sans nœud actif, on
+  // ouvre la tête de file (premier éligible) au lieu de la salle d'attente ;
+  // l'ouverture est journalée comme toute ouverture manuelle. File vide =
+  // salle d'attente inchangée. L'enchaînement reste l'avance auto existante.
+  const entrerModeJeux = () => {
+    if (!activeId && file.length) ouvrir(file[0]);
+    setModeJeux(true);
   };
   const terminer = (id: string, abandon: boolean) => {
     const n = game.nodes.find((m) => m.id === id)!;
@@ -1555,7 +1575,7 @@ const noeuds: Node[] = useMemo(
           <div className="flex items-center justify-between mb-6">
             <h2 className="font-display font-extrabold text-2xl tracking-widest uppercase text-snow">Prévisualiser</h2>
             <span className="flex gap-1">
-              <button onClick={() => setModeJeux(true)} disabled={!activeId && !file.length} className="text-[8px] font-mono uppercase tracking-wider px-3 py-1.5 border border-rule rounded text-fog hover:border-neon/40 hover:text-neon transition-colors disabled:opacity-40">▶ Mode Jeux</button>
+              <button onClick={() => entrerModeJeux()} disabled={!activeId && !file.length} className="text-[8px] font-mono uppercase tracking-wider px-3 py-1.5 border border-rule rounded text-fog hover:border-neon/40 hover:text-neon transition-colors disabled:opacity-40">▶ Mode Jeux</button>
               <button onClick={testerBranches} className="text-[8px] font-mono uppercase tracking-wider px-3 py-1.5 border border-rule rounded text-fog hover:border-neon/40 hover:text-neon transition-colors">↺ Rejouer fixture</button>
             </span>
           </div>
@@ -2614,10 +2634,22 @@ function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauT
             onSupprimer={() => upd({ effects: (node.effects ?? []).filter((_, j) => j !== i) })}
           />
         ))}
+        {(node.effects ?? []).length > 0 && (
+          <button className="btn min-h-8 px-2.5" onClick={() => upd({ effects: [...(node.effects ?? []), { type: "GIVE_ITEM", itemId: "" }] })} title="Ajouter un autre effet"><Icon name="ajouter" size={14} /> Ajouter un effet</button>
+        )}
       </Famille>
       <Famille id={FAMILLES[7].id} icone={FAMILLES[7].icone} titre={FAMILLES[7].titre} aide={FAMILLES[7].aide} active={activeFamille === FAMILLES[7].id}>
+        {/* Accès inventaire sur cet écran (change studio-inventory-access) :
+            coché = champ absent (hérite de la règle triple), décoché =
+            inventoryAccess:false. Même op qu'ailleurs (un pas d'undo). */}
+        <label className="flex items-center gap-1"><input type="checkbox" checked={node.inventoryAccess !== false} onChange={(e) => upd({ inventoryAccess: e.target.checked ? undefined : false })} /> Accès inventaire sur cet écran</label>
+        {((game.objects ?? []).length === 0 || !(game.global?.presentation ?? []).includes("TOOLBOX")) && (
+          <p className="puce whitespace-normal" title="Rappel non bloquant : seule la validation bloque">
+            <Icon name="alerte" size={13} /> Sans effet : jeu sans inventaire (aucun objet ou présentation sans TOOLBOX).
+          </p>
+        )}
         {(node.inventoryRef ?? []).length === 0 ? (
-          <button className="btn" onClick={() => upd({ inventoryRef: [] })}><Icon name="ajouter" size={15} /> Ajouter un objet référencé</button>
+          <button className="btn" onClick={() => upd({ inventoryRef: [game.objects?.[0]?.id ?? ""] })}><Icon name="ajouter" size={15} /> Ajouter un objet référencé</button>
         ) : null}
         {(node.inventoryRef ?? []).map((ref, i) => (
           <div key={i} className="carte p-2 shadow-none">
@@ -2631,6 +2663,9 @@ function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauT
             </span>
           </div>
         ))}
+        {(node.inventoryRef ?? []).length > 0 ? (
+          <button className="btn min-h-8 px-2.5" onClick={() => upd({ inventoryRef: [...(node.inventoryRef ?? []), game.objects?.[0]?.id ?? ""] })} title="Ajouter une autre référence"><Icon name="ajouter" size={14} /> Ajouter</button>
+        ) : null}
         <span className="text-[8px] text-fog">InventoryRef = objets liés à ce nœud (donnés, requis). Vide si aucun objet.</span>
       </Famille>
       <Famille id={FAMILLES[8].id} icone={FAMILLES[8].icone} titre={FAMILLES[8].titre} aide={FAMILLES[8].aide} active={activeFamille === FAMILLES[8].id}>
@@ -3543,7 +3578,7 @@ function Apercu(props: {
   return (
     <div className="carte p-3 flex flex-col gap-2">
       <h3 className="flex items-center gap-1.5 font-display font-extrabold text-2xl tracking-widest uppercase text-snow">
-        <Icon name="essai" size={15} /> Essai du parcours (triche tracée)
+        <Icon name="essai" size={15} /> Essai du parcours
       </h3>
       <p className="text-[9px] font-mono text-fog">La prévisualisation n'écrit jamais dans le JSON source : tout ici est simulation.</p>
       <Accordeon

@@ -551,6 +551,26 @@ export async function exportPackFull(
       }
     }
   }
+  // Médias INFO 100 % pack (change module-info-story) : ni URL réseau ni
+  // chemin absent du manifest — refus nommé. Scopé INFO : le comportement
+  // des autres médias existants est inchangé.
+  for (const n of game.nodes) {
+    if (n.module.type !== "INFO") continue;
+    const steps = (n.module.data as { steps?: unknown }).steps;
+    if (!Array.isArray(steps)) continue;
+    for (const s of steps) {
+      if (typeof s !== "object" || s === null) continue;
+      for (const champ of ["image", "video", "audio"] as const) {
+        const v = (s as Record<string, unknown>)[champ];
+        if (typeof v !== "string" || v === "") continue;
+        if (/^https?:\/\//i.test(v)) {
+          errors.push(`export refuse : média INFO hors-pack (URL réseau) ${n.id} : ${v}`);
+        } else if (!manifest.some((m) => m.path === v)) {
+          errors.push(`export refuse : média INFO absent du manifest ${n.id} : ${v}`);
+        }
+      }
+    }
+  }
   if (errors.length) return { ok: false, errors };
   const gameJson = JSON.stringify(game, null, 2);
   const files = await Promise.all(

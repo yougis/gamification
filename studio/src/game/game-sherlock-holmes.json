@@ -111,12 +111,17 @@
   "nodes": [
     {
       "id": "start",
-      "module": {
-        "type": "INFO",
-        "data": {
-          "backgroundImage": "assets/baker-street.jpg"
-        }
-      },
+    "module": {
+      "type": "INFO",
+      "data": {
+        "schemaVersion": "1.0.0",
+        "steps": [
+          {
+            "text": "Londres, 1891. Un message de Moriarty vient d'arriver. Watson, prenez votre loupe et votre carnet : l'enquête commence."
+          }
+        ]
+      }
+    },
       "activation": {
         "requires": [
           {

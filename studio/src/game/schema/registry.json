@@ -6,6 +6,7 @@
   "AR_MARKER": {"schema": "ar-marker.json", "version": "1.0.0"},
   "BOUSSOLE": {"schema": "boussole.json", "version": "1.0.0"},
   "CODE_INPUT": {"schema": "code-input.json", "version": "1.0.0", "needsInventory": true, "presentationNeeds": ["CLUE"], "experienceNeeds": ["visual"], "producesEffects": ["MODIFY_VARIABLE"]},
+  "INFO": {"schema": "info.json", "version": "1.0.0"},
   "CLUE_RESOLVER": {"schema": "clue-resolver.json", "version": "1.0.0", "presentationNeeds": ["CLUE"], "experienceNeeds": ["visual"], "producesEffects": ["REVEAL_NODE"]},
   "ITEM_DROPPER": {"schema": "item-dropper.json", "version": "1.0.0", "needsInventory": true, "presentationNeeds": ["TOOLBOX"], "experienceNeeds": ["visual"], "producesEffects": ["GIVE_ITEM"]},
   "ITEM_CONSUMER": {"schema": "item-consumer.json", "version": "1.0.0", "needsInventory": true, "presentationNeeds": ["TOOLBOX"], "experienceNeeds": ["visual"], "producesEffects": ["REMOVE_ITEM"]}

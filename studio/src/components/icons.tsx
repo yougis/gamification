@@ -38,7 +38,11 @@ export type IconName =
   | "chevron-g"
   | "chevron-d"
   | "chevron-h"
-  | "chevron-b";
+  | "chevron-b"
+  | "tel-portrait"
+  | "tel-paysage"
+  | "tab-portrait"
+  | "tab-paysage";
 
 const PATHS: Record<IconName, React.ReactNode> = {
   etape: (
@@ -252,6 +256,32 @@ const PATHS: Record<IconName, React.ReactNode> = {
   ),
   lune: (
     <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z" />
+  ),
+  // Viewports d'aperçu (change studio-lot-correctifs) : écran vertical /
+  // horizontal × petit (téléphone) / grand (tablette), un seul trait.
+  "tel-portrait": (
+    <>
+      <rect x="8.5" y="2.5" width="7" height="19" rx="1.5" />
+      <line x1="11" y1="18.5" x2="13" y2="18.5" />
+    </>
+  ),
+  "tel-paysage": (
+    <>
+      <rect x="2.5" y="8.5" width="19" height="7" rx="1.5" />
+      <line x1="18.5" y1="11" x2="18.5" y2="13" />
+    </>
+  ),
+  "tab-portrait": (
+    <>
+      <rect x="6" y="2" width="12" height="20" rx="2" />
+      <line x1="11" y1="19" x2="13" y2="19" />
+    </>
+  ),
+  "tab-paysage": (
+    <>
+      <rect x="2" y="6" width="20" height="12" rx="2" />
+      <line x1="5" y1="11" x2="5" y2="13" />
+    </>
   ),
 };
 

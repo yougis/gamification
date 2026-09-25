@@ -56,7 +56,14 @@ function drawCode(index) {
 
 function send(res, status, obj, contentType = "application/json") {
   const body = typeof obj === "string" ? obj : JSON.stringify(obj);
-  res.writeHead(status, { "content-type": contentType });
+  // CORS (change studio-lot-correctifs) : catalogue public par design
+  // (codes non secrets) — appels navigateur cross-origin assumés.
+  res.writeHead(status, {
+    "content-type": contentType,
+    "access-control-allow-origin": "*",
+    "access-control-allow-methods": "GET, POST, OPTIONS",
+    "access-control-allow-headers": "content-type",
+  });
   res.end(body);
 }
 
@@ -86,6 +93,17 @@ function safeAssetPath(raw) {
 
 export function createApp() {
   return async (req, res) => {
+    // Pré-vol CORS : 204 immédiat (change studio-lot-correctifs).
+    if (req.method === "OPTIONS") {
+      res.writeHead(204, {
+        "access-control-allow-origin": "*",
+        "access-control-allow-methods": "GET, POST, OPTIONS",
+        "access-control-allow-headers": "content-type",
+        "content-length": "0",
+      });
+      res.end();
+      return;
+    }
     const ip = req.socket?.remoteAddress ?? "unknown";
     if (rateLimited(ip)) {
       send(res, 429, { error: "trop de requêtes, réessayez dans une minute" });
@@ -226,7 +244,11 @@ export function createApp() {
           return;
         }
         const bytes = readFileSync(fp);
-        res.writeHead(200, { "content-type": "application/octet-stream", "content-length": bytes.length });
+        res.writeHead(200, {
+          "content-type": "application/octet-stream",
+          "content-length": bytes.length,
+          "access-control-allow-origin": "*",
+        });
         res.end(bytes);
         return;
       }

@@ -47,6 +47,15 @@ test("santé", async () => {
   assert.equal(r.json.ok, true);
 });
 
+test("CORS navigateur : pré-vol OPTIONS 204 + ACAO sur les réponses (lot-correctifs)", async () => {
+  const pre = await fetch(`${base}/publish`, { method: "OPTIONS" });
+  assert.equal(pre.status, 204);
+  assert.equal(pre.headers.get("access-control-allow-origin"), "*");
+  assert.ok((pre.headers.get("access-control-allow-methods") ?? "").includes("POST"));
+  const sante = await get("/health");
+  assert.equal(sante.raw.headers.get("access-control-allow-origin"), "*");
+});
+
 test("publication → code 4 chiffres ; deux jeux → codes distincts", async () => {
   const g1 = gameJson("Chasse du Vieux-Port");
   const r1 = await post("/publish", { gameId: "Chasse du Vieux-Port", gameJson: g1, manifest: manifestFor(g1) });

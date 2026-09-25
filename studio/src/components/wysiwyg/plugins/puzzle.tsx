@@ -9,6 +9,7 @@
 // onComplete, essais/temps -> verrouillage interne (le Noeud reste ACTIVE,
 // l'auteur tranche via Terminer/Abandonner comme pour les autres modules).
 import { useEffect, useMemo, useRef, useState } from "react";
+import { urlAssetSession } from "../image-files";
 import type {
   ModuleEditorPreviewProps,
   ModulePropertiesPanelProps,
@@ -99,6 +100,10 @@ export function PuzzleEditorPreview({ data }: ModuleEditorPreviewProps) {
   const { lignes, colonnes } = puzzleDecoupe(data);
   const pieces = lignes * colonnes;
   const melange = useMemo(() => melangerPieces(pieces), [d.image, lignes, colonnes, pieces]);
+  // Résolution d'asset (change studio-lot-correctifs) : le chemin du pack
+  // n'est pas affichable tel quel dans le Studio — même mécanisme que la
+  // vignette ImagePicker (repli = chemin brut).
+  const srcImage = (d.image && urlAssetSession(d.image)) || d.image;
   if (!d.image) {
     return (
       <div className="rounded border border-dashed border-line px-3 py-4 text-center">
@@ -121,7 +126,7 @@ export function PuzzleEditorPreview({ data }: ModuleEditorPreviewProps) {
           <div
             key={position}
             className="aspect-square bg-surface"
-            style={tuileFond(d.image!, lignes, colonnes, origine)}
+            style={tuileFond(srcImage!, lignes, colonnes, origine)}
             title={`Tuile ${position + 1}`}
           />
         ))}

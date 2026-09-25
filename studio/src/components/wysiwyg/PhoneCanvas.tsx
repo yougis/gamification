@@ -4,7 +4,7 @@
 // overlay en calque absolu. Clic sur le fond -> selection de l'ecran (null).
 import type { ScreenDefinition, Widget, ZoneId } from "../../game/types";
 import type { ReactNode } from "react";
-import { screenBackgroundStyle } from "../../game/screen-utils";
+import { couleurTexteDefaut, screenBackgroundStyle } from "../../game/screen-utils";
 import { ZoneRenderer } from "./ZoneRenderer";
 
 // Viewports d'apercu (change studio-screen-editor, design D1) : etat d'edition
@@ -75,6 +75,10 @@ export function PhoneCanvas({
 }) {
   const zones = screen.zones ?? {};
   const format = VIEWPORTS.find((v) => v.id === viewport) ?? VIEWPORTS[0];
+  // Couleur de texte par défaut (change studio-lot-correctifs) : contraste
+  // calculé sur le fond résolu, héritée par tous les descendants sans
+  // couleur explicite (couleurs auteur verbatim conservées).
+  const couleurDefaut = couleurTexteDefaut(screen.background);
   const cadre = (
     <div
       role="button"
@@ -88,7 +92,7 @@ export function PhoneCanvas({
         }
       }}
       className="relative flex flex-col overflow-hidden rounded-[2rem] border-4 border-line bg-surface text-snow"
-      style={{ width: format.largeur, height: format.hauteur, ...screenBackgroundStyle(screen.background) }}
+      style={{ width: format.largeur, height: format.hauteur, ...screenBackgroundStyle(screen.background), ...(couleurDefaut ? { color: couleurDefaut } : {}) }}
     >
           {screen.background?.overlay != null ? (
             <div className="pointer-events-none absolute inset-0 bg-black" style={{ opacity: screen.background.overlay }} />
@@ -157,7 +161,7 @@ export function PhoneCanvas({
           ) : null}
           {zones.overlay ? (
             <div className="absolute inset-0 flex items-center justify-center bg-black/50 p-6">
-              <div className="w-full rounded bg-surface p-2">
+              <div className="w-full rounded bg-surface p-2" style={{ color: "var(--ink)" }}>
                 <ZoneRenderer
                   zone={zones.overlay}
                   zoneId="overlay"

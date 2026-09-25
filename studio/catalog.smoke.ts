@@ -8,7 +8,7 @@ import { createServer } from "node:http";
 
 process.env.CATALOG_DATA_DIR = mkdtempSync(join(tmpdir(), "catalog-smoke-"));
 const { createApp } = await import("../catalog/server.js");
-const { publishGame, listGames, fetchPack } = await import("./src/game/catalog.ts");
+const { publishGame, listGames, fetchPack, normaliserUrlService } = await import("./src/game/catalog.ts");
 
 function assert(cond: boolean, msg: string): void {
   if (!cond) throw new Error(`catalog.smoke: ${msg}`);
@@ -44,6 +44,20 @@ try {
   assert(pack.gameJson === gameJson, "pack récupéré byte-identique");
   const f = new File([pack.gameJson], `${pack.gameId}.json`, { type: "application/json" });
   assert(f.size > 0 && f.name.endsWith(".json"), "File construisible pour importerFichier");
+
+  // Lot-correctifs 4.2 : normalisation d'URL + erreur actionnable.
+  assert(normaliserUrlService("http://localhost:3000/") === "http://localhost:3000", "slash final retiré");
+  assert(normaliserUrlService("  http://localhost:3000/publish ") === "http://localhost:3000", "suffixe /publish retiré");
+  assert(normaliserUrlService("http://hote:3000/jeux") === "http://hote:3000/jeux", "autre chemin conservé");
+  const p3 = await publishGame(`${base}/publish`, { gameId: "Fumée", gameJson, manifest, assets: [] });
+  assert(p3.code === p1.code, "URL d'endpoint normalisée : même jeu, pas de doublon");
+  let explicite = "";
+  try {
+    await publishGame("http://127.0.0.1:1", { gameId: "X", gameJson, manifest, assets: [] });
+  } catch (e) {
+    explicite = e instanceof Error ? e.message : String(e);
+  }
+  assert(explicite.includes("injoignable") && explicite.includes("http://127.0.0.1:1"), `erreur actionnable (${explicite.slice(0, 60)}…)`);
 } finally {
   server.close();
   rmSync(process.env.CATALOG_DATA_DIR, { recursive: true, force: true });
