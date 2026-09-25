@@ -12,11 +12,62 @@ import type {
 import { Accordeon, useAccordeon } from "../../Accordeon";
 import { ImagePicker } from "../ImagePicker";
 
-export interface DiffZone {
+export interface DiffZoneRect {
   x: number;
   y: number;
   w: number;
   h: number;
+}
+
+export interface DiffPoint {
+  x: number;
+  y: number;
+}
+
+export interface DiffZonePoly {
+  points: DiffPoint[];
+}
+
+// Zone 7-erreurs (change zones-7-erreurs) : rectangle historique OU polygone
+// (liste de sommets en %). Les deux coexistent dans `polygons`.
+export type DiffZone = DiffZoneRect | DiffZonePoly;
+
+export const estPolygone = (z: DiffZone): z is DiffZonePoly => Array.isArray((z as DiffZonePoly).points);
+
+export const libelleZone = (z: DiffZone, i: number): string =>
+  estPolygone(z)
+    ? `Zone ${i + 1} — polygone ${z.points.length} sommets`
+    : `Zone ${i + 1} — ${z.x}%, ${z.y}% · ${z.w}×${z.h}`;
+
+// Calque de zone en % sur l'image source (change zones-7-erreurs) : partage
+// par l'apercu, le traceur et la relecture pour un rendu identique.
+export function ZoneForme({ zone, index }: { zone: DiffZone; index: number }) {
+  if (estPolygone(zone)) {
+    return (
+      <svg
+        key={index}
+        className="absolute inset-0 h-full w-full"
+        viewBox="0 0 100 100"
+        preserveAspectRatio="none"
+        aria-hidden="true"
+      >
+        <polygon
+          points={zone.points.map((p) => `${p.x},${p.y}`).join(" ")}
+          fill="none"
+          stroke="var(--couleur-accent)"
+          strokeWidth={2}
+          vectorEffect="non-scaling-stroke"
+        />
+      </svg>
+    );
+  }
+  return (
+    <div
+      key={index}
+      className="absolute border-2"
+      style={{ left: `${zone.x}%`, top: `${zone.y}%`, width: `${zone.w}%`, height: `${zone.h}%`, borderColor: "var(--couleur-accent)" }}
+    />
+  );
 }
 
 interface DifferenceData {
@@ -46,11 +97,7 @@ export function DifferenceEditorPreview({ data }: ModuleEditorPreviewProps) {
       <div className="relative overflow-hidden rounded border border-line">
         <img src={d.source} alt="Source du 7 erreurs" className="block w-full" />
         {zones.map((p, i) => (
-          <div
-            key={i}
-            className="absolute border-2"
-            style={{ left: `${p.x}%`, top: `${p.y}%`, width: `${p.w}%`, height: `${p.h}%`, borderColor: "var(--couleur-accent)" }}
-          />
+          <ZoneForme key={i} zone={p} index={i} />
         ))}
       </div>
       <p className="text-[10px] text-fog">
@@ -74,7 +121,7 @@ export function ZoneTracer({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const depart = useRef<{ x: number; y: number } | null>(null);
-  const [courant, setCourant] = useState<DiffZone | null>(null);
+  const [courant, setCourant] = useState<DiffZoneRect | null>(null);
 
   const enPourcent = (clientX: number, clientY: number) => {
     const r = ref.current!.getBoundingClientRect();
@@ -111,11 +158,7 @@ export function ZoneTracer({
       >
         <img src={source} alt="Source à zoner" className="block w-full" draggable={false} />
         {zones.map((p, i) => (
-          <div
-            key={i}
-            className="absolute border-2"
-            style={{ left: `${p.x}%`, top: `${p.y}%`, width: `${p.w}%`, height: `${p.h}%`, borderColor: "var(--couleur-accent)" }}
-          />
+          <ZoneForme key={i} zone={p} index={i} />
         ))}
         {courant && courant.w > 0 && courant.h > 0 ? (
           <div
@@ -129,7 +172,7 @@ export function ZoneTracer({
           {zones.map((p, i) => (
             <li key={i} className="flex items-center gap-2 font-mono text-[10px] text-fog">
               <span className="flex-1">
-                Zone {i + 1} — {p.x}%, {p.y}% · {p.w}×{p.h}
+                {libelleZone(p, i)}
               </span>
               {!readOnly ? (
                 <button

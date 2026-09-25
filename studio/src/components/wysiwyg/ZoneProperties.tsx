@@ -50,6 +50,16 @@ export function ZoneProperties({
           <option value="free">Libre</option>
         </select>
       </label>
+      {zoneId === "overlay" ? (
+        <label className="flex items-center gap-1 text-xs" title="Le joueur pourra masquer la surimpression (clic sur le fond) et la réafficher (icône message)">
+          <input
+            type="checkbox"
+            checked={zone.fermable === true}
+            onChange={(e) => onPatchZone(zoneId, { fermable: e.target.checked })}
+          />
+          Fermable par le joueur
+        </label>
+      ) : null}
       <div className="flex flex-col gap-1">
         <span className="text-xs text-fog">Widgets ({widgets.length})</span>
         {widgets.length === 0 ? (

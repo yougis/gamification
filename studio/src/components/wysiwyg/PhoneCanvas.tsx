@@ -4,8 +4,10 @@
 // overlay en calque absolu. Clic sur le fond -> selection de l'ecran (null).
 import type { ScreenDefinition, Widget, ZoneId } from "../../game/types";
 import type { ReactNode } from "react";
+import { useState } from "react";
 import { couleurTexteDefaut, screenBackgroundStyle } from "../../game/screen-utils";
 import { ZoneRenderer } from "./ZoneRenderer";
+import { Icon } from "../icons";
 
 // Viewports d'apercu (change studio-screen-editor, design D1) : etat d'edition
 // local, jamais persiste dans le JSON. Dimensions logiques du cadre.
@@ -75,6 +77,11 @@ export function PhoneCanvas({
 }) {
   const zones = screen.zones ?? {};
   const format = VIEWPORTS.find((v) => v.id === viewport) ?? VIEWPORTS[0];
+  // Masquage temporaire de la surimpression (change studio-overlay-fermable) :
+  // oeil d'edition, etat local jamais persiste. Visible uniquement en edition
+  // (onSelectZone present) : ni miniatures ni terminal joueur.
+  const [overlayMasquee, setOverlayMasquee] = useState(false);
+  const oeil = onSelectZone != null;
   // Couleur de texte par défaut (change studio-lot-correctifs) : contraste
   // calculé sur le fond résolu, héritée par tous les descendants sans
   // couleur explicite (couleurs auteur verbatim conservées).
@@ -159,9 +166,23 @@ export function PhoneCanvas({
               <FantomeZone libelle="+ Pied de page" zoneId="footer" onCreate={onCreateZone} />
             </div>
           ) : null}
-          {zones.overlay ? (
+          {zones.overlay && (!overlayMasquee || !oeil) ? (
             <div className="absolute inset-0 flex items-center justify-center bg-black/50 p-6">
-              <div className="w-full rounded bg-surface p-2" style={{ color: "var(--ink)" }}>
+              <div className="relative w-full rounded bg-surface p-2" style={{ color: "var(--ink)" }}>
+                {oeil ? (
+                  <button
+                    type="button"
+                    className="absolute right-1 top-1 rounded border border-line bg-surface-2 p-1 text-fog hover:text-snow"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setOverlayMasquee(true);
+                    }}
+                    title="Masquer temporairement la surimpression (œil d'édition, non persisté)"
+                    aria-label="Masquer temporairement la surimpression"
+                  >
+                    <Icon name="oeil" size={13} />
+                  </button>
+                ) : null}
                 <ZoneRenderer
                   zone={zones.overlay}
                   zoneId="overlay"
@@ -176,6 +197,23 @@ export function PhoneCanvas({
                   renderModule={renderModule}
                 />
               </div>
+            </div>
+          ) : null}
+          {zones.overlay && overlayMasquee && oeil ? (
+            <div className="relative shrink-0 px-2 py-1">
+              <button
+                type="button"
+                className="flex w-full items-center justify-center gap-2 rounded border border-dashed border-line px-3 py-1.5 text-center text-xs text-fog hover:border-neon hover:text-snow"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setOverlayMasquee(false);
+                  onSelectZone?.("overlay");
+                }}
+                title="Réafficher la surimpression"
+                aria-label="Réafficher la surimpression masquée"
+              >
+                <Icon name="oeil" size={13} /> Surimpression masquée — réafficher
+              </button>
             </div>
           ) : null}
         </div>

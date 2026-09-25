@@ -6,6 +6,8 @@ de session (repli Guided Access) et les limites à connaître avant le terrain.
 
 ## Installer sur un iPad
 
+URL publique (déployée par CI depuis `master`) : **https://yougis.github.io/gamification/**
+
 1. En ligne (Wi-Fi), ouvrez l'URL de la PWA dans Safari et laissez la page
    charger entièrement (mise en cache de l'app shell).
 2. Partage → **Sur l'écran d'accueil** → Ajouter. L'icône GeoPlay apparaît
@@ -15,6 +17,8 @@ de session (repli Guided Access) et les limites à connaître avant le terrain.
 4. Importez le pack (fichier `game.json` via AirDrop/Fichiers, ou URL) puis
    jouez : tout est ensuite hors-ligne (manifest SHA-256 revérifié au
    lancement, pack partiel refusé avec le fichier nommé).
+   Astuce : un lien `https://yougis.github.io/gamification/?code=4217&service=<https://catalogue>`
+   pré-remplit l'écran d'import (code + service catalogue).
 
 ## Verrouiller une session (repli Guided Access)
 

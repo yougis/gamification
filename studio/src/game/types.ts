@@ -166,6 +166,9 @@ export type ZoneLayout = "stack" | "grid" | "free";
 export interface ZoneContent {
   layout?: ZoneLayout;
   widgets?: Widget[];
+  // Surimpression fermable par le joueur (change studio-overlay-fermable) :
+  // optionnel, défaut false, ignoré hors zone overlay.
+  fermable?: boolean;
 }
 
 export type ZoneId = "header" | "content" | "footer" | "overlay";

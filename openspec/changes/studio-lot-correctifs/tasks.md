@@ -25,4 +25,4 @@
 
 ## 6. Non-régression
 
-- [ ] 6.1 Revalider Sherlock et la fixture couches 1+2 (0 erreur), `tsc`, smokes Studio, tests players ; vérifier et consigner
+- [x] 6.1 Revalider Sherlock et la fixture couches 1+2 (0 erreur), `tsc`, smokes Studio, tests players ; vérifier et consigner
