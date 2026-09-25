@@ -10,10 +10,10 @@
 
 ## 3. Joueur
 
-- [ ] 3.1 Paginer le contenu dans le prévisualisateur Studio et le renderer partagé (swipe ±40 px + Suivant/Précédent/Terminer + compteur, un module par page), et vérifier : étape 3 sous-pages parcourue jusqu'à complétion normale
-- [ ] 3.2 Rejouer Sherlock (8 écrans) comme oracle de non-régression parité, et vérifier : découpage identique Studio/joueur, `validate --specs` OK
+- [x] 3.1 Paginer le contenu dans le prévisualisateur Studio et le renderer partagé (swipe ±40 px + Suivant/Précédent/Terminer + compteur, un module par page), et vérifier : étape 3 sous-pages parcourue jusqu'à complétion normale — preview via canvas paginé, `ScreenRenderer(sousPages)` + `SubPageNav` (swipe densité-calibré, Terminer complète), route NODE branchée, 65/65 tests
+- [x] 3.2 Rejouer Sherlock (8 écrans) comme oracle de non-régression parité, et vérifier : découpage identique Studio/joueur, `validate --specs` OK — `SherlockParityJvmTest` étendu (pagination ≤1 média/page + témoin baker), 70/70 `jvmTest`, specs 28/28
 
 ## 4. Vérification finale
 
 - [ ] 4.1 Rejouer sur la PWA déployée (portrait + paysage, swipe et boutons) et vérifier : module entier sans rognage, progression cohérente
-- [ ] 4.2 Non-régression : tests verts, builds inchangés
+- [x] 4.2 Non-régression : tests verts, builds inchangés — 70/70 `jvmTest`, `:app:assembleDebug` vert, `tsc` + `test:screen` verts (iOS via CI macOS existante)

@@ -62,6 +62,26 @@ export function showHomeDashboard(game: Game, activeNodeId?: string | null): boo
   return (game.global?.presentation ?? []).includes("HOME") && activeNodeId == null;
 }
 
+// Nœud principal à l'arrivée (change player-immersion-parcours, miroir du
+// shared Kotlin) : start éligible non terminé > racine non terminée (ordre
+// des nœuds) > tête de file non terminée > null.
+export function noeudPrincipal(
+  game: Game,
+  unlocked: string[],
+  completedIds: Set<string>,
+  queue: string[],
+): string | null {
+  const ouverts = unlocked.filter((id) => !completedIds.has(id));
+  if (ouverts.includes("start") && game.nodes.some((n) => n.id === "start")) return "start";
+  const racine = game.nodes.find(
+    (n) =>
+      ouverts.includes(n.id) &&
+      n.activation.requires.every((c) => c.type !== "NODE_COMPLETED" && c.type !== "POOL_DRAWN"),
+  );
+  if (racine) return racine.id;
+  return queue.find((id) => !completedIds.has(id)) ?? null;
+}
+
 // Compte à rebours d'un POI (change player-home-dashboard, miroir du
 // shared Kotlin) : première condition TIMER non satisfaite, `ancre +
 // délai − nowMs` en ms (jamais négatif) ; ancre NODE_COMPLETION absente →

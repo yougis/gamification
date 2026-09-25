@@ -3,6 +3,7 @@ package com.geoplay.shared.game
 import com.geoplay.shared.pack.parseGameJson
 import java.io.File
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -31,6 +32,20 @@ class SherlockParityJvmTest {
                 assertTrue(w.type in knownWidgets, "widget inconnu ${w.type} sur ${node.id}")
                 resolveWidgetStyle(game, node, w)
             }
+            // Oracle pagination (change screen-subpages) : même règle
+            // Studio/joueur, au plus un média par sous-page.
+            val pages = paginateContent(screen.zones?.content?.widgets ?: emptyList())
+            assertTrue(pages.isNotEmpty(), "au moins une sous-page : ${node.id}")
+            for ((i, page) in pages.withIndex()) {
+                val medias = page.count { it.type == "module" || it.type == "image" }
+                assertTrue(medias <= 1, "page ${i + 1} de ${node.id} : $medias médias (max 1)")
+            }
         }
+        // Cas témoin : baker content [image, module].
+        val baker = game.nodes.first { it.id == "baker" }
+        val bakerPages = paginateContent(resolveScreen(game, baker).zones?.content?.widgets ?: emptyList())
+        assertEquals(2, bakerPages.size, "baker en 2 sous-pages")
+        assertEquals(listOf("image"), bakerPages[0].map { it.type })
+        assertEquals(listOf("module"), bakerPages[1].map { it.type }, "module seul en dernière page")
     }
 }

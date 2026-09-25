@@ -177,6 +177,13 @@ fun GeoPlayApp(
                         },
                         imageContent = imageContent,
                         styleOf = { resolveWidgetStyle(game, node, it) },
+                        // Pagination des sous-pages (change screen-subpages) :
+                        // Terminer complète le nœud comme le bouton du slot.
+                        sousPages = true,
+                        onTerminer = {
+                            onModuleComplete(nodeId)
+                            navController.popBackStack()
+                        },
                     )
                 }
             }

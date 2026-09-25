@@ -115,14 +115,14 @@ fun ScreenRenderer(
     // Sous-pages du content (change screen-subpages) : état local, jamais
     // persisté. Sans pagination demandée ou page unique : rendu inchangé.
     val widgetsContenu = zones?.content?.widgets ?: emptyList()
-    val sousPages = remember(widgetsContenu, sousPages) {
+    val pages = remember(widgetsContenu, sousPages) {
         if (sousPages) paginateContent(widgetsContenu) else listOf(widgetsContenu)
     }
     var indexPage by remember(widgetsContenu, sousPages) { mutableStateOf(0) }
-    val pageSure = indexPage.coerceIn(0, (sousPages.size - 1).coerceAtLeast(0))
-    val paginer = sousPages && sousPages.size > 1
+    val pageSure = indexPage.coerceIn(0, (pages.size - 1).coerceAtLeast(0))
+    val paginer = sousPages && pages.size > 1
     val idxProgress = pageIndex ?: if (paginer) pageSure else null
-    val totalProgress = pageTotal ?: if (paginer) sousPages.size else null
+    val totalProgress = pageTotal ?: if (paginer) pages.size else null
     val seuilSwipe = with(LocalDensity.current) { 40.dp.toPx() }
     Box(modifier = modifier.fillMaxSize()) {
         when (bg?.type) {
@@ -143,13 +143,13 @@ fun ScreenRenderer(
                     .pointerInput(paginer, pageSure) {
                         if (!paginer) return@pointerInput
                         detectHorizontalDragGestures { _, ecart ->
-                            if (ecart <= -seuilSwipe && pageSure < sousPages.size - 1) indexPage = pageSure + 1
+                            if (ecart <= -seuilSwipe && pageSure < pages.size - 1) indexPage = pageSure + 1
                             else if (ecart >= seuilSwipe && pageSure > 0) indexPage = pageSure - 1
                         }
                     },
             ) {
                 val zonePage = if (paginer) {
-                    (zones?.content ?: ZoneContent()).copy(widgets = sousPages[pageSure])
+                    (zones?.content ?: ZoneContent()).copy(widgets = pages[pageSure])
                 } else {
                     zones?.content
                 }
@@ -167,13 +167,13 @@ fun ScreenRenderer(
                         OutlinedButton(onClick = { indexPage = pageSure - 1 }) { Text("← Précédent") }
                     }
                     Text(
-                        "${pageSure + 1}/${sousPages.size}",
+                        "${pageSure + 1}/${pages.size}",
                         style = MaterialTheme.typography.labelSmall,
                         modifier = Modifier.weight(1f),
                     )
                     Button(onClick = {
-                        if (pageSure >= sousPages.size - 1) onTerminer() else indexPage = pageSure + 1
-                    }) { Text(if (pageSure >= sousPages.size - 1) "Terminer" else "Suivant →") }
+                        if (pageSure >= pages.size - 1) onTerminer() else indexPage = pageSure + 1
+                    }) { Text(if (pageSure >= pages.size - 1) "Terminer" else "Suivant →") }
                 }
             }
             zones?.footer?.let { ZoneBlock(it, branding, moduleSlot, imageContent, styleOf, onButtonAction, progressFraction, idxProgress, totalProgress) }

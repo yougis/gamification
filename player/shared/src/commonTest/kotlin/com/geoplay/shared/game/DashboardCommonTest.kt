@@ -72,8 +72,7 @@ class DashboardCommonTest {
     }
 
     @Test
-    fun defaultViewRule() {
-        val home = com.geoplay.shared.model.Game(
+    fun defaultViewRule() {        val home = com.geoplay.shared.model.Game(
             gameId = "v",
             nodes = listOf(
                 GameNode(
@@ -90,5 +89,56 @@ class DashboardCommonTest {
         assertEquals(true, showHomeDashboard(combo, null))
         val plain = home.copy(global = com.geoplay.shared.model.GlobalData(presentation = listOf("MAP")))
         assertEquals(false, showHomeDashboard(plain, null))
+    }
+
+    private fun immersionGame(): com.geoplay.shared.model.Game {
+        val noDep = com.geoplay.shared.model.Activation()
+        val depBaker = com.geoplay.shared.model.Activation(
+            requires = listOf(
+                Condition(type = ConditionType.NODE_COMPLETED, nodeId = "baker")
+            )
+        )
+        fun node(id: String, activation: com.geoplay.shared.model.Activation) = GameNode(
+            id = id,
+            module = ModuleData(type = "INFO"),
+            activation = activation
+        )
+        return com.geoplay.shared.model.Game(
+            gameId = "imm",
+            nodes = listOf(node("start", noDep), node("baker", noDep), node("scotland", depBaker)),
+            global = com.geoplay.shared.model.GlobalData()
+        )
+    }
+
+    @Test
+    fun principalPrefersEligibleStart() {
+        val g = immersionGame()
+        assertEquals("start", noeudPrincipal(g, listOf("start", "baker"), emptySet(), listOf("start")))
+    }
+
+    @Test
+    fun principalFallsBackToRoot() {
+        val g = immersionGame()
+        assertEquals("baker", noeudPrincipal(g, listOf("baker", "scotland"), emptySet(), listOf("baker")))
+    }
+
+    @Test
+    fun principalFallsBackToQueueHead() {
+        val g = immersionGame()
+        // Ni start ni racine éligibles : tête de file non terminée.
+        assertEquals("scotland", noeudPrincipal(g, listOf("scotland"), emptySet(), listOf("scotland")))
+    }
+
+    @Test
+    fun principalResumeSkipsCompleted() {
+        val g = immersionGame()
+        // Reprise : start terminé, baker reste le principal.
+        assertEquals("baker", noeudPrincipal(g, listOf("start", "baker"), setOf("start"), listOf("baker")))
+    }
+
+    @Test
+    fun principalNullWhenNothingOpen() {
+        val g = immersionGame()
+        assertEquals(null, noeudPrincipal(g, emptyList(), setOf("start"), emptyList()))
     }
 }

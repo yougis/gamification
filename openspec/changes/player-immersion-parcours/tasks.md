@@ -1,6 +1,6 @@
 ## 1. Règle pure et moteur (lecture seule)
 
-- [ ] 1.1 Fonction pure `noeudPrincipal(game, états)` en `commonMain` (start éligible > racine non terminée > tête de file > null) + tests : start, racine, file, reprise, aucun éligible
+- [x] 1.1 Fonction pure `noeudPrincipal(game, états)` en `commonMain` (start éligible > racine non terminée > tête de file > null) + tests : start, racine, file, reprise, aucun éligible
 - [ ] 1.2 Miroir TS de la règle (même cas) + preuves smoke ; vérifier : parité des 5 cas des deux côtés
 
 ## 2. Arrivée et enchaînement partagés (PWA + iOS héritent)

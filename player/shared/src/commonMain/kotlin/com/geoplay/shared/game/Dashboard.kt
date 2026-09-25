@@ -18,6 +18,29 @@ import com.geoplay.shared.model.GameNode
 fun showHomeDashboard(game: Game, activeNodeId: String? = null): Boolean =
     "HOME" in game.global.presentation && activeNodeId == null
 
+// Nœud principal à l'arrivée (change player-immersion-parcours) : lecture
+// pure du graphe + états, zéro donnée auteur. Ordre : nœud `start`
+// éligible non terminé > premier nœud racine non terminé (aucune
+// dépendance NODE_COMPLETED/POOL_DRAWN entrante, ordre des nœuds,
+// déterministe) > tête de file non terminée > null (repli liste).
+// L'ouverture reste une présentation d'éligible : aucune transition,
+// aucun event.
+fun noeudPrincipal(
+    game: Game,
+    unlocked: List<String>,
+    completedIds: Set<String>,
+    queue: List<String>
+): String? {
+    val eligibleOpen = unlocked.filter { it !in completedIds }
+    game.nodes.find { it.id == "start" && it.id in eligibleOpen }?.let { return it.id }
+    game.nodes.firstOrNull { n ->
+        n.id in eligibleOpen && n.activation.requires.none {
+            it.type == ConditionType.NODE_COMPLETED || it.type == ConditionType.POOL_DRAWN
+        }
+    }?.let { return it.id }
+    return queue.firstOrNull { it !in completedIds }
+}
+
 fun timerRemainingMs(
     node: GameNode,
     completedAt: Map<String, Long>,

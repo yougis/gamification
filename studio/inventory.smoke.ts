@@ -4,7 +4,7 @@
 import { strict as assert } from "node:assert";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { availableRecipes, applyRecipe, resolveInventoryHint, toolboxIconVisible, timerRemainingMs, showHomeDashboard } from "./src/game/inventory.ts";
+import { availableRecipes, applyRecipe, resolveInventoryHint, toolboxIconVisible, timerRemainingMs, showHomeDashboard, noeudPrincipal } from "./src/game/inventory.ts";
 import { evaluate } from "./src/game/evaluate.ts";
 import { createInventoryEvent, present, INVENTORY_EVENT_TYPES } from "./src/game/runtime.ts";
 import { validateGame } from "./src/game/validate.ts";
@@ -346,6 +346,26 @@ const PRECISES = [
   // Jamais vide : au moins un nœud listé (schéma exige nodes ≥ 1).
   assert(avecHome.nodes.length >= 1, "tableau non vide par construction");
   console.log("home 2.2 : OK (défaut combinable, repli intact)");
+}
+
+// 1.2 (immersion-parcours) : nœud principal, parité des 5 cas.
+{
+  const sansDep = { requires: [] as never[] };
+  const depBaker = { requires: [{ type: "NODE_COMPLETED", nodeId: "baker" }] as never[] };
+  const jeu = {
+    gameId: "imm",
+    nodes: [
+      { id: "start", module: { type: "INFO" }, activation: sansDep },
+      { id: "baker", module: { type: "INFO" }, activation: sansDep },
+      { id: "scotland", module: { type: "INFO" }, activation: depBaker },
+    ],
+  } as unknown as Game;
+  assert(noeudPrincipal(jeu, ["start", "baker"], new Set(), ["start"]) === "start", "start éligible d'abord");
+  assert(noeudPrincipal(jeu, ["baker", "scotland"], new Set(), ["baker"]) === "baker", "puis racine");
+  assert(noeudPrincipal(jeu, ["scotland"], new Set(), ["scotland"]) === "scotland", "puis tête de file");
+  assert(noeudPrincipal(jeu, ["start", "baker"], new Set(["start"]), ["baker"]) === "baker", "reprise : terminés sautés");
+  assert(noeudPrincipal(jeu, [], new Set(["start"]), []) === null, "rien d'ouvert → null");
+  console.log("immersion 1.2 : OK (5 cas, parité Kotlin)");
 }
 
 // 1.2 (lot-correctifs) : garde-fou — aucune couleur de texte codée en dur
