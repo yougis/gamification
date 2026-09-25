@@ -9,6 +9,7 @@ import androidx.room.Update
 import com.geoplay.shared.model.GameProgressEntity
 import com.geoplay.shared.model.HoldJournalEntity
 import com.geoplay.shared.model.InventoryEntity
+import com.geoplay.shared.model.InventoryEventEntity
 import com.geoplay.shared.model.NodeCompletionEntity
 import com.geoplay.shared.model.RandomDrawEntity
 import com.geoplay.shared.model.ScoreEntity
@@ -142,5 +143,20 @@ interface GameDao {
     @Transaction
     suspend fun insertInventoryWithTransaction(entry: InventoryEntity) {
         insertInventory(entry)
+    }
+
+    // Journal d'événements d'inventaire (change inventory-events-hints).
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertInventoryEvent(event: InventoryEventEntity): Long
+
+    @Query("SELECT * FROM inventory_events WHERE sessionId = :sessionId ORDER BY timestamp ASC, id ASC")
+    suspend fun getInventoryEvents(sessionId: String): List<InventoryEventEntity>
+
+    @Query("DELETE FROM inventory_events WHERE sessionId = :sessionId")
+    suspend fun clearInventoryEvents(sessionId: String)
+
+    @Transaction
+    suspend fun insertInventoryEventWithTransaction(event: InventoryEventEntity) {
+        insertInventoryEvent(event)
     }
 }

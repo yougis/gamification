@@ -2,7 +2,7 @@
 import { strict as assert } from "node:assert";
 import {
   resolveGameStartPools, present, hostModule, gpsFrequencyHz, accuracyMessage,
-  smoothHeading, compassState, cameraPolicy,
+  smoothHeading, compassState, cameraPolicy, createInventoryEvent, INVENTORY_EVENT_TYPES,
 } from "./src/game/runtime.ts";
 import { drawPool } from "./src/game/evaluate.ts";
 import type { Game } from "./src/game/types.ts";
@@ -88,5 +88,25 @@ const base = (nodes: never[]): Game => ({
   assert.deepEqual(force, ["b"]);
   assert.deepEqual(drawPool(pool as never, "s1"), reel); // le reel est inchange
   console.log("2.3 forceDraw : OK (force sans alterer le reel)");
+}
+
+// Inventaire (change inventory-events-hints) : vocabulaire fermé à six,
+// fabrique timestampée avec itemId optionnel et flag triche.
+{
+  assert.deepEqual([...INVENTORY_EVENT_TYPES], [
+    "INVENTORY_OPENED", "ITEM_SELECTED", "ITEM_USED",
+    "ITEM_COMBINED", "ITEM_GIVEN", "ITEM_REMOVED",
+  ]);
+  const sel = createInventoryEvent("ITEM_SELECTED", "s1", "loupe");
+  assert.equal(sel.type, "ITEM_SELECTED");
+  assert.equal(sel.sessionId, "s1");
+  assert.equal(sel.itemId, "loupe");
+  assert.equal(sel.isCheat, false);
+  assert.ok(typeof sel.timestamp === "number");
+  const open = createInventoryEvent("INVENTORY_OPENED", "s1");
+  assert.equal(open.itemId, undefined);
+  const cheat = createInventoryEvent("ITEM_USED", "s1", "cle", true);
+  assert.equal(cheat.isCheat, true);
+  console.log("3.1 events inventaire : OK (vocabulaire fermé, fabrique, flag triche)");
 }
 console.log("RUNTIME SMOKE OK");

@@ -16,9 +16,10 @@ import {
 import "@xyflow/react/dist/style.css";
 import { validateGame, deadEnds } from "./game/validate";
 import { evaluate, drawPool, type Sim } from "./game/evaluate";
-import { composeNodes, setActivation, registerAsset, exportPackFull, canExport, addSecoursCode, importGame, addObject, setObjects, setReview, removeNode, renameNode, duplicateNode, patchScreenZone, addScreenWidget, setScreenWidget as mcpSetScreenWidget, removeScreenWidget, moveScreenWidget, moveScreenWidgetAcross, setNodeScreen, setScreenBackground, setScreenStyles, setGlobalScreenStyles, setMinigameDefaults, type ManifestFile } from "./game/mcp";
-import { emptyMeta, type Condition, type Effect, type Game, type GameNode, type MinigameDefaults, type Predicate, type StudioMeta, type ExperienceStyle, type Branding, type GameMode, type Difficulty, type ZoneId } from "./game/types";
+import { composeNodes, setActivation, registerAsset, exportPackFull, canExport, addSecoursCode, importGame, addObject, setObjects, duplicateObject, setReview, removeNode, renameNode, duplicateNode, patchScreenZone, removeScreenZone, addScreenWidget, setScreenWidget as mcpSetScreenWidget, removeScreenWidget, moveScreenWidget, moveScreenWidgetAcross, setNodeScreen, setScreenBackground, setScreenStyles, setGlobalScreenStyles, setMinigameDefaults, type ManifestFile } from "./game/mcp";
+import { emptyMeta, type Condition, type Effect, type Game, type GameNode, type GameObject, type MinigameDefaults, type Predicate, type StudioMeta, type ExperienceStyle, type Branding, type GameMode, type Difficulty, type ZoneContent, type ZoneId } from "./game/types";
 import { buildCompatSidecar, canExportToChannel, type ChannelId } from "./game/compat";
+import { fetchAsset, fetchPack, getCatalogUrl, listGames, publishGame, setCatalogUrl as sauvegarderCatalogUrl, type CatalogEntry } from "./game/catalog";
 import { sha256Hex } from "./game/pack";
 import { FONT_OPTIONS, estPoliceConnue } from "./game/fonts";
 import {
@@ -30,12 +31,13 @@ import { MODULE_REGISTRY } from "./game/modules";
 
 const TYPES_MODULE = ["INFO", ...Object.keys(registre), "RANDOM_POOL"];
 
-// Mise en page par défaut (change studio-layout-revamp) : largeurs en px,
-// bornées à l'usage (droite 280–640, liste 220–520), sections dépliées.
+// Mise en page par défaut (change studio-composer-3-colonnes) : largeurs en px,
+// bornées à l'usage (droite 280–640, liste 220–520), sections latérales dépliées.
+// Le panneau central (graphe/carte/screen) n'est jamais repliable.
 const LAYOUT_DEFAUT = {
   droite: 400,
   liste: 340,
-  repliees: { graphe: false, liste: false, detail: false },
+  repliees: { liste: false, detail: false },
 };
 type SectionPliable = keyof typeof LAYOUT_DEFAUT.repliees;
 
@@ -63,7 +65,7 @@ import { TemplatePicker } from "./components/wysiwyg/TemplatePicker";
 import { PlayerTerminal } from "./components/wysiwyg/PlayerTerminal";
 import { ScreenProperties } from "./components/wysiwyg/ScreenProperties";
 import { resolveScreen } from "./game/screen-utils";
-import { getScreenPlugin } from "./game/module-screen-plugin";
+import { donneesDefautModule, ecranDefautModule, getScreenPlugin } from "./game/module-screen-plugin";
 import { getScreenTemplate } from "./game/screen-templates";
 
 type Snap = { game: Game; meta: StudioMeta };
@@ -185,7 +187,7 @@ type Onglet = "graphe" | "liste" | "detail";
 
 // Écrans du Studio (spec studio-onepage-spec) : navigation sur un état partagé,
 // sans état par écran (hors simulateur de Prévisualiser).
-type Ecran = "composer" | "importer" | "relire" | "valider" | "previsualiser" | "exporter" | "config";
+type Ecran = "composer" | "importer" | "relire" | "valider" | "previsualiser" | "exporter" | "config" | "inventaire";
 
 const ECRANS: { id: Ecran; nom: string; icone: IconName }[] = [
   { id: "composer", nom: "Composer", icone: "graphe" },
@@ -195,6 +197,7 @@ const ECRANS: { id: Ecran; nom: string; icone: IconName }[] = [
   { id: "previsualiser", nom: "Prévisualiser", icone: "essai" },
   { id: "exporter", nom: "Exporter", icone: "exporter" },
   { id: "config", nom: "Configuration", icone: "engrenage" },
+  { id: "inventaire", nom: "Inventaire", icone: "package" },
 ];
 
 // Barre des viewports d'aperçu (change studio-control-priority) : P2 replié
@@ -245,6 +248,19 @@ export default function App() {  const [st, dispatch] = useReducer(reduce, undef
   const [brut, setBrut] = useState<string[]>([]);
   const [animateur, setAnimateur] = useState(false);
   const [manifest, setManifest] = useState<ManifestFile[]>([]);
+  // Catalogue des jeux (change studio-game-catalog) : URL du service
+  // persistée, liste chargée à la demande, publication et résultat.
+  const [catalogUrl, setCatalogUrl] = useState(getCatalogUrl);
+  const changerCatalogUrl = (url: string) => {
+    setCatalogUrl(url);
+    sauvegarderCatalogUrl(url);
+  };
+  const [catalogue, setCatalogue] = useState<CatalogEntry[] | null>(null);
+  const [catalogueErreur, setCatalogueErreur] = useState<string | null>(null);
+  const [catalogueRecherche, setCatalogueRecherche] = useState("");
+  const [catalogueBusy, setCatalogueBusy] = useState(false);
+  const [publication, setPublication] = useState<{ code: string; gameId: string; version: number } | { erreur: string } | null>(null);
+  const [publicationBusy, setPublicationBusy] = useState(false);
   // Octets des images choisies pendant la session (change
   // studio-media-templates, design D1) : chemin manifest -> File, gardés en
   // mémoire pour téléchargement à l'export. Jamais dans le JSON ni le brouillon.
@@ -278,6 +294,10 @@ export default function App() {  const [st, dispatch] = useReducer(reduce, undef
     return chemin;
   }, [manifest]);
   const [nouveauType, setNouveauType] = useState("GEOFENCE");
+  // Mini-jeu choisi en premier à la création d'étape (change
+  // studio-module-first) : détermine le module, ses données et l'écran
+  // initial. Partagé par tous les points d'entrée (liste, rails, menu).
+  const [moduleCreation, setModuleCreation] = useState("QUIZ");
   const [etapeWorkflow, setEtapeWorkflow] = useState<EtapeWorkflow>(1);
   const [onglet, setOnglet] = useState<Onglet>("graphe");
   const [ecran, setEcran] = useState<Ecran>("composer");
@@ -326,34 +346,6 @@ export default function App() {  const [st, dispatch] = useReducer(reduce, undef
   const [log, setLog] = useState<string[]>([]);
   const [testAll, setTestAll] = useState<string | null>(null);
   const inputImportRef = useRef<HTMLInputElement>(null);
-  const [historique, setHistorique] = useState<{ nom: string; date: string; resultat: "chargé" | "rejeté"; raison?: string }[]>(() => {
-    try {
-      const raw = localStorage.getItem("geoplay-import-history");
-      const parsed: unknown = raw ? JSON.parse(raw) : [];
-      if (!Array.isArray(parsed)) return [];
-      return parsed.flatMap((x): { nom: string; date: string; resultat: "chargé" | "rejeté"; raison?: string }[] => {
-        if (typeof x === "string") return [{ nom: x, date: "", resultat: "chargé" }];
-        if (x && typeof x === "object" && typeof (x as { nom?: unknown }).nom === "string") {
-          const e = x as { nom: string; date?: unknown; resultat?: unknown; raison?: unknown };
-          return [{ nom: e.nom, date: typeof e.date === "string" ? e.date : "", resultat: e.resultat === "rejeté" ? "rejeté" : "chargé", raison: typeof e.raison === "string" ? e.raison : undefined }];
-        }
-        return [];
-      }).slice(0, 10);
-    } catch {
-      return [];
-    }
-  });
-  const memoriserImport = (e: { nom: string; date: string; resultat: "chargé" | "rejeté"; raison?: string }) => {
-    setHistorique((h) => {
-      const recents = [e, ...h.filter((x) => x.nom !== e.nom)].slice(0, 10);
-      try {
-        localStorage.setItem("geoplay-import-history", JSON.stringify(recents));
-      } catch {
-        /* stockage indisponible : l'historique reste en mémoire */
-      }
-      return recents;
-    });
-  };
   // Dernier import en échec : la raison brute (couche 1) reste affichée sur l'écran Importer.
   const [importEchoue, setImportEchoue] = useState<string | null>(null);
   // Menu de gauche repliable (change studio-layout-revamp), état persisté.
@@ -375,7 +367,8 @@ export default function App() {  const [st, dispatch] = useReducer(reduce, undef
       return nv;
     });
   };
-  // Largeurs des panneaux + sections pliées (change studio-layout-revamp), persistées ensemble.
+  // Largeurs des panneaux latéraux + sections pliées (change studio-composer-3-colonnes),
+  // persistées ensemble. La clé historique `repliees.graphe` est ignorée (centre forcé visible).
   const [mep, setMep] = useState(() => {
     try {
       const raw = localStorage.getItem("geoplay-layout-v1");
@@ -387,7 +380,6 @@ export default function App() {  const [st, dispatch] = useReducer(reduce, undef
         droite: borne(p.droite, 400, 280, 640),
         liste: borne(p.liste, 340, 220, 520),
         repliees: {
-          graphe: p.repliees?.graphe === true,
           liste: p.repliees?.liste === true,
           detail: p.repliees?.detail === true,
         },
@@ -433,6 +425,25 @@ export default function App() {  const [st, dispatch] = useReducer(reduce, undef
   };
   // Input fichier caché pour l'import par clic (écran Importer).
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  // Cadre disponible du canvas écran (change studio-apercu-arbre-paysage) :
+  // mesuré pour la mise à l'échelle en viewport paysage (plein cadre sans
+  // ascenseur). Le portrait garde le défilement natif (scale non renseigné).
+  const cadreEcranRef = useRef<HTMLDivElement | null>(null);
+  const [tailleCadre, setTailleCadre] = useState({ w: 0, h: 0 });
+  useEffect(() => {
+    const el = cadreEcranRef.current;
+    if (!el) return;
+    const mesurer = () => {
+      const r = el.getBoundingClientRect();
+      setTailleCadre((p) => (Math.abs(p.w - r.width) < 1 && Math.abs(p.h - r.height) < 1 ? p : { w: r.width, h: r.height }));
+    };
+    mesurer();
+    const ro = new ResizeObserver(mesurer);
+    ro.observe(el);
+    return () => ro.disconnect();
+    // Dépend de `sel` (déclaré avant ce hook) plutôt que `etape` (déclaré
+    // après) : évaluer `etape` ici lèverait une TDZ au rendu.
+  }, [vueCentrale, sel]);
   // Section surlignée après un drill-down (anneau temporaire, sans décalage de mise en page).
   const [sectionSurlignee, setSectionSurlignee] = useState<string | null>(null);
   const surlignageTimer = useRef<number | undefined>(undefined);
@@ -441,7 +452,9 @@ export default function App() {  const [st, dispatch] = useReducer(reduce, undef
   const allerEtape = (e: EtapeWorkflow) => {
     setEtapeWorkflow(e);
     const cible = SECTION_PAR_ETAPE[e];
-    const pliable = (["graphe", "detail", "liste"] as const).includes(cible as SectionPliable)
+    // Seuls les panneaux latéraux sont dépliables (change studio-composer-3-colonnes) :
+    // le centre (graphe) est toujours visible, on se contente de le surligner.
+    const pliable = (["detail", "liste"] as const).includes(cible as SectionPliable)
       ? (cible as SectionPliable)
       : null;
     if (pliable) setMep((m) => ({ ...m, repliees: { ...m.repliees, [pliable]: false } }));
@@ -659,29 +672,36 @@ const noeuds: Node[] = useMemo(
 
   // Création d'étapes via l'opération MCP nommée (historique lisible).
   const composerEtapes = (nodes: GameNode[]) => editGame((g) => composeNodes(g, nodes), "composeNodes");
+  // Création module-first (change studio-module-first) : le mini-jeu choisi
+  // (`moduleCreation`, premier choix du flux) détermine module, données et
+  // écran initial. Seul le tirage impose son type structurel.
   const ajouterEtape = (preset: "etape" | "tirage" | "fin" | "lieu") => {
     if (relecture) return;
     const id = `etape-${game.nodes.length + 1}`;
     if (preset === "tirage") {
       composerEtapes([{
-        id, module: { type: "RANDOM_POOL", data: {} },
+        id, module: { type: "RANDOM_POOL", data: donneesDefautModule("RANDOM_POOL") },
         activation: { requires: [{ type: "TIMER", anchor: "GAME_START", delaySeconds: 0 }] },
         randomPool: { candidates: [], drawCount: 1, drawTiming: "ON_POOL_ACTIVATION" },
+        screen: ecranDefautModule("RANDOM_POOL"),
       }]);
     } else if (preset === "fin") {
       composerEtapes([{
-        id, module: { type: "QUIZ", data: { schemaVersion: "1.0.0", questions: [] } },
+        id, module: { type: moduleCreation, data: donneesDefautModule(moduleCreation) },
         activation: { requires: [] }, isEnding: true,
+        screen: ecranDefautModule(moduleCreation),
       }]);
     } else if (preset === "lieu") {
       composerEtapes([{
-        id, module: { type: "INFO", data: {} },
+        id, module: { type: moduleCreation, data: donneesDefautModule(moduleCreation) },
         activation: { requires: [{ type: "GEOFENCE", lat: 48.0, lng: 2.0, radiusMeters: 30, predicate: "enter" }] },
+        screen: ecranDefautModule(moduleCreation),
       }]);
     } else {
       composerEtapes([{
-        id, module: { type: "QUIZ", data: { schemaVersion: "1.0.0", questions: [] } },
+        id, module: { type: moduleCreation, data: donneesDefautModule(moduleCreation) },
         activation: { requires: [] },
+        screen: ecranDefautModule(moduleCreation),
       }]);
     }
     setSel(id);
@@ -894,7 +914,6 @@ const noeuds: Node[] = useMemo(
         setBrut(v.layers.flatMap((l) => l.errors));
         setRapport(v.layers.flatMap((l) => (l.errors.length ? l.errors.map(erreurFR) : [`Couche ${l.layer} : OK`])));
         setImportEchoue(file.name);
-        memoriserImport({ nom: file.name, date: new Date().toISOString(), resultat: "rejeté", raison: premier });
         return;
       }
       edit((s) => ({ game: g, meta: emptyMeta() }), "importer");
@@ -903,13 +922,71 @@ const noeuds: Node[] = useMemo(
       setSel(null);
       nouvelleSession();
       setImportEchoue(null);
-      memoriserImport({ nom: file.name, date: new Date().toISOString(), resultat: "chargé" });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setBrut([msg]);
       setRapport([msg]);
       setImportEchoue(file.name);
-      memoriserImport({ nom: file.name, date: new Date().toISOString(), resultat: "rejeté", raison: msg });
+    }
+  };
+
+  // Catalogue des jeux (change studio-game-catalog) : publication, liste,
+  // import. Le service n'est qu'un transport — validation et vérification
+  // restent les pipelines existants (exportPackFull / importerFichier).
+  const publier = async () => {
+    if ((bloqueExport && !animateur) || relecture || !catalogUrl || publicationBusy) return;
+    setPublicationBusy(true);
+    setPublication(null);
+    try {
+      const r = await exportPackFull(game, st.present.meta, manifest, animateur);
+      if (!r.ok) {
+        setBrut(r.errors);
+        setRapport(r.errors.map(erreurFR));
+        setPublication({ erreur: r.errors.map(erreurFR).join(" ; ") });
+        return;
+      }
+      const assets = [...assetsSession.current]
+        .filter(([chemin]) => r.manifest!.files.some((m) => m.path === chemin))
+        .map(([path, file]) => ({ path, file }));
+      const p = await publishGame(catalogUrl, {
+        gameId: game.gameId,
+        gameJson: r.gameJson!,
+        manifest: r.manifest!,
+        assets,
+      });
+      setPublication(p);
+      setRapport([`Publié : ${p.gameId} v${p.version} — code ${p.code}`]);
+    } catch (e) {
+      setPublication({ erreur: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setPublicationBusy(false);
+    }
+  };
+
+  const chargerCatalogue = async () => {
+    if (relecture || !catalogUrl || catalogueBusy) return;
+    setCatalogueBusy(true);
+    setCatalogueErreur(null);
+    try {
+      setCatalogue(await listGames(catalogUrl));
+    } catch (e) {
+      setCatalogue(null);
+      setCatalogueErreur(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCatalogueBusy(false);
+    }
+  };
+
+  const importerDepuisCatalogue = async (entry: CatalogEntry) => {
+    if (relecture || !catalogUrl) return;
+    try {
+      const pack = await fetchPack(catalogUrl, entry.code);
+      await importerFichier(new File([pack.gameJson], `${pack.gameId}.json`, { type: "application/json" }));
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setBrut([msg]);
+      setRapport([msg]);
+      setImportEchoue(entry.code);
     }
   };
 
@@ -1093,25 +1170,37 @@ const noeuds: Node[] = useMemo(
     nbEtapesRef.current = nbEtapes;
   }, [nbEtapes]);
 
+  // Échelle du canvas écran en paysage (change studio-apercu-arbre-paysage) :
+  // réduction seule (jamais d'agrandissement) pour un plein cadre sans
+  // ascenseur. Portrait : scale non renseigné (défilement natif inchangé).
+  const formatEcran = VIEWPORTS.find((v) => v.id === screenViewport) ?? VIEWPORTS[0];
+  const echelleEcran =
+    (screenViewport === "phone-landscape" || screenViewport === "tablet-landscape") &&
+    tailleCadre.w > 0 &&
+    tailleCadre.h > 0
+      ? Math.min(tailleCadre.w / formatEcran.largeur, tailleCadre.h / formatEcran.hauteur, 1)
+      : undefined;
+  const scaleEcran = echelleEcran != null && echelleEcran < 1 ? echelleEcran : undefined;
+
   const zoneGraphe = (
     <div className="flex flex-col flex-1 overflow-hidden min-h-[320px]">
       {/* Barre de toggle始终可见 */}
       <div className="flex items-center gap-2 px-2 py-1 border-b border-rule bg-surface">
-        <button className={`btn text-[8px] ${vueCentrale === "graphe" ? "btn-active" : ""}`} onClick={() => setVueCentrale("graphe")}
+        <button className={`btn btn-compact text-[8px] ${vueCentrale === "graphe" ? "btn-active" : ""}`} onClick={() => setVueCentrale("graphe")}
           title="Graphe d'étapes">
           <Icon name="graphe" size={15} /> Graphe
         </button>
-        <button className={`btn text-[8px] ${vueCentrale === "carte" ? "btn-active" : ""}`} onClick={() => setVueCentrale("carte")}
+        <button className={`btn btn-compact text-[8px] ${vueCentrale === "carte" ? "btn-active" : ""}`} onClick={() => setVueCentrale("carte")}
           title="Carte interactive">
           <Icon name="lieu" size={15} /> Carte
         </button>
-        <button className={`btn text-[8px] ${vueCentrale === "screen" ? "btn-active" : ""}`} onClick={() => setVueCentrale("screen")}
+        <button className={`btn btn-compact text-[8px] ${vueCentrale === "screen" ? "btn-active" : ""}`} onClick={() => setVueCentrale("screen")}
           title={etape ? `Écran de ${etape.id}` : "Sélectionne une étape pour voir son écran"}>
           <Icon name="oeil" size={15} /> Screen
         </button>
         {vueCentrale === "graphe" && (
           <>
-            <button className="btn text-[8px]" onClick={basculerTout}
+            <button className="btn btn-compact text-[8px]" onClick={basculerTout}
               disabled={game.nodes.length === 0}
               title={toutEstSelectionne ? "Désélectionner toutes les étapes" : "Sélectionner toutes les étapes"}
               aria-label={toutEstSelectionne ? "Tout désélectionner" : "Tout sélectionner"}>
@@ -1139,13 +1228,15 @@ const noeuds: Node[] = useMemo(
             <BarreViewports viewport={screenViewport} onChoisir={setScreenViewport} />
           </div>
           {etape ? (
-            <PhoneCanvas
-              screen={resolveScreen(etape, game.global?.screen)}
-              moduleType={etape.module.type}
-              moduleData={etape.module.data}
-              selectedZoneId={screenZone}
-              selectedWidgetIndex={screenWidget}
-              viewport={screenViewport}
+            <div ref={cadreEcranRef} className="flex min-h-0 flex-1 items-center justify-center overflow-hidden">
+              <PhoneCanvas
+                screen={resolveScreen(etape, game.global?.screen)}
+                moduleType={etape.module.type}
+                moduleData={etape.module.data}
+                selectedZoneId={screenZone}
+                selectedWidgetIndex={screenWidget}
+                viewport={screenViewport}
+                scale={scaleEcran}
               onSelectZone={(z) => { setScreenZone(z); setScreenWidget(null); setScreenBg(z === null); }}
               onSelectWidget={(z, i) => { setScreenZone(z); setScreenWidget(i); setScreenBg(false); }}
               onCommitText={(z, i, text) => editGame((g) => {
@@ -1167,7 +1258,8 @@ const noeuds: Node[] = useMemo(
                 setScreenWidget(null);
                 setScreenBg(false);
               }}
-            />
+              />
+            </div>
           ) : (
             <div className="p-3 text-[9px]">
               <p className="font-bold">Rien de sélectionné.</p>
@@ -1295,6 +1387,7 @@ const noeuds: Node[] = useMemo(
             onAddWidget={(z, w) => editGame((g) => addScreenWidget(g, etape.id, z, w), "addScreenWidget")}
             onRemoveWidget={(z, i) => { editGame((g) => removeScreenWidget(g, etape.id, z, i), "removeScreenWidget"); setScreenWidget(null); }}
             onMoveWidget={(z, i, dir) => { editGame((g) => moveScreenWidget(g, etape.id, z, i, dir), "moveScreenWidget"); setScreenWidget(i + dir); }}
+            onRemoveZone={(z) => { editGame((g) => removeScreenZone(g, etape.id, z), "removeScreenZone"); setScreenZone(null); setScreenWidget(null); }}
             onPatchWidget={(z, i, w) => editGame((g) => mcpSetScreenWidget(g, etape.id, z, i, w), "setScreenWidget")}
           />
         ) : (
@@ -1318,14 +1411,14 @@ const noeuds: Node[] = useMemo(
   // que le détail, pour ne pas re-rendre à chaque frame de drag.
   const liste = useMemo(() => (
     <div className="flex flex-col min-h-0">
-      <NodeList game={game} statuts={st.present.meta.status} impasses={impasses} sel={sel} selMulti={selMulti} onChoisir={choisirNoeud} onBasculer={(id) => choisirNoeud(id, true)} onToutBasculer={basculerTout} toutSelectionne={toutEstSelectionne} erreursParNoeud={erreursParNoeud} lectureSeule={relecture} onReplier={() => basculerSection("liste")} onAjouter={(preset) => ajouterEtape(preset)} onSupprimer={!relecture ? (id) => editGame((g) => removeNode(g, id), "removeNode") : undefined} />
+      <NodeList game={game} statuts={st.present.meta.status} impasses={impasses} sel={sel} selMulti={selMulti} onChoisir={choisirNoeud} onChoisirZone={(id, z) => { choisirNoeud(id); setScreenZone(z); setScreenWidget(null); setScreenBg(false); setMep((m) => (m.repliees.detail ? { ...m, repliees: { ...m.repliees, detail: false } } : m)); }} onChoisirWidget={(id, z, i) => { choisirNoeud(id); setScreenZone(z); setScreenWidget(i); setScreenBg(false); setMep((m) => (m.repliees.detail ? { ...m, repliees: { ...m.repliees, detail: false } } : m)); }} selZoneId={screenZone} selWidgetIndex={screenWidget} onBasculer={(id) => choisirNoeud(id, true)} onToutBasculer={basculerTout} toutSelectionne={toutEstSelectionne} erreursParNoeud={erreursParNoeud} lectureSeule={relecture} onReplier={() => basculerSection("liste")} onAjouter={(preset) => ajouterEtape(preset)} onSupprimer={!relecture ? (id) => editGame((g) => removeNode(g, id), "removeNode") : undefined} moduleCreation={moduleCreation} onModuleCreation={setModuleCreation} typesModule={TYPES_MODULE} />
     </div>
-  ), [game, st.present.meta.status, impasses, sel, selMulti, erreursParNoeud, relecture, choisirNoeud, basculerTout, toutEstSelectionne, ajouterEtape]);
+  ), [game, st.present.meta.status, impasses, sel, selMulti, erreursParNoeud, relecture, choisirNoeud, basculerTout, toutEstSelectionne, ajouterEtape, moduleCreation, screenZone, screenWidget]);
   const listeSimple = useMemo(() => (
     <div className="flex flex-col min-h-0">
-      <NodeList game={game} statuts={st.present.meta.status} impasses={impasses} sel={sel} selMulti={selMulti} onChoisir={choisirNoeud} onBasculer={(id) => choisirNoeud(id, true)} onToutBasculer={basculerTout} toutSelectionne={toutEstSelectionne} erreursParNoeud={erreursParNoeud} lectureSeule={relecture} onAjouter={(preset) => ajouterEtape(preset)} onSupprimer={!relecture ? (id) => editGame((g) => removeNode(g, id), "removeNode") : undefined} />
+      <NodeList game={game} statuts={st.present.meta.status} impasses={impasses} sel={sel} selMulti={selMulti} onChoisir={choisirNoeud} onBasculer={(id) => choisirNoeud(id, true)} onToutBasculer={basculerTout} toutSelectionne={toutEstSelectionne} erreursParNoeud={erreursParNoeud} lectureSeule={relecture} onAjouter={(preset) => ajouterEtape(preset)} onSupprimer={!relecture ? (id) => editGame((g) => removeNode(g, id), "removeNode") : undefined} moduleCreation={moduleCreation} onModuleCreation={setModuleCreation} typesModule={TYPES_MODULE} />
     </div>
-  ), [game, st.present.meta.status, impasses, sel, selMulti, erreursParNoeud, relecture, choisirNoeud, basculerTout, toutEstSelectionne, ajouterEtape]);
+  ), [game, st.present.meta.status, impasses, sel, selMulti, erreursParNoeud, relecture, choisirNoeud, basculerTout, toutEstSelectionne, ajouterEtape, moduleCreation]);
 
   // Contenus des écrans (spec studio-onepage-spec) : tous branchés sur le même
   // état { game, meta } + historique, sans état par écran (hors simulateur).
@@ -1359,26 +1452,70 @@ const noeuds: Node[] = useMemo(
               <div className="font-mono text-[8px] text-fog">ou cliquer pour parcourir — import 100 % local, zéro réseau</div>
             </div>
           </div>
-          <div className="text-[8px] font-mono uppercase tracking-widest text-fog mb-3">Historique des imports</div>
+          <div className="text-[8px] font-mono uppercase tracking-widest text-fog mb-3">Catalogue des jeux</div>
+          <div className="flex flex-col gap-2 mb-3">
+            <label className="flex flex-col gap-1 text-xs">
+              <span className="text-fog">Service catalogue</span>
+              <span className="flex gap-2">
+                <input
+                  className="champ min-w-0 flex-1 min-h-10 font-mono"
+                  value={catalogUrl}
+                  onChange={(e) => changerCatalogUrl(e.target.value)}
+                  placeholder="https://catalogue.exemple.fr"
+                  type="url"
+                />
+                <button className="btn min-h-10 px-2.5 text-[8px]" onClick={() => void chargerCatalogue()} disabled={relecture || !catalogUrl || catalogueBusy} title="Charger la liste des jeux publiés">
+                  {catalogueBusy ? "…" : "Actualiser"}
+                </button>
+              </span>
+            </label>
+            <label className="flex flex-col gap-1 text-xs">
+              <span className="text-fog">Rechercher (nom ou code)</span>
+              <input
+                className="champ min-w-0 flex-1 min-h-10"
+                value={catalogueRecherche}
+                onChange={(e) => setCatalogueRecherche(e.target.value)}
+                placeholder="Nom du jeu ou code à 4 chiffres…"
+                type="search"
+              />
+            </label>
+          </div>
           <div className="flex flex-col gap-2">
-            {historique.length ? (
-              historique.map((h, i) => (
-                <div key={i} className="flex items-center gap-3 bg-panel border border-rule rounded px-4 py-3">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="1.5">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z"/>
-                    <path d="M14 2v6h6"/>
-                  </svg>
-                  <div className="flex-1">
-                    <div className="font-mono text-[9px] text-snow">{h.nom}</div>
-                    <div className="font-mono text-[8px] text-fog">{h.date} · {h.nom} nœuds</div>
+            {catalogueErreur ? (
+              <p className="text-[9px] font-mono text-fail" role="alert">{catalogueErreur}</p>
+            ) : catalogue === null ? (
+              <p className="text-[9px] font-mono text-fog">Renseignez le service puis actualisez pour voir les jeux publiés.</p>
+            ) : (() => {
+              const q = catalogueRecherche.trim().toLowerCase();
+              const visibles = catalogue.filter((g) =>
+                !q || g.nom.toLowerCase().includes(q) || g.code === catalogueRecherche.trim(),
+              );
+              return visibles.length ? (
+                visibles.map((g) => (
+                  <div key={g.code} className="flex items-center gap-3 bg-panel border border-rule rounded px-4 py-3">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="1.5">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z"/>
+                      <path d="M14 2v6h6"/>
+                    </svg>
+                    <div className="flex-1">
+                      <div className="font-mono text-[9px] text-snow">{g.nom}</div>
+                      <div className="font-mono text-[8px] text-fog">v{g.version}{g.date ? ` · ${g.date}` : ""}</div>
+                    </div>
+                    <span className="puce" title="Code d'accès du jeu">{g.code}</span>
+                    <button
+                      className="text-[8px] font-mono uppercase tracking-wider text-fog hover:text-neon transition-colors disabled:opacity-40"
+                      disabled={relecture}
+                      onClick={() => void importerDepuisCatalogue(g)}
+                      title={`Importer ${g.nom} depuis le catalogue`}
+                    >
+                      Importer
+                    </button>
                   </div>
-                  <div className={`w-1.5 h-1.5 rounded-full ${h.resultat === "chargé" ? "bg-pass" : "bg-fail"}`} />
-                  <button className="text-[8px] font-mono uppercase tracking-wider text-fog hover:text-neon transition-colors">Charger</button>
-                </div>
-              ))
-            ) : (
-              <p className="text-[9px] font-mono text-fog">Aucun import enregistré sur cet appareil.</p>
-            )}
+                ))
+              ) : (
+                <p className="text-[9px] font-mono text-fog">Aucun jeu ne correspond à « {catalogueRecherche} ».</p>
+              );
+            })()}
           </div>
           <div className="mt-4 border-t border-rule pt-3">
             <div className="text-[8px] font-mono uppercase tracking-widest text-fog mb-2">Brouillon local</div>
@@ -1569,6 +1706,34 @@ const noeuds: Node[] = useMemo(
                       ))}
                     </ul>
                   )}
+                  <div className="mt-4 border-t border-rule pt-3" aria-label="Publier au catalogue">
+                    <div className="text-[8px] font-mono uppercase tracking-widest text-fog mb-2">Publier au catalogue</div>
+                    <label className="flex flex-col gap-1 text-xs mb-2">
+                      <span className="text-fog">Service catalogue</span>
+                      <input
+                        className="champ min-w-0 flex-1 min-h-10 font-mono"
+                        value={catalogUrl}
+                        onChange={(e) => changerCatalogUrl(e.target.value)}
+                        placeholder="https://catalogue.exemple.fr"
+                        type="url"
+                      />
+                    </label>
+                    <button
+                      disabled={bloque || !catalogUrl || publicationBusy}
+                      onClick={() => void publier()}
+                      title={bloque ? raisonsBlocage.join("\n") : "Publier une nouvelle version (même code)"}
+                      className={`w-full py-3 rounded font-display font-bold text-[9px] uppercase tracking-widest transition-all ${bloque || !catalogUrl ? 'bg-fail/8 border border-fail/20 text-fail/50 cursor-not-allowed' : 'bg-neon text-canvas hover:brightness-110'}`}
+                    >
+                      {publicationBusy ? "Publication…" : "Publier"}
+                    </button>
+                    {publication && ("erreur" in publication ? (
+                      <p className="mt-2 font-mono text-[8px] text-fail" role="alert">{publication.erreur}</p>
+                    ) : (
+                      <p className="mt-2 font-mono text-[8px] text-pass" role="status">
+                        Publié : {publication.gameId} v{publication.version} — code <b>{publication.code}</b>
+                      </p>
+                    ))}
+                  </div>
                 </>
               );
             })()}
@@ -1592,7 +1757,6 @@ const noeuds: Node[] = useMemo(
             >
               <MinigameDefaultsPanel game={game} editGame={editGame} lectureSeule={relecture} />
             </Accordeon>
-            <ObjetsPanel game={game} editGame={editGame} lectureSeule={relecture} onChoisir={choisirNoeud} />
             {(() => {
               const holdMode = game.global?.holdMode ?? "none";
               const verrous = game.nodes.filter((n) => MODULE_REGISTRY[n.module.type]?.needsLock);
@@ -1617,6 +1781,14 @@ const noeuds: Node[] = useMemo(
               <h3 className="text-[9px] font-mono uppercase tracking-widest text-fog mb-2">HOLD</h3>
               <p className="text-[9px] text-fog">HOLD est un mode système : il se configure dans la configuration globale.</p>
             </div>
+          </div>
+        </div>
+      )}
+      {ecran === "inventaire" && (
+        <div className="h-full overflow-y-auto">
+          <div className="p-6 max-w-2xl">
+            <h2 className="font-display font-extrabold text-2xl tracking-widest uppercase text-snow mb-6">Inventaire</h2>
+            <ObjetsPanel game={game} editGame={editGame} lectureSeule={relecture} onChoisir={choisirNoeud} onPickFile={prendreImage} catalogUrl={catalogUrl} onProvenance={(id, prov) => edit((s) => ({ ...s, meta: { ...s.meta, provenance: { ...s.meta.provenance, [id]: prov } } }), "definirProvenance")} />
           </div>
         </div>
       )}
@@ -1704,7 +1876,7 @@ HOLD est un mode système : il se configure dans Configuration globale, pas ici.
             <button className="btn px-2.5" onClick={basculerMenu} title="Déplier le menu" aria-label="Déplier le menu">
               <Icon name="liste" size={17} />
             </button>
-            <button className="btn px-2.5" onClick={() => ajouterEtape("etape")} disabled={relecture} title="Créer une étape Quiz / jeu" aria-label="Étape de jeu">
+            <button className="btn px-2.5" onClick={() => ajouterEtape("etape")} disabled={relecture} title="Créer une étape de jeu" aria-label="Étape de jeu">
               <Icon name="etape" size={17} />
             </button>
             <button className="btn px-2.5" onClick={() => ajouterEtape("lieu")} disabled={relecture} title="Créer un lieu avec zone GPS" aria-label="Lieu GPS">
@@ -1724,13 +1896,16 @@ HOLD est un mode système : il se configure dans Configuration globale, pas ici.
           </div>
         ) : (
           <div className="w-52 shrink-0 bg-panel border-r border-rule flex flex-col">
-            <div className="px-5 py-5 border-b border-rule">
-              <div className="font-display font-extrabold text-xl tracking-[0.22em] uppercase text-snow leading-none">
-                Studio
+            <div className="px-5 py-5 border-b border-rule flex items-start gap-2">
+              <div className="flex-1">
+                <div className="font-display font-extrabold text-xl tracking-[0.22em] uppercase text-snow leading-none">
+                  Studio
+                </div>
+                <div className="font-mono text-[7px] text-fog tracking-[0.18em] mt-1 uppercase">
+                  Jeu Numérique
+                </div>
               </div>
-              <div className="font-mono text-[7px] text-fog tracking-[0.18em] mt-1 uppercase">
-                Jeu Numérique
-              </div>
+              <ChevronRepli direction="gauche" titre="Replier le menu" replie={false} onBasculer={basculerMenu} />
             </div>
             <div className="px-4 py-3 border-b border-rule">
               <div className="text-[7px] font-mono uppercase tracking-widest text-fog mb-1">Projet actif</div>
@@ -1763,73 +1938,32 @@ HOLD est un mode système : il se configure dans Configuration globale, pas ici.
           </div>
         )}
         {ecran === "composer" ? (<>
-        <main className="flex min-h-0 min-w-0 flex-[3] flex-col gap-2" aria-label="Graphe et liste">
-          <div className="flex min-h-0 flex-1 gap-3">
-            {mep.repliees.graphe ? (
-              <RailReplie
-                icone="graphe"
-                titre="Graphe — cliquer pour déplier"
-                onDeplier={() => basculerSection("graphe")}
-                actions={[
-                  {
-                    kind: "icone",
-                    icone: "graphe",
-                    titre: "Graphe d'étapes",
-                    actif: vueCentrale === "graphe",
-                    onAction: () => { setVueCentrale("graphe"); if (mep.repliees.graphe) basculerSection("graphe"); },
-                  },
-                  {
-                    kind: "icone",
-                    icone: "lieu",
-                    titre: "Carte interactive",
-                    actif: vueCentrale === "carte",
-                    onAction: () => { setVueCentrale("carte"); if (mep.repliees.graphe) basculerSection("graphe"); },
-                  },
-                  {
-                    kind: "icone",
-                    icone: "oeil",
-                    titre: "Écran du nœud sélectionné",
-                    actif: vueCentrale === "screen",
-                    onAction: () => { setVueCentrale("screen"); if (mep.repliees.graphe) basculerSection("graphe"); },
-                  },
-                  {
-                    kind: "rendu",
-                    cle: "pastille",
-                    rendu: <PastilleValidation nbErreurs={erreurs.length} onVoir={() => setEcran("valider")} />,
-                  },
-                ]}
-              />
-            ) : (
-              <div id="section-graphe" className="relative flex min-h-0 min-w-0 flex-1 flex-col" style={surlignage("graphe")}>
-                {zoneGraphe}
-                <div className="absolute right-2 top-2 z-5 flex gap-1">
-                  <ChevronRepli direction="gauche" titre="Replier le graphe" replie={false} onBasculer={() => basculerSection("graphe")} />
-                </div>
-              </div>
-            )}
-            <Splitter label="Ajuster la largeur de la liste" onDelta={(dx) => setMep((m) => ({ ...m, liste: Math.min(520, Math.max(220, m.liste - dx)) }))} onReset={() => setMep((m) => ({ ...m, liste: LAYOUT_DEFAUT.liste }))} />
-            {mep.repliees.liste ? (
-              <RailReplie
-                icone="liste"
-                titre="Liste des étapes — cliquer pour déplier"
-                onDeplier={() => basculerSection("liste")}
-                actions={
-                  relecture
-                    ? []
-                    : [
-                        { kind: "icone", icone: "etape", titre: "Créer une étape Quiz / jeu", onAction: () => ajouterEtape("etape") },
-                        { kind: "icone", icone: "lieu", titre: "Créer un lieu avec zone GPS", onAction: () => ajouterEtape("lieu") },
-                        { kind: "icone", icone: "tirage", titre: "Créer un tirage au sort parmi des étapes", onAction: () => ajouterEtape("tirage") },
-                        { kind: "icone", icone: "fin", titre: "Créer l'étape de fin du jeu", onAction: () => ajouterEtape("fin") },
-                      ]
-                }
-              />
-            ) : (
-              <div id="section-liste" className="flex min-w-0 flex-col" style={{ width: mep.liste, ...surlignage("liste") }}>
-                {liste}
-              </div>
-            )}
+        {/* 3 colonnes fixes (change studio-composer-3-colonnes) : liste à gauche,
+            panneau central jamais repliable, détail à droite. */}
+        {mep.repliees.liste ? (
+          <RailReplie
+            icone="liste"
+            titre="Liste des étapes — cliquer pour déplier"
+            onDeplier={() => basculerSection("liste")}
+            actions={
+              relecture
+                ? []
+                : [
+                    { kind: "icone", icone: "etape", titre: "Créer une étape de jeu", onAction: () => ajouterEtape("etape") },
+                    { kind: "icone", icone: "lieu", titre: "Créer un lieu avec zone GPS", onAction: () => ajouterEtape("lieu") },
+                    { kind: "icone", icone: "tirage", titre: "Créer un tirage au sort parmi des étapes", onAction: () => ajouterEtape("tirage") },
+                    { kind: "icone", icone: "fin", titre: "Créer l'étape de fin du jeu", onAction: () => ajouterEtape("fin") },
+                  ]
+            }
+          />
+        ) : (
+          <div id="section-liste" className="flex min-w-0 shrink-0 flex-col" style={{ width: mep.liste, ...surlignage("liste") }}>
+            {liste}
           </div>
+        )}
+        <Splitter label="Ajuster la largeur de la liste" onDelta={(dx) => setMep((m) => ({ ...m, liste: Math.min(520, Math.max(220, m.liste + dx)) }))} onReset={() => setMep((m) => ({ ...m, liste: LAYOUT_DEFAUT.liste }))} />
+        <main id="section-graphe" className="flex min-h-0 min-w-0 flex-1 flex-col gap-2" aria-label="Graphe, carte ou écran" style={surlignage("graphe")}>
+          {zoneGraphe}
         </main>
         <Splitter label="Ajuster la largeur du panneau latéral" onDelta={(dx) => setMep((m) => ({ ...m, droite: Math.min(640, Math.max(280, m.droite - dx)) }))} onReset={() => setMep((m) => ({ ...m, droite: LAYOUT_DEFAUT.droite }))} />
         {mep.repliees.detail ? (
@@ -2285,7 +2419,25 @@ function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauT
             </div>
             <fieldset disabled={lectureSeule} className="contents">
             <Famille id={FAMILLES[0].id} icone={FAMILLES[0].icone} titre={FAMILLES[0].titre} aide={FAMILLES[0].aide} active={activeFamille === FAMILLES[0].id}>
-        <label>Mini-jeu <select className="champ" value={node.module.type} onChange={(e) => upd({ module: { ...node.module, type: e.target.value } })}>
+        <label>Mini-jeu <select className="champ" value={node.module.type} onChange={(e) => {
+          const suivant = e.target.value;
+          if (suivant === node.module.type) return;
+          // Changement destructif (change studio-module-first) : data
+          // détruites + seule la zone content remplacée, après confirmation.
+          // Refus = nœud strictement inchangé. Un seul appel = un seul undo.
+          if (!window.confirm("Changer de mini-jeu détruira les données du module et remplacera la zone de contenu. Les modifications seront perdues. Continuer ?")) return;
+          const defaut = ecranDefautModule(suivant);
+          const contenuDefaut = defaut.zones?.content ?? { layout: "stack", widgets: [{ type: "module" }] } as ZoneContent;
+          editGame((g) => ({ ...g, nodes: g.nodes.map((n) => {
+            if (n.id !== node.id) return n;
+            const precedent = n.screen ?? defaut;
+            return {
+              ...n,
+              module: { type: suivant, data: donneesDefautModule(suivant) },
+              screen: { ...precedent, zones: { ...precedent.zones, content: contenuDefaut } },
+            };
+          })}), "changerModule");
+        }}>
           {TYPES_MODULE.map((k) => <option key={k} value={k} title={MODULES_FR[k]?.aide}>{MODULES_FR[k]?.nom ?? k}</option>)}
         </select></label>
         {(() => {
@@ -2827,36 +2979,175 @@ function refsObjet(game: Game, id: string): string[] {
   ).map((n) => n.id);
 }
 
-function ObjetsPanel({ game, editGame, lectureSeule, onChoisir }: {
+function ObjetsPanel({ game, editGame, lectureSeule, onChoisir, onPickFile, catalogUrl, onProvenance }: {
   game: Game;
-  editGame: (fn: (g: Game) => Game) => void;
+  editGame: (fn: (g: Game) => Game, op?: string) => void;
   lectureSeule: boolean;
   onChoisir: (id: string) => void;
+  onPickFile?: (file: File) => Promise<string>;
+  // Import catalogue (change studio-inventory-catalog) : URL du service +
+  // enregistrement de la provenance en sidecar meta (jamais dans le JSON).
+  catalogUrl?: string;
+  onProvenance?: (id: string, prov: { providerId: string; license: string; sourceUrl: string }) => void;
 }) {
   const objs = game.objects ?? [];
   const [nid, setNid] = useState("");
   const [nnom, setNnom] = useState("");
   const [nconso, setNconso] = useState(false);
+  const [nstack, setNstack] = useState(true);
+  // Import catalogue : jeux listés -> objets du jeu choisi -> proposition
+  // d'id éditable -> validation (copie + assets + provenance). États locaux,
+  // jamais persistés ; toute écriture passe par editGame (undo natif).
+  const [importJeux, setImportJeux] = useState<CatalogEntry[] | null>(null);
+  const [importErreur, setImportErreur] = useState<string | null>(null);
+  const [importBusy, setImportBusy] = useState(false);
+  const [importCode, setImportCode] = useState<string | null>(null);
+  const [importSrc, setImportSrc] = useState<{ gameId: string; objets: GameObject[]; tailles: Record<string, number> } | null>(null);
+  const [importObjetId, setImportObjetId] = useState<string | null>(null);
+  const [importNid, setImportNid] = useState("");
+  const [importNote, setImportNote] = useState<string | null>(null);
+  const proposerIdImport = (base: string): string => {
+    if (!objs.some((o) => o.id === base)) return base;
+    let cand = `${base}-importe`;
+    let i = 2;
+    while (objs.some((o) => o.id === cand)) {
+      cand = `${base}-importe-${i}`;
+      i++;
+    }
+    return cand;
+  };
+  const chargerJeuxImport = async () => {
+    if (!catalogUrl || importBusy) return;
+    setImportBusy(true);
+    setImportErreur(null);
+    setImportNote(null);
+    try {
+      setImportJeux(await listGames(catalogUrl));
+    } catch (e) {
+      setImportJeux(null);
+      setImportErreur(e instanceof Error ? e.message : String(e));
+    } finally {
+      setImportBusy(false);
+    }
+  };
+  const choisirJeuImport = async (code: string) => {
+    if (!catalogUrl || importBusy) return;
+    setImportBusy(true);
+    setImportErreur(null);
+    setImportNote(null);
+    setImportObjetId(null);
+    try {
+      const pack = await fetchPack(catalogUrl, code);
+      const parsed = JSON.parse(pack.gameJson) as { gameId?: string; objects?: GameObject[] };
+      if (!Array.isArray(parsed.objects)) throw new Error("ce jeu ne contient aucun objet");
+      const tailles: Record<string, number> = {};
+      for (const f of pack.manifest?.files ?? []) tailles[f.path] = f.size;
+      setImportCode(code);
+      setImportSrc({ gameId: typeof parsed.gameId === "string" ? parsed.gameId : code, objets: parsed.objects, tailles });
+    } catch (e) {
+      setImportCode(null);
+      setImportSrc(null);
+      setImportErreur(e instanceof Error ? e.message : String(e));
+    } finally {
+      setImportBusy(false);
+    }
+  };
+  const validerImport = async () => {
+    if (!catalogUrl || !importCode || !importSrc || !importObjetId || importBusy) return;
+    const src = importSrc.objets.find((o) => o.id === importObjetId);
+    if (!src) return;
+    const id = importNid.trim();
+    if (!id) { setImportErreur("Identifiant requis."); return; }
+    if (objs.some((o) => o.id === id)) { setImportErreur(`Objet « ${id} » déjà existant — choisis un autre identifiant.`); return; }
+    if (!onPickFile) { setImportErreur("Sélection de fichier indisponible ici."); return; }
+    setImportBusy(true);
+    setImportErreur(null);
+    setImportNote(null);
+    try {
+      // Assets re-téléchargés depuis le pack source puis ré-enregistrés comme
+      // assets courants (même déduplication SHA que prendreImage) : le pack
+      // reste autonome, aucune référence externe.
+      const nomFichier = (p: string) => p.split("/").pop() || "image.png";
+      let icon: string | undefined;
+      let image: string | undefined;
+      if (src.icon) {
+        const bytes = await fetchAsset(catalogUrl, importCode, src.icon);
+        icon = await onPickFile(new File([bytes as BlobPart], nomFichier(src.icon), { type: "image/png" }));
+      }
+      if (src.image) {
+        const bytes = await fetchAsset(catalogUrl, importCode, src.image);
+        image = await onPickFile(new File([bytes as BlobPart], nomFichier(src.image), { type: "image/png" }));
+      }
+      const { icon: _i, image: _m, id: _id, ...reste } = src;
+      editGame((g) => addObject(g, { ...JSON.parse(JSON.stringify(reste)), id, icon, image }), "addObject");
+      onProvenance?.(id, { providerId: importSrc.gameId, license: "", sourceUrl: `catalogue:${importCode}` });
+      setImportNote(`Objet « ${id} » importé depuis « ${importSrc.gameId} ».`);
+      setImportObjetId(null);
+      setImportNid("");
+    } catch (e) {
+      setImportErreur(e instanceof Error ? e.message : String(e));
+    } finally {
+      setImportBusy(false);
+    }
+  };
+  // Patch partiel d'un objet en une opération nommée (un pas d'undo).
+  const patchObjet = (id: string, patch: Partial<GameObject>) =>
+    editGame((g) => setObjects(g, (g.objects ?? []).map((x) => (x.id === id ? { ...x, ...patch } : x))), "setObjects");
+  const deplacer = (id: string, dir: -1 | 1) =>
+    editGame((g) => {
+      const arr = [...(g.objects ?? [])];
+      const i = arr.findIndex((x) => x.id === id);
+      const j = i + dir;
+      if (i < 0 || j < 0 || j >= arr.length) return g;
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+      return setObjects(g, arr);
+    }, "setObjects");
   return (
     <div className="carte p-3">
       <h3 className="flex items-center gap-1.5 font-bold text-[13px]">
         <Icon name="package" size={15} /> Objets / inventaire ({objs.length})
       </h3>
       {objs.length ? (
-        <ul className="text-[8px]">
-          {objs.map((o) => {
+        <ul className="flex flex-col gap-2 text-[8px]">
+          {objs.map((o, index) => {
             const refs = refsObjet(game, o.id);
             return (
-              <li key={o.id} className="flex gap-1.5 items-center py-1">
-                <span className="flex-1"><b>{o.id}</b> — {o.name}{o.consumable ? " · consommable" : ""}{refs.length ? ` · utilisé par : ${refs.join(", ")}` : " · non référencé"}</span>
-                {!lectureSeule && refs.length > 0 && (
-                  <button className="btn min-h-8 px-2.5 text-[8px]" onClick={() => onChoisir(refs[0])} title={`Aller à ${refs[0]}`}>Voir</button>
-                )}
+              <li key={o.id} className="rounded border border-rule p-2">
+                <div className="flex gap-1.5 items-center">
+                  {o.icon ? (
+                    <img src={o.icon} alt="" className="h-9 w-9 shrink-0 rounded object-contain" />
+                  ) : (
+                    <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded border border-rule"><Icon name="package" size={18} /></span>
+                  )}
+                  <span className="flex-1 min-w-0"><b>{o.id}</b> — {o.name}{o.consumable ? " · consommable" : ""}{o.stackable === false ? " · non empilable" : ""}{refs.length ? ` · utilisé par : ${refs.join(", ")}` : " · non référencé"}</span>
+                  {!lectureSeule && (
+                    <>
+                      <button className="btn min-h-8 px-2 text-[8px]" disabled={index === 0} title="Monter (ordre d'affichage joueur)" aria-label={`Monter l'objet ${o.id}`} onClick={() => deplacer(o.id, -1)}>↑</button>
+                      <button className="btn min-h-8 px-2 text-[8px]" disabled={index === objs.length - 1} title="Descendre (ordre d'affichage joueur)" aria-label={`Descendre l'objet ${o.id}`} onClick={() => deplacer(o.id, 1)}>↓</button>
+                      <button className="btn min-h-8 px-2 text-[8px]" title="Dupliquer (nouvel identifiant proposé)" aria-label={`Dupliquer l'objet ${o.id}`} onClick={() => editGame((g) => duplicateObject(g, o.id), "addObject")}>⧉</button>
+                    </>
+                  )}
+                  {!lectureSeule && refs.length > 0 && (
+                    <button className="btn min-h-8 px-2.5 text-[8px]" onClick={() => onChoisir(refs[0])} title={`Aller à ${refs[0]}`}>Voir</button>
+                  )}
+                  {!lectureSeule && (
+                    <button className="btn min-h-8 px-2.5 text-[8px]" aria-label={`Supprimer l'objet ${o.id}`} title="Supprimer" onClick={() => {
+                      if (refs.length && !window.confirm(`Supprimer « ${o.id} » ? Utilisé par : ${refs.join(", ")}`)) return;
+                      editGame((g) => setObjects(g, (g.objects ?? []).filter((x) => x.id !== o.id)), "setObjects");
+                    }}><Icon name="fermer" size={14} /></button>
+                  )}
+                </div>
                 {!lectureSeule && (
-                  <button className="btn min-h-8 px-2.5 text-[8px]" aria-label={`Supprimer l'objet ${o.id}`} title="Supprimer" onClick={() => {
-                    if (refs.length && !window.confirm(`Supprimer « ${o.id} » ? Utilisé par : ${refs.join(", ")}`)) return;
-                    editGame((g) => setObjects(g, (g.objects ?? []).filter((x) => x.id !== o.id)), "setObjects");
-                  }}><Icon name="fermer" size={14} /></button>
+                  <div className="mt-1 flex flex-col gap-1">
+                    <label className="flex items-center gap-1">Nom <input className="champ min-h-8 flex-1" value={o.name} aria-label={`Nom de l'objet ${o.id}`} onChange={(e) => patchObjet(o.id, { name: e.target.value })} /></label>
+                    <label className="flex items-center gap-1">Description <input className="champ min-h-8 flex-1" value={o.description ?? ""} placeholder="À quoi sert cet objet ?" aria-label={`Description de l'objet ${o.id}`} onChange={(e) => patchObjet(o.id, { description: e.target.value || undefined })} /></label>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <label className="flex items-center gap-1"><input type="checkbox" checked={!!o.consumable} onChange={(e) => patchObjet(o.id, { consumable: e.target.checked })} /> consommable</label>
+                      <label className="flex items-center gap-1"><input type="checkbox" checked={o.stackable !== false} onChange={(e) => patchObjet(o.id, { stackable: e.target.checked })} /> empilable</label>
+                    </div>
+                    <ImagePicker label="Icône (pictogramme)" value={o.icon ?? ""} disabled={lectureSeule} onPickFile={onPickFile ?? (async () => { throw new Error("Sélection de fichier indisponible ici."); })} onChange={(icon) => patchObjet(o.id, { icon: icon || undefined })} />
+                    <ImagePicker label="Image (illustration)" value={o.image ?? ""} disabled={lectureSeule} onPickFile={onPickFile ?? (async () => { throw new Error("Sélection de fichier indisponible ici."); })} onChange={(image) => patchObjet(o.id, { image: image || undefined })} />
+                  </div>
                 )}
               </li>
             );
@@ -2864,20 +3155,83 @@ function ObjetsPanel({ game, editGame, lectureSeule, onChoisir }: {
         </ul>
       ) : (
         <p className="text-[8px] text-fog">
-Aucun objet défini.</p>
+Aucun objet défini. Crée ton premier objet ci-dessous : il apparaîtra dans la boîte à outils du joueur dès qu'un nœud le donne.</p>
       )}
       {!lectureSeule && (
         <div className="flex flex-wrap gap-1">
           <input className="champ min-h-10" value={nid} size={10} placeholder="id (ex. cle)" aria-label="Identifiant du nouvel objet" onChange={(e) => setNid(e.target.value)} />
           <input className="champ min-h-10" value={nnom} size={14} placeholder="Nom affiché" aria-label="Nom du nouvel objet" onChange={(e) => setNnom(e.target.value)} />
           <label className="flex items-center gap-1 text-[8px]"><input type="checkbox" checked={nconso} onChange={(e) => setNconso(e.target.checked)} /> consommable</label>
+          <label className="flex items-center gap-1 text-[8px]"><input type="checkbox" checked={nstack} onChange={(e) => setNstack(e.target.checked)} /> empilable</label>
           <button className="btn" onClick={() => {
             const id = nid.trim();
             if (!id) { alert("Identifiant d'objet requis."); return; }
             if (objs.some((o) => o.id === id)) { alert(`Objet « ${id} » déjà existant.`); return; }
-            editGame((g) => addObject(g, { id, name: nnom.trim() || id, consumable: nconso }), "addObject");
-            setNid(""); setNnom(""); setNconso(false);
+            editGame((g) => addObject(g, { id, name: nnom.trim() || id, consumable: nconso, stackable: nstack }), "addObject");
+            setNid(""); setNnom(""); setNconso(false); setNstack(true);
           }}><Icon name="ajouter" size={15} /> Objet</button>
+        </div>
+      )}
+      {!lectureSeule && (
+        <div className="mt-3 border-t border-rule pt-2">
+          <h4 className="flex items-center gap-1.5 font-bold text-[11px] mb-1">
+            <Icon name="exemple" size={13} /> Importer depuis le catalogue
+          </h4>
+          {!catalogUrl ? (
+            <p className="text-[8px] text-fog">Renseigne l'URL du catalogue dans l'écran Importer pour activer l'import.</p>
+          ) : importJeux == null ? (
+            <div className="flex items-center gap-2">
+              <button className="btn min-h-8 px-2.5 text-[8px]" disabled={importBusy} onClick={() => void chargerJeuxImport()} title="Lister les jeux publiés du catalogue">
+                {importBusy ? "Chargement…" : "Lister les jeux publiés"}
+              </button>
+              {importErreur && <span className="text-[8px] text-fail" role="alert">Catalogue injoignable : {importErreur} — le reste de l'écran reste utilisable.</span>}
+            </div>
+          ) : importJeux.length === 0 ? (
+            <p className="text-[8px] text-fog">Catalogue vide : aucun jeu publié pour l'instant.</p>
+          ) : (
+            <div className="flex flex-col gap-1">
+              <label className="flex items-center gap-1 text-[8px]">Jeu publié
+                <select className="champ min-h-8 flex-1" value={importCode ?? ""} disabled={importBusy}
+                  onChange={(e) => { const c = e.target.value; setImportCode(c || null); setImportSrc(null); setImportObjetId(null); if (c) void choisirJeuImport(c); }}
+                  aria-label="Jeu publié source">
+                  <option value="">—</option>
+                  {importJeux.map((j) => <option key={j.code} value={j.code}>{j.nom} (v{j.version}, {j.code})</option>)}
+                </select>
+              </label>
+              {importSrc && (
+                <label className="flex items-center gap-1 text-[8px]">Objet
+                  <select className="champ min-h-8 flex-1" value={importObjetId ?? ""} disabled={importBusy}
+                    onChange={(e) => { const oid = e.target.value || null; setImportObjetId(oid); setImportNid(oid ? proposerIdImport(oid) : ""); }}
+                    aria-label="Objet à importer">
+                    <option value="">—</option>
+                    {importSrc.objets.map((o) => <option key={o.id} value={o.id}>{o.id} — {o.name}</option>)}
+                  </select>
+                </label>
+              )}
+              {importSrc && importObjetId && (() => {
+                const src = importSrc.objets.find((o) => o.id === importObjetId);
+                if (!src) return null;
+                const taille = (p?: string) => (p && importSrc.tailles[p] != null ? ` (${(importSrc.tailles[p] / 1024).toFixed(1)} Ko)` : "");
+                const collision = objs.some((o) => o.id === src.id);
+                return (
+                  <div className="rounded border border-line p-2 flex flex-col gap-1 text-[8px]">
+                    <span><b>{src.id}</b> — {src.name}{src.description ? ` · ${src.description}` : ""}</span>
+                    <span className="text-fog">Icône : {src.icon ?? "—"}{taille(src.icon)} · Image : {src.image ?? "—"}{taille(src.image)}</span>
+                    <span className="text-fog">Provenance enregistrée : jeu « {importSrc.gameId} » (licence source inconnue — relecture garde la trace).</span>
+                    {collision && <span className="text-caution">« {src.id} » existe déjà — nouvel identifiant proposé ci-dessous.</span>}
+                    <label className="flex items-center gap-1">Identifiant <input className="champ min-h-8 flex-1" value={importNid} aria-label="Identifiant de l'objet importé" onChange={(e) => setImportNid(e.target.value)} /></label>
+                    <div>
+                      <button className="btn min-h-8 px-2.5 text-[8px]" disabled={importBusy || !importNid.trim()} onClick={() => void validerImport()} title="Copier l'objet dans le jeu courant">
+                        {importBusy ? "Import…" : "Valider l'import"}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
+              {importNote && <p className="text-[8px] text-pass" role="status">{importNote}</p>}
+              {importErreur && <p className="text-[8px] text-fail" role="alert">{importErreur}</p>}
+            </div>
+          )}
         </div>
       )}
     </div>

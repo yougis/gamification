@@ -10,7 +10,8 @@
     "toleranceDeg": {"type": "number", "exclusiveMinimum": 0},
     "stabilizationMs": {"type": "integer", "minimum": 0},
     "onTimeout": {"type": "string"},
-    "fallback": {"type": "object"}
+    "fallback": {"type": "object"},
+    "inventoryHints": {"$ref": "https://geoplay.example/schemas/modules/inventory-hints.json"}
   },
   "x-needs": {"gps": false, "compass": true, "camera": false, "map": true},
   "x-fallback": "code animateur si capteur absent ou instable (metal)"

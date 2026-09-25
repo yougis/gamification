@@ -22,6 +22,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.ComposeViewport
 import com.geoplay.shared.game.Sim
+import com.geoplay.shared.game.applyEffects
+import com.geoplay.shared.game.InventoryState
 import com.geoplay.shared.game.drawPool
 import com.geoplay.shared.game.evaluate
 import com.geoplay.shared.game.present
@@ -33,7 +35,9 @@ import com.geoplay.shared.model.Game
 import com.geoplay.shared.model.GameNode
 import com.geoplay.shared.model.NodeState
 import com.geoplay.shared.model.Predicate
+import com.geoplay.shared.pack.PackManifest
 import com.geoplay.shared.pack.buildSingleFileManifest
+import com.geoplay.shared.pack.decodeBase64
 import com.geoplay.shared.pack.parseGameJson
 import com.geoplay.shared.pack.parseManifest
 import com.geoplay.shared.pack.verifyPackFiles
@@ -51,6 +55,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.JsonObject
 import org.w3c.dom.HTMLInputElement
 import org.w3c.files.FileReader
 import kotlin.math.asin
@@ -81,6 +86,9 @@ private data class WebSession(
     val draws: Map<String, List<String>> = emptyMap(),
     val seen: Set<String> = emptySet(),
     val baseElapsedMs: Long = 0L,
+    // Inventaire du joueur (change player-inventory-toolbox) : rempli par
+    // les effets GIVE/REMOVE à la complétion, relu à la reprise.
+    val inventory: Map<String, Int> = emptyMap(),
 )
 
 private fun sessionKey(gameId: String) = "geoplay.web.session.$gameId"
@@ -135,6 +143,41 @@ private fun fetchText(url: String, onOk: (String) -> Unit, onErr: (String) -> Un
             } else {
                 response.text().then(
                     onFulfilled = { text -> onOk(sansBom(text.toString())); null },
+                    onRejected = { onErr("Lecture impossible : $url"); null },
+                )
+            }
+            null
+        },
+        onRejected = { onErr("Téléchargement impossible : $url (réseau ? CORS ?)"); null },
+    )
+}
+
+// Assets binaires via Blob + data-URL (pas de typed arrays JS) : le
+// décodeur base64 pur `decodeBase64` (shared, testé) fait le reste.
+private fun fetchBytes(url: String, onOk: (ByteArray) -> Unit, onErr: (String) -> Unit) {
+    window.fetch(url).then(
+        onFulfilled = { response ->
+            if (!response.ok) {
+                onErr("HTTP ${response.status} : $url")
+            } else {
+                response.blob().then(
+                    onFulfilled = { blob ->
+                        val reader = FileReader()
+                        reader.onload = loaded@{
+                            val dataUrl = (reader.result as? JsString)?.toString() ?: run {
+                                onErr("Lecture impossible : $url")
+                                return@loaded
+                            }
+                            try {
+                                onOk(decodeBase64(dataUrl.substringAfter(",", "")))
+                            } catch (_: Exception) {
+                                onErr("Décodage impossible : $url")
+                            }
+                            null
+                        }
+                        reader.readAsDataURL(blob)
+                        null
+                    },
                     onRejected = { onErr("Lecture impossible : $url"); null },
                 )
             }
@@ -219,6 +262,7 @@ private fun gateCompat(compatText: String?): CompatGate {
 @Composable
 private fun WebApp() {
     var pack by remember { mutableStateOf<LoadedPack?>(null) }
+    var lastCodeSource by remember { mutableStateOf<String?>(null) }
     var status by remember { mutableStateOf("Choisissez un pack pour commencer.") }
     var busy by remember { mutableStateOf(false) }
     var avertissements by remember { mutableStateOf(listOf<String>()) }
@@ -248,11 +292,127 @@ private fun WebApp() {
             }
             avertissements = gate.replis
             pack = loaded
+            lastCodeSource = null
             status = "Pack vérifié : ${loaded.game.gameId} (${manifest.files.size} fichier(s))."
             busy = false
         } catch (e: Exception) {
             fail("Import impossible ($source) : ${e.message}")
         }
+    }
+
+    fun ingestParsed(
+        gameText: String,
+        manifest: PackManifest,
+        files: Map<String, ByteArray>,
+        compatText: String?,
+        source: String,
+    ) {
+        try {
+            val game = parseGameJson(gameText)
+            val result = verifyPackFiles(manifest, files)
+            if (!result.isValid) {
+                fail("Pack refusé ($source) : ${result.errors.joinToString(" ; ")}")
+                return
+            }
+            val gate = gateCompat(compatText)
+            if (gate.blocked) {
+                fail("Pack incompatible avec ce player ($source) : ${gate.motifs.joinToString(" ; ")}")
+                return
+            }
+            avertissements = gate.replis
+            pack = LoadedPack(game, "", files)
+            status = "Pack vérifié : ${game.gameId} (${manifest.files.size} fichier(s))."
+            busy = false
+        } catch (e: Exception) {
+            fail("Import impossible ($source) : ${e.message}")
+        }
+    }
+
+    fun loadCodePack(base: String, code: String) {
+        // Réutilisation si déjà vérifié en session : même service + même code
+        // déjà chargés → pas de re-téléchargement.
+        val source = "$base#/games/$code"
+        if (pack != null && lastCodeSource == source) {
+            status = "Pack déjà vérifié : ${pack!!.game.gameId} (réutilisé, sans re-téléchargement)."
+            return
+        }
+        lastCodeSource = source
+        busy = true
+        fetchText("$base/games/$code",
+            onOk = { packText ->
+                try {
+                    val root = Json.parseToJsonElement(packText).jsonObject
+                    val gameText = (root["gameJson"] as? JsonPrimitive)?.content
+                        ?: throw IllegalStateException("pack illisible")
+                    val manifestObj = root["manifest"]?.jsonObject
+                        ?: throw IllegalStateException("manifest absent")
+                    val manifest = parseManifest(Json.encodeToString(JsonObject.serializer(), manifestObj))
+                    val files = mutableMapOf("game.json" to gameText.encodeToByteArray())
+                    val restants = manifest.files.filter { it.path != "game.json" }.toMutableList()
+                    fun suite() {
+                        if (restants.isEmpty()) {
+                            ingestParsed(gameText, manifest, files, null, "code $code")
+                            return
+                        }
+                        val entry = restants.removeAt(0)
+                        fetchBytes("$base/games/$code/assets/${entry.path}",
+                            onOk = { bytes ->
+                                files[entry.path] = bytes
+                                suite()
+                            },
+                            onErr = { fail("Asset manquant (code $code) : ${entry.path}") },
+                        )
+                    }
+                    suite()
+                } catch (e: Exception) {
+                    fail("Pack illisible (code $code) : ${e.message}")
+                }
+            },
+            onErr = { msg ->
+                fail(if (msg.startsWith("HTTP 404")) "code inconnu" else msg)
+            },
+        )
+    }
+
+    // Pré-remplissage QR/lien (change studio-game-catalog, D3) : ?code=4217&service=<https>
+    // encode {urlService, code} et remplit l'écran d'import existant.
+    fun queryParam(name: String): String {
+        val search = window.location.search
+        val raw = search.split("&", "?").firstOrNull { it.startsWith("$name=") }
+            ?.substringAfter("=") ?: return ""
+        // Décodage percent-encoding pur Kotlin (pas d'interop JS).
+        val out = StringBuilder()
+        var i = 0
+        while (i < raw.length) {
+            val c = raw[i]
+            if (c == '%' && i + 2 < raw.length) {
+                val hex = raw.substring(i + 1, i + 3)
+                val v = hex.toIntOrNull(16)
+                if (v != null) {
+                    out.append(v.toChar())
+                    i += 3
+                    continue
+                }
+            }
+            out.append(if (c == '+') ' ' else c)
+            i++
+        }
+        return out.toString()
+    }
+
+    var serviceUrl by remember {
+        mutableStateOf(
+            queryParam("service").ifBlank { queryParam("urlService") }
+                .ifBlank { WebStorage.get("geoplay.web.catalogUrl") ?: "" }
+        )
+    }
+    var code by remember {
+        mutableStateOf(queryParam("code").filter { it.isDigit() }.take(4))
+    }
+
+    fun saveServiceUrl(url: String) {
+        serviceUrl = url
+        WebStorage.set("geoplay.web.catalogUrl", url)
     }
 
     if (pack == null) {
@@ -278,6 +438,11 @@ private fun WebApp() {
                     onErr = ::fail,
                 )
             },
+            serviceUrl = serviceUrl,
+            onServiceUrl = ::saveServiceUrl,
+            code = code,
+            onCode = { code = it.filter { c -> c.isDigit() }.take(4) },
+            onLoadCode = { loadCodePack(serviceUrl.trimEnd('/'), code) },
         )
     } else {
         RunScreen(game = pack!!.game, avertissements = avertissements, onExit = {
@@ -288,7 +453,17 @@ private fun WebApp() {
 }
 
 @Composable
-private fun ImportScreen(status: String, busy: Boolean, onPickFile: () -> Unit, onLoadUrl: (String) -> Unit) {
+private fun ImportScreen(
+    status: String,
+    busy: Boolean,
+    onPickFile: () -> Unit,
+    onLoadUrl: (String) -> Unit,
+    serviceUrl: String,
+    onServiceUrl: (String) -> Unit,
+    code: String,
+    onCode: (String) -> Unit,
+    onLoadCode: () -> Unit,
+) {
     var url by remember { mutableStateOf("") }
     Column(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("GeoPlay — joueur web", style = MaterialTheme.typography.headlineSmall)
@@ -305,6 +480,23 @@ private fun ImportScreen(status: String, busy: Boolean, onPickFile: () -> Unit, 
         )
         Button(onClick = { onLoadUrl(url) }, enabled = !busy && url.isNotBlank()) {
             Text("Charger depuis l'URL")
+        }
+        OutlinedTextField(
+            value = serviceUrl,
+            onValueChange = onServiceUrl,
+            label = { Text("Service catalogue (https…)") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+        )
+        OutlinedTextField(
+            value = code,
+            onValueChange = onCode,
+            label = { Text("Code du jeu à 4 chiffres") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+        )
+        Button(onClick = onLoadCode, enabled = !busy && serviceUrl.isNotBlank() && code.length == 4) {
+            Text("Charger par code")
         }
         Text(status, style = MaterialTheme.typography.bodySmall)
         Text(
@@ -332,6 +524,8 @@ private fun RunScreen(game: Game, avertissements: List<String>, onExit: () -> Un
     var wallStart by remember(game.gameId) { mutableStateOf(0L) }
     var compassOk by remember { mutableStateOf<Boolean?>(null) }
     var finished by remember(game.gameId) { mutableStateOf<String?>(null) }
+    // Inventaire : effets appliqués à la complétion via le moteur partagé.
+    var inventory by remember(game.gameId) { mutableStateOf(resumed?.inventory ?: emptyMap()) }
 
     // Horloge session : nowMs = temps écoulé (reprise exacte après kill).
     LaunchedEffect(game.gameId) {
@@ -424,6 +618,7 @@ private fun RunScreen(game: Game, avertissements: List<String>, onExit: () -> Un
                 draws = draws,
                 seen = seenUnlocked,
                 baseElapsedMs = nowMs,
+                inventory = inventory,
             )
         )
         baseElapsed = nowMs
@@ -431,11 +626,16 @@ private fun RunScreen(game: Game, avertissements: List<String>, onExit: () -> Un
     }
 
     fun complete(id: String, score: Int) {
+        val node = game.nodes.find { it.id == id }
+        // Effets d'inventaire via le moteur partagé (même règle que le natif).
+        if (node != null) {
+            inventory = applyEffects(node, InventoryState(items = inventory)).items
+        }
         completedAt = completedAt + (id to nowMs)
         completedCount = completedCount + (id to ((completedCount[id] ?: 0) + 1))
         active = null
         persist()
-        if (game.nodes.find { it.id == id }?.isEnding == true) finished = id
+        if (node?.isEnding == true) finished = id
     }
 
     val states = remember(eval.unlocked, active, completedAt) {
@@ -487,6 +687,7 @@ private fun RunScreen(game: Game, avertissements: List<String>, onExit: () -> Un
                 states = states,
                 onQuizComplete = { id, score -> complete(id, score) },
                 modifier = Modifier.fillMaxSize(),
+                inventory = inventory,
             )
         }
     }

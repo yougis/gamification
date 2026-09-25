@@ -70,6 +70,10 @@ export interface GameNode {
   id: string;
   module: { type: string; data: Record<string, unknown> };
   activation: Activation;
+  latch?: boolean;
+  // Accès boîte à outils (change player-inventory-toolbox) : false masque
+  // l'icône d'inventaire sur cet écran ; absent = true (rétrocompatible).
+  inventoryAccess?: boolean;
   onReentry?: "ignore" | "replay";
   maxReentries?: number;
   scoreOnReplay?: boolean;
@@ -280,7 +284,56 @@ export interface Game {
     minigameDefaults?: MinigameDefaults;
   };
   nodes: GameNode[];
-  objects?: { id: string; name: string; icon?: string; description?: string; consumable?: boolean; stackable?: boolean }[];
+  objects?: GameObject[];
+  // Recettes de combinaison (change inventory-crafting) : optionnel,
+  // absent = pas de craft. Une combinaison = une action joueur confirmée.
+  recipes?: Recipe[];
+}
+
+// Objet d'inventaire (change studio-inventory-menu : champ `image`).
+// `icon` = pictogramme de la boîte à outils, `image` = illustration grande
+// de la fiche objet. Les deux sont des chemins d'assets du pack.
+export interface GameObject {
+  id: string;
+  name: string;
+  icon?: string;
+  image?: string;
+  description?: string;
+  consumable?: boolean;
+  stackable?: boolean;
+}
+
+// Événements d'inventaire (change inventory-events-hints) : vocabulaire
+// fermé, versionné avec le schéma. Le journal EST le bus d'écoute.
+export type InventoryEventType =
+  | "INVENTORY_OPENED"
+  | "ITEM_SELECTED"
+  | "ITEM_USED"
+  | "ITEM_COMBINED"
+  | "ITEM_GIVEN"
+  | "ITEM_REMOVED";
+
+// Abonnement d'un mini-jeu : quand `event` survient (Nœud ACTIVE), le
+// renderer affiche `hint`, sans transition ni effet. Sans `itemId` :
+// réagit à tout objet pour ce type d'événement.
+export interface InventoryHint {
+  event: InventoryEventType;
+  itemId?: string;
+  hint: string;
+}
+
+// Recette de combinaison (change inventory-crafting) : réunir les
+// `inputs` possédés produit `output` ; `consume: true` retire l'entrée,
+// `false` la conserve (ex. loupe). Production via le circuit GIVE_ITEM.
+export interface RecipeInput {
+  itemId: string;
+  consume?: boolean;
+}
+
+export interface Recipe {
+  id: string;
+  inputs: RecipeInput[];
+  output: string;
 }
 
 // Métadonnées Studio (sidecar, jamais dans le JSON joueur).

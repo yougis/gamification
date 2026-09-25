@@ -78,3 +78,16 @@ data class InventoryEntity(
     val acquiredAt: Long = Clock.System.now().toEpochMilliseconds(),
     val isCheat: Boolean = false
 )
+
+// Journal des événements d'inventaire (change inventory-events-hints) :
+// le journal EST le bus — écriture immédiate, relecture par sessionId
+// (reprise exacte après kill), flag triche comme les autres events.
+@Entity(tableName = "inventory_events")
+data class InventoryEventEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val sessionId: String,
+    val eventType: String,
+    val itemId: String? = null,
+    val timestamp: Long = Clock.System.now().toEpochMilliseconds(),
+    val isCheat: Boolean = false
+)

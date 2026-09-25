@@ -37,6 +37,8 @@ Un module sans `screenPlugin` fonctionne normalement mais n'a pas de rendu WYSIW
 
 L'`editorPreview` SHALL afficher un aperçu statique et non interactif du module dans le canvas WYSIWYG. L'aperçu SHALL montrer la structure visuelle du module (ex. pour QUIZ : une question avec des options) sans interaction possible. L'aperçu SHALL être cliquable pour sélectionner le widget dans le canvas.
 
+L'aperçu SHALL rendre visuellement les images configurées du module (image puzzle découpée, source 7-erreurs avec zones, marqueur et fallback RA, QCM avec vignettes) : l'auteur SHALL voir le rendu de l'image importée sans ouvrir le panneau de propriétés. L'aperçu SHALL NE contenir aucune mécanique de mini-jeu : aucun déplacement de tuile, aucun clic de validation d'erreur, aucun état de jeu (score, essais, sélection) ne SHALL exister dans le canvas auteur — la mécanique vit exclusivement dans le `playerRenderer`.
+
 L'aperçu SHALL s'adapter à la taille disponible dans la zone content du screen. Si le module n'a pas de données (ex. quiz sans questions configurées), l'aperçu SHALL afficher un état vide avec un message incitatif.
 
 #### Scenario: Quiz avec questions
@@ -51,13 +53,29 @@ L'aperçu SHALL s'adapter à la taille disponible dans la zone content du screen
 - **WHEN** le canvas affiche l'aperçu du QUIZ
 - **THEN** l'aperçu affiche "Aucune question configurée — cliquez pour ajouter"
 
+#### Scenario: Image importée rendue sans mécanique
+
+- **GIVEN** un module PUZZLE avec image source et découpe 3×3
+- **WHEN** le canvas affiche l'aperçu du module
+- **THEN** l'image découpée est visible et aucune tuile ne peut être déplacée ni sélectionnée
+
+#### Scenario: Écran de recherche d'erreur rendu sans clic
+
+- **GIVEN** un module DIFFERENCE_GAME avec source et zones tracées
+- **WHEN** le canvas affiche l'aperçu du module
+- **THEN** la source et les zones sont visibles et aucun clic ne déclenche de validation
+
 ### Requirement: Panneau de propriétés module (propertiesPanel)
 
 Le `propertiesPanel` SHALL remplacer ou compléter le formulaire de configuration existant dans l'Inspector. Les 9 familles de l'Inspector actuel (épreuve, déclenchement, comportement, tirage, validation, découverte, effets, inventaire, position) SHALL être accessibles depuis le propertiesPanel du module.
 
 Le propertiesPanel SHALL être affiché dans le panneau droit du WYSIWYG quand le ModuleWidget est sélectionné. Les configurations existantes (questions quiz, polygones 7-erreurs, etc.) SHALL être conservées.
 
+Le propertiesPanel SHALL aussi être affiché sous le dropdown « Mini-jeu » de la famille épreuve de l'Inspecteur, pour tout type de module en disposant : l'auteur SHALL pouvoir renseigner chaque champ requis au schéma du module sans ouvrir le WYSIWYG et sans écrire de JSON. L'inline questions QUIZ historique de l'Inspecteur SHALL être remplacé par ce panneau unique (aucun doublon).
+
 Quand le module est un mini-jeu, le propertiesPanel SHALL afficher un bloc de configuration du mini-jeu : paramètres de mécanique (questions, découpe, essais, temps) et champs de style couverts par `customizableStyles`. Les valeurs issues des défauts globaux SHALL être signalées comme héritées tant qu'aucune surcharge locale n'est renseignée.
+
+Sans screenPlugin (INFO, RANDOM_POOL, futurs types), la famille épreuve SHALL conserver son comportement actuel (sélecteur seul, famille tirage, JSON expert).
 
 #### Scenario: Configuration quiz dans le propertiesPanel
 
@@ -77,11 +95,33 @@ Quand le module est un mini-jeu, le propertiesPanel SHALL afficher un bloc de co
 - **WHEN** l'auteur ouvre le bloc mini-jeu du propertiesPanel
 - **THEN** maxAttempts affiche 3 comme valeur héritée, modifiable en renseignant la surcharge locale
 
+#### Scenario: Formulaire puzzle sous le dropdown
+
+- **GIVEN** un nœud PUZZLE ouvert dans la famille épreuve de l'Inspecteur (sans passer par le WYSIWYG)
+- **WHEN** l'auteur regarde sous le dropdown « Mini-jeu »
+- **THEN** le sélecteur d'image source et les champs de découpe sont affichés et éditables, sans JSON
+
+#### Scenario: Formulaire cadenas sous le dropdown
+
+- **GIVEN** un nœud CODE_INPUT ouvert dans la famille épreuve de l'Inspecteur
+- **WHEN** l'auteur regarde sous le dropdown « Mini-jeu »
+- **THEN** le champ code attendu et l'indice sont affichés et éditables, sans JSON
+
+#### Scenario: Sans plugin, comportement inchangé
+
+- **GIVEN** un nœud INFO ouvert dans la famille épreuve
+- **WHEN** l'auteur regarde sous le dropdown « Mini-jeu »
+- **THEN** seul le sélecteur est affiché (avec le JSON expert comme aujourd'hui), sans placeholder trompeur
+
 ### Requirement: Template par défaut du module (defaultScreen)
 
-Le `defaultScreen` SHALL défini l'écran initial quand un nœud avec ce module est créé pour la première fois. Le defaultScreen SHALL inclure les zones requises (selon `zoneNeeds`) avec des widgets appropriés.
+Le `defaultScreen` SHALL définir l'écran initial quand un Nœud avec ce Module est créé pour la première fois. Le defaultScreen SHALL inclure les zones requises (selon `zoneNeeds`) avec des widgets appropriés, dont un widget `{ type: "module" }` dans la zone content.
 
-Le defaultScreen du module SHALL être utilisé uniquement lors de la création initiale du nœud. Ensuite, l'auteur peut modifier librement le screen.
+Le defaultScreen du Module SHALL être appliqué systématiquement lors de la création initiale du Nœud : un Nœud créé avec un type de Module enregistré dans le registre (jamais de liste fermée en dur) SHALL naître avec le `screen` correspondant déjà renseigné dans le JSON du jeu. Ensuite, l'auteur peut modifier librement le screen.
+
+Changer le type du Module d'un Nœud existant SHALL détruire les `module.data` associées (remplacées par les données par défaut du nouveau type) et SHALL remplacer uniquement la zone `content` par le content du `defaultScreen` du nouveau type, après confirmation de l'auteur signalant que les modifications seront perdues. Les zones `header`, `footer` et `overlay` SHALL être préservées. Refuser la confirmation SHALL laisser le Nœud strictement inchangé (ni type, ni data, ni screen).
+
+Un Module sans `screenPlugin` (INFO, RANDOM_POOL, futurs types) SHALL recevoir un widget `{ type: "module" }` générique sans paramètre particulier, rendu comme placeholder par le canvas.
 
 #### Scenario: Création d'un nœud QUIZ
 
@@ -94,6 +134,24 @@ Le defaultScreen du module SHALL être utilisé uniquement lors de la création 
 - **GIVEN** un module sans `screenPlugin` (pas de defaultScreen)
 - **WHEN** un nœud avec ce module est créé
 - **THEN** le screen est initialisé avec un écran par défaut (content-only, ModuleWidget)
+
+#### Scenario: Changement de type confirmé
+
+- **GIVEN** un Nœud QUIZ avec des questions renseignées et un content customisé, dont l'auteur change le type vers PUZZLE et confirme le message « modifications perdues »
+- **WHEN** le changement est appliqué
+- **THEN** les `module.data` du QUIZ sont détruites et remplacées par les données par défaut du PUZZLE, et seule la zone content est remplacée par le content du `defaultScreen` du PUZZLE (header/footer préservés)
+
+#### Scenario: Changement de type refusé
+
+- **GIVEN** un Nœud QUIZ avec des questions renseignées
+- **WHEN** l'auteur change le type vers PUZZLE mais refuse la confirmation
+- **THEN** le Nœud reste QUIZ avec ses questions et son screen inchangés
+
+#### Scenario: Widget générique sans plugin
+
+- **GIVEN** un Nœud avec le module INFO (sans `screenPlugin`)
+- **WHEN** son écran est affiché
+- **THEN** la zone content contient un widget `{ type: "module" }` générique sans paramètre particulier
 
 ### Requirement: Styles personnalisables (customizableStyles)
 
@@ -230,3 +288,78 @@ La résolution SHALL être : valeur locale si renseignée, sinon défaut global,
 - **GIVEN** `global.minigameDefaults: { maxAttempts: 3 }` et un nœud sans surcharge
 - **WHEN** le joueur atteint le nœud
 - **THEN** le mini-jeu applique 3 essais (origine globale)
+
+### Requirement: Plugin 7-erreurs avec tracé de polygones
+
+Le screenPlugin du module DIFFERENCE_GAME SHALL fournir : un `ImagePicker` pour `source`, un pour `derivee`, le champ `touchDilatation` (minimum 44 px rappelé), et un traceur de polygones sur l'image source (clic = ajout de point en %, polygone fermé = zone, liste des zones avec suppression). L'`editorPreview` SHALL montrer la source avec les polygones superposés. Les polygones SHALL rester exprimés en % (responsive) comme au schéma.
+
+#### Scenario: Zone tracée au clic
+
+- **GIVEN** un 7-erreurs avec image source et 0 zone
+- **WHEN** l'auteur clique 4 points sur l'image puis ferme le polygone
+- **THEN** une zone en % est ajoutée à `module.data.polygons` et affichée en overlay
+
+#### Scenario: Images manquantes signalées
+
+- **GIVEN** un 7-erreurs sans `source`
+- **WHEN** l'auteur ouvre le panneau
+- **THEN** un appel explicite à déposer les deux images s'affiche (pas de rejet silencieux)
+
+### Requirement: Plugin RA avec fallback obligatoire
+
+Le screenPlugin du module AR_MARKER SHALL fournir : `marker` via `ImagePicker`, `model` + `modelSizeMb`, et `fallback2D` via `ImagePicker` avec refus d'un fallback vide (obligatoire au schéma). L'`editorPreview` SHALL montrer le marqueur et le fallback côte à côte. L'avertissement `needsLock` existant de l'Inspecteur SHALL être conservé.
+
+#### Scenario: Fallback vide refusé
+
+- **GIVEN** un AR_MARKER avec marqueur mais sans `fallback2D`
+- **WHEN** l'auteur tente de valider la configuration
+- **THEN** le formulaire signale le fallback manquant et le JSON reste inchangé
+
+### Requirement: Plugin boussole
+
+Le screenPlugin du module BOUSSOLE SHALL fournir : `toleranceDeg`, `stabilizationMs`, `fallback` (code animateur) et les essais/temps via les défauts globaux. L'`editorPreview` SHALL montrer une rose des vents statique avec la tolérance. Le module SHALL rester validant en interne (aucun cap vers l'orchestrateur).
+
+#### Scenario: Tolérance configurée sans JSON
+
+- **GIVEN** un nœud BOUSSOLE avec `toleranceDeg` vide
+- **WHEN** l'auteur renseigne 15 dans le formulaire
+- **THEN** `module.data.toleranceDeg` vaut 15 et la validation C1 passe sur ce champ
+
+### Requirement: Aperçu éditeur puzzle en tuiles mélangées
+
+L'`editorPreview` du PUZZLE SHALL montrer l'image source réellement découpée en `tileRows` × `tileCols` tuiles (fonds positionnés pour reconstituer l'image) affichées dans un ordre mélangé aléatoire, avec le compteur de pièces, au lieu d'une grille numérotée. L'aperçu SHALL rester statique et non interactif. Sans image source, l'état vide incitatif existant SHALL être conservé.
+
+#### Scenario: Aperçu mélangé
+
+- **GIVEN** un PUZZLE avec image source et découpe 3×3
+- **WHEN** le canvas affiche l'aperçu
+- **THEN** 9 tuiles d'image sont visibles dans un ordre mélangé (pas 1 à 9 en ordre)
+
+#### Scenario: Aperçu sans image inchangé
+
+- **GIVEN** un PUZZLE sans image source
+- **WHEN** le canvas affiche l'aperçu
+- **THEN** l'état vide « aucune image — cliquez pour configurer » s'affiche
+
+### Requirement: Plugin CODE_INPUT comme référence cadenas
+
+Le screenPlugin du module CODE_INPUT SHALL servir de deuxième référence (après QUIZ) avec :
+- Un defaultScreen content-only portant le ModuleWidget (zoneNeeds content uniquement).
+- Un editorPreview affichant un cadenas générique dessiné en CSS/SVG (aucun asset) avec le code masqué et le nombre d'essais.
+- Un propertiesPanel reprenant le formulaire du module (code attendu, longueur, indice, essais via défauts globaux) plus les 9 familles de l'Inspecteur.
+- Un playerRenderer affichant le cadenas, le pavé de saisie et la vérification, avec les accents du branding résolu.
+- Des customizableStyles pour backgroundColor et textColor.
+
+L'ajout NE SHALL pas modifier le schéma Noeuds/Liens ; seul le registre gagne la propriété `screenPlugin` sur l'entrée CODE_INPUT existante.
+
+#### Scenario: Nœud CODE_INPUT dans le WYSIWYG
+
+- **GIVEN** un nœud avec le module CODE_INPUT
+- **WHEN** l'auteur l'ouvre dans le canvas
+- **THEN** un cadenas s'affiche (pas un placeholder générique) et le panneau propose code, indice et essais
+
+#### Scenario: Cadenas sans asset
+
+- **GIVEN** un jeu sans aucun asset image
+- **WHEN** le cadenas CODE_INPUT s'affiche (éditeur ou joueur)
+- **THEN** le rendu est complet sans requête réseau ni fichier du pack

@@ -44,7 +44,9 @@ data class Game(
     val experienceStyle: ExperienceStyle? = null,
     val gameMode: GameMode = GameMode.NORMAL,
     val difficulty: Difficulty = Difficulty.FAMILLE,
-    val objects: List<GameObject> = emptyList()
+    val objects: List<GameObject> = emptyList(),
+    // Recettes de combinaison (change inventory-crafting) : absent = pas de craft.
+    val recipes: List<Recipe> = emptyList()
 )
 
 @Serializable
@@ -55,6 +57,22 @@ data class GameObject(
     val description: String? = null,
     val consumable: Boolean = false,
     val stackable: Boolean = true
+)
+
+// Recette de combinaison (change inventory-crafting, miroir types.ts) :
+// réunir les inputs possédés produit output ; consume=true retire
+// l'entrée (1 unité), false la conserve. Production via GIVE_ITEM.
+@Serializable
+data class RecipeInput(
+    val itemId: String,
+    val consume: Boolean = true
+)
+
+@Serializable
+data class Recipe(
+    val id: String,
+    val inputs: List<RecipeInput> = emptyList(),
+    val output: String
 )
 
 @Serializable
@@ -153,6 +171,9 @@ data class GameNode(
     val isEnding: Boolean = false,
     val randomPool: RandomPool? = null,
     val latch: Boolean = true,
+    // Accès boîte à outils (change player-inventory-toolbox) : false masque
+    // l'icône sur cet écran ; absent = true.
+    val inventoryAccess: Boolean = true,
     val discovery: Discovery? = null,
     val effects: List<Effect> = emptyList(),
     val inventoryRef: List<String> = emptyList()

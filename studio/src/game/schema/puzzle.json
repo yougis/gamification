@@ -14,7 +14,8 @@
     "tileCols": {"type": "integer", "minimum": 2, "maximum": 6},
     "maxAttempts": {"type": "integer", "minimum": 1},
     "timeLimitSeconds": {"type": "integer", "minimum": 0},
-    "mode": {"enum": ["slide", "drag"]}
+    "mode": {"enum": ["slide", "drag"]},
+    "inventoryHints": {"$ref": "https://geoplay.example/schemas/modules/inventory-hints.json"}
   },
   "allOf": [
     {"if": {"required": ["tileRows"]}, "then": {"required": ["tileCols"]}},

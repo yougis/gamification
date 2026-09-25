@@ -10,6 +10,8 @@ import com.geoplay.shared.pack.Sha256
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
@@ -29,6 +31,15 @@ class PackManager private constructor(private val context: Context) {
                 instance
             }
         }
+
+        // Helpers purs du catalogue (change studio-game-catalog) : testés.
+        fun normalizeCode(raw: String): String = raw.filter { it.isDigit() }.take(4)
+
+        fun catalogPackUrl(baseUrl: String, code: String): String =
+            "${baseUrl.trimEnd('/')}/games/$code"
+
+        fun catalogAssetUrl(baseUrl: String, code: String, path: String): String =
+            "${baseUrl.trimEnd('/')}/games/$code/assets/$path"
     }
 
     private val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
@@ -108,8 +119,7 @@ class PackManager private constructor(private val context: Context) {
     suspend fun importPackFromUrl(
         url: String,
         onProgress: ((Float) -> Unit)? = null
-    ): PackVerificationResult {
-        return withContext(Dispatchers.IO) {
+    ): PackVerificationResult {        return withContext(Dispatchers.IO) {
             var connection: java.net.HttpURLConnection? = null
             try {
                 connection = (java.net.URL(url).openConnection() as java.net.HttpURLConnection).apply {
@@ -133,6 +143,135 @@ class PackManager private constructor(private val context: Context) {
             } finally {
                 connection?.disconnect()
             }
+        }
+    }
+
+    // Import depuis le catalogue (change studio-game-catalog) : GET du pack
+    // puis des assets un par un, vérification manifest existante (le service
+    // n'est qu'un transport). Asset absent = pack partiel refusé, jamais installé.
+    suspend fun importPackFromCatalog(
+        baseUrl: String,
+        code: String,
+        onProgress: ((Float) -> Unit)? = null
+    ): PackVerificationResult {
+        return withContext(Dispatchers.IO) {
+            val tempDir = File(context.cacheDir, "pack_catalog_${System.currentTimeMillis()}")
+            tempDir.mkdirs()
+            try {
+                val packUrl = catalogPackUrl(baseUrl, code)
+                val packText = httpGet(packUrl)
+                    ?: return@withContext PackVerificationResult(
+                        isValid = false,
+                        errors = listOf("code inconnu")
+                    )
+                val root = try {
+                    json.parseToJsonElement(packText).jsonObject
+                } catch (e: Exception) {
+                    return@withContext PackVerificationResult(
+                        isValid = false,
+                        errors = listOf("Pack illisible: ${e.message}")
+                    )
+                }
+                val gameText = root["gameJson"]?.jsonPrimitive?.content
+                    ?: return@withContext PackVerificationResult(
+                        isValid = false,
+                        errors = listOf("Pack illisible: gameJson absent")
+                    )
+                val manifest = try {
+                    val manifestEl = root["manifest"]
+                        ?: return@withContext PackVerificationResult(
+                            isValid = false,
+                            errors = listOf("Pack illisible: manifest absent")
+                        )
+                    json.decodeFromJsonElement(PackManifest.serializer(), manifestEl)
+                } catch (e: Exception) {
+                    return@withContext PackVerificationResult(
+                        isValid = false,
+                        errors = listOf("Manifest illisible: ${e.message}")
+                    )
+                }
+                File(tempDir, "game.json").writeText(gameText)
+                // Réutilisation si déjà vérifié : même game.json + même manifest
+                // déjà installés → pas de re-téléchargement des assets.
+                if (findIdenticalPack(gameText, manifest) != null) {
+                    onProgress?.invoke(1f)
+                    return@withContext PackVerificationResult(isValid = true, progressPercent = 1f)
+                }
+                val assets = manifest.files.filter { it.path != "game.json" }
+                assets.forEachIndexed { i, entry ->
+                    val bytes = httpGetBytes(catalogAssetUrl(baseUrl, code, entry.path))
+                    if (bytes != null) {
+                        val dest = File(tempDir, entry.path)
+                        dest.parentFile?.mkdirs()
+                        dest.writeBytes(bytes)
+                    }
+                    onProgress?.invoke((i + 1).toFloat() / (assets.size + 1).coerceAtLeast(1))
+                }
+                val verification = verifyFiles(manifest, tempDir, onProgress)
+                if (!verification.isValid) {
+                    return@withContext verification
+                }
+                val finalDir = File(context.filesDir, "packs/${System.currentTimeMillis()}")
+                finalDir.mkdirs()
+                copyFiles(tempDir, finalDir)
+                PackVerificationResult(isValid = true, progressPercent = 1f)
+            } catch (e: Exception) {
+                Log.e("PackManager", "Catalog import failed", e)
+                PackVerificationResult(isValid = false, errors = listOf(e.message ?: "Import impossible"))
+            } finally {
+                deleteRecursive(tempDir)
+            }
+        }
+    }
+
+    // Cherche un pack installé byte-identique (game.json + manifest) : le
+    // service n'étant qu'un transport, un pack déjà vérifié est réutilisé.
+    private fun findIdenticalPack(gameText: String, manifest: PackManifest): File? {
+        val packsDir = File(context.filesDir, "packs")
+        return packsDir.listFiles()
+            ?.filter { it.isDirectory }
+            ?.firstOrNull { dir ->
+                val installedGame = File(dir, "game.json")
+                installedGame.isFile && installedGame.readText() == gameText &&
+                    loadManifest(dir) == manifest
+            }
+    }
+
+    private fun httpGet(url: String): String? {
+        var connection: java.net.HttpURLConnection? = null
+        try {
+            connection = (java.net.URL(url).openConnection() as java.net.HttpURLConnection).apply {
+                connectTimeout = 15000
+                readTimeout = 30000
+                instanceFollowRedirects = true
+            }
+            connection.connect()
+            if (connection.responseCode == 404) return null
+            if (connection.responseCode !in 200..299) {
+                throw IllegalStateException("Telechargement refuse: HTTP ${connection.responseCode}")
+            }
+            return connection.inputStream.bufferedReader().use { it.readText() }
+        } finally {
+            connection?.disconnect()
+        }
+    }
+
+    private fun httpGetBytes(url: String): ByteArray? {
+        var connection: java.net.HttpURLConnection? = null
+        try {
+            connection = (java.net.URL(url).openConnection() as java.net.HttpURLConnection).apply {
+                connectTimeout = 15000
+                readTimeout = 30000
+                instanceFollowRedirects = true
+            }
+            connection.connect()
+            if (connection.responseCode !in 200..299) return null
+            return connection.inputStream.use { it.readBytes() }
+        } catch (e: Exception) {
+            Log.w("PackManager", "Asset 404/illisible: $url", e)
+            return null
+        } finally {
+            connection?.disconnect()
         }
     }
 

@@ -186,6 +186,7 @@ Le canvas SHALL supporter :
 - Ajout de widget via un menu contextuel ou drag depuis une palette
 - Réordonnancement de widgets par drag & drop dans une zone
 - Suppression de widget par bouton ou touche Delete
+- Suppression de zone (header, footer, overlay) par bouton dans le panneau de propriétés — la zone `content` restant la base insuppressible ; après suppression, le fantôme de création correspondant SHALL réapparaître
 
 Un clic sur une zone SHALL sélectionner cette zone sans la désélectionner aussitôt : le clic ne SHALL jamais bouillonner vers le fond du canvas (qui vide la sélection). Seul un clic sur le fond vide du canvas SHALL vider la sélection.
 
@@ -193,7 +194,7 @@ Les zones header/footer/overlay absentes de l'écran SHALL être dessinées en p
 
 Le canvas SHALL être synchronisé avec le nœud sélectionné dans le graphe : sélectionner un nœud affiche son screen, modifier le screen met à jour le JSON.
 
-Le canvas SHALL proposer un sélecteur de viewport : téléphone portrait (375×667), téléphone paysage (667×375), tablette portrait (768×1024), tablette paysage (1024×768). Changer de viewport SHALL redimensionner le canvas et réajuster la mise en page (zones `free` conservées en coordonnées relatives). Le viewport SHALL rester un état d'édition local, jamais persisté dans le JSON.
+Le canvas SHALL proposer un sélecteur de viewport : téléphone portrait (375×667), téléphone paysage (667×375), tablette portrait (768×1024), tablette paysage (1024×768). Changer de viewport SHALL redimensionner le canvas et réajuster la mise en page (zones `free` conservées en coordonnées relatives). Le viewport SHALL rester un état d'édition local, jamais persisté dans le JSON. En viewport paysage (ou tablette paysage), le canvas SHALL s'ajuster à l'espace disponible du panneau central par mise à l'échelle, sans barre de défilement : le cadre reste intégralement visible (plein cadre).
 
 Le contenu des widgets texte SHALL être éditable en place : un clic sur un texte l'ouvre en édition, Entrée ou perte de focus SHALL persister la valeur via l'opération MCP (annulable par undo). Les widgets texte SHALL pouvoir être déplacés par glisser-déposer, y compris d'une zone vers une autre.
 
@@ -232,6 +233,18 @@ Le contenu des widgets texte SHALL être éditable en place : un clic sur un tex
 - **GIVEN** un screen affiché en téléphone portrait
 - **WHEN** l'auteur choisit le viewport tablette paysage
 - **THEN** le canvas passe en 1024×768, les zones restent visibles et le JSON du jeu est inchangé
+
+#### Scenario: Paysage plein cadre sans ascenseur
+
+- **GIVEN** le viewport téléphone paysage avec un panneau central plus petit que 667×375
+- **WHEN** le canvas s'affiche
+- **THEN** le cadre est mis à l'échelle pour rester intégralement visible, sans barre de défilement, et le JSON du jeu est inchangé
+
+#### Scenario: Suppression de la surimpression
+
+- **GIVEN** un écran avec une zone overlay créée précédemment
+- **WHEN** l'auteur supprime la zone depuis le panneau de propriétés et annule (undo)
+- **THEN** la zone disparaît puis réapparaît à l'annulation, et le fantôme « + Surimpression » est visible quand la zone est absente
 
 #### Scenario: Édition en place d'un texte
 

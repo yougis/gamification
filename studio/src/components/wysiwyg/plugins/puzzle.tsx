@@ -237,7 +237,7 @@ export function PuzzlePropertiesPanel({ data, onChange, readOnly, minigameDefaul
 // Rendu joueur interactif : melange initial, deplacement slide (tap-a-tap,
 // clavier via focus + Entree) ou drag (pointeur), completion -> onComplete,
 // essais/temps -> verrouillage interne avec message.
-export function PuzzlePlayerRenderer({ data, branding, onComplete }: ModulePlayerRendererProps) {
+export function PuzzlePlayerRenderer({ data, branding, onComplete, hint }: ModulePlayerRendererProps) {
   const d = data as PuzzleData;
   const { lignes, colonnes } = puzzleDecoupe(data);
   const pieces = lignes * colonnes;
@@ -329,6 +329,7 @@ export function PuzzlePlayerRenderer({ data, branding, onComplete }: ModulePlaye
 
   return (
     <div className="flex flex-col gap-2">
+      {hint ? <p className="rounded border border-line px-2 py-1 text-xs italic text-fog">💡 {hint}</p> : null}
       <p className="text-xs text-fog">
         Puzzle {lignes}×{colonnes} — {pieces} pièces{maxEssais != null ? ` — essai ${Math.min(essais + 1, maxEssais)}/${maxEssais}` : ""}
         {restant != null ? ` — ${restant}s` : ""}

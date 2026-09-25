@@ -11,6 +11,7 @@ import puzzle from "./schema/puzzle.json";
 import arMarker from "./schema/ar-marker.json";
 import boussole from "./schema/boussole.json";
 import codeInput from "./schema/code-input.json";
+import inventoryHints from "./schema/inventory-hints.json";
 import type { Game, GameNode, Condition, ExperienceStyle, Branding, GameMode, Difficulty } from "./types";
 import { MODULE_REGISTRY } from "./modules";
 
@@ -313,6 +314,15 @@ export function validateLayer2(game: Game): LayerReport {
         errors.push(`C2 ${n.id} : module CODE_INPUT requiert un code attendu (module.data.code)`);
       }
     }
+    // Indices sur événements d'inventaire : tout itemId écouté doit exister.
+    const hints = (n.module.data as { inventoryHints?: { itemId?: unknown }[] } | undefined)?.inventoryHints;
+    if (Array.isArray(hints)) {
+      for (const h of hints) {
+        if (typeof h?.itemId === "string" && h.itemId && !items.has(h.itemId)) {
+          errors.push(`C2 ${n.id} : inventoryHints itemId=${h.itemId} inexistant`);
+        }
+      }
+    }
     if (n.discovery) {
       if (n.discovery.mode === "ON_ITEM" && n.discovery.itemId && !items.has(n.discovery.itemId)) {
         errors.push(`C2 ${n.id} : discovery ON_ITEM itemId=${n.discovery.itemId} inexistant`);
@@ -337,7 +347,37 @@ export function validateLayer2(game: Game): LayerReport {
     }
   }
 
-  // Consumable consistency: un objet consommable doit etre reference par au moins un ITEM_USED.
+  // Recettes de combinaison (change inventory-crafting) : références
+  // existantes, sortie jamais auto-produite, consume cohérent avec
+  // consumable (même règle que ITEM_USED, défaut consume=true).
+  const recipes = Array.isArray(game.recipes) ? game.recipes : [];
+  const byObjId = new Map((game.objects ?? []).map((o) => [o.id, o]));
+  for (const r of recipes) {
+    const rid = typeof r?.id === "string" && r.id ? r.id : "?";
+    const inputs = Array.isArray(r?.inputs) ? r.inputs : [];
+    for (const inp of inputs) {
+      const iid = typeof inp?.itemId === "string" ? inp.itemId : "";
+      if (!iid || !items.has(iid)) {
+        errors.push(`C2 recette ${rid} : entrée itemId=${iid || "?"} inexistante`);
+        continue;
+      }
+      const consume = inp?.consume ?? true;
+      if (consume && byObjId.get(iid)?.consumable !== true) {
+        errors.push(`C2 recette ${rid} : entrée ${iid} consommée mais objet non consumable`);
+      }
+    }
+    if (typeof r?.output === "string" && r.output) {
+      if (!items.has(r.output)) {
+        errors.push(`C2 recette ${rid} : sortie output=${r.output} inexistante`);
+      }
+      if (inputs.some((inp) => inp?.itemId === r.output)) {
+        errors.push(`C2 recette ${rid} : sortie ${r.output} parmi les entrées (auto-production)`);
+      }
+    }
+  }
+
+  // Consumable consistency: un objet consommable doit etre reference par au moins un ITEM_USED
+  // ou consommé par une recette (consume vrai, défaut true).
   if (game.objects) {
     for (const o of game.objects) {
       if (o.consumable) {
@@ -345,6 +385,13 @@ export function validateLayer2(game: Game): LayerReport {
         for (const n of game.nodes) {
           for (const c of n.activation.requires) {
             if (c.type === "ITEM_USED" && c.itemId === o.id) used = true;
+          }
+        }
+        if (!used) {
+          for (const r of recipes) {
+            for (const inp of (Array.isArray(r?.inputs) ? r.inputs : [])) {
+              if (inp?.itemId === o.id && (inp?.consume ?? true)) used = true;
+            }
           }
         }
         if (!used) errors.push(`C2 Objet ${o.id} est consumable mais jamais utilise par ITEM_USED`);
@@ -362,6 +409,7 @@ ajv.addSchema(puzzle, "modules/puzzle.json");
 ajv.addSchema(arMarker, "modules/ar-marker.json");
 ajv.addSchema(boussole, "modules/boussole.json");
 ajv.addSchema(codeInput, "modules/code-input.json");
+ajv.addSchema(inventoryHints, "modules/inventory-hints.json");
 const validateSchema = ajv.compile(schema);
 
 function validateLayer1(game: unknown): LayerReport {
@@ -383,6 +431,13 @@ function validateLayer1(game: unknown): LayerReport {
         const hasOp = node.activation?.operator != null;
         if (k >= 2 && !hasOp) msg = "operator manquant (2 déclencheurs ou plus exigent AND/OR)";
         else if (k <= 1 && hasOp) msg = "operator interdit (un seul déclencheur : retire operator)";
+      }
+      // Type d'événement hors vocabulaire : nomme la valeur reçue.
+      if (node && /\/inventoryHints\/\d+\/event$/.test(loc) && e.keyword === "enum") {
+        const m2 = /\/inventoryHints\/(\d+)\/event$/.exec(loc);
+        const data = (node as { module?: { data?: { inventoryHints?: { event?: unknown }[] } } }).module?.data;
+        const recu = m2 ? data?.inventoryHints?.[Number(m2[1])]?.event : undefined;
+        msg = `type d'événement hors vocabulaire (reçu : ${JSON.stringify(recu)})`;
       }
       errors.push(`C1 ${locId ? locId + " : " : ""}${msg}`);
     }

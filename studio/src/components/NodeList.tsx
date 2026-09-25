@@ -7,10 +7,39 @@ import { useMemo, useState } from "react";
 import { Icon } from "./icons";
 import { ChevronRepli } from "./Repli";
 import { CONDITIONS_FR, ETATS_FR, MODULES_FR } from "../game/i18n-ui";
-import type { Game } from "../game/types";
+import type { Game, Widget, ZoneId } from "../game/types";
 import { removeNode } from "../game/mcp";
 
 export type FiltreListe = "tous" | "etapes" | "tirages" | "fins" | "impasses" | "brouillons";
+
+// Sous-arbre écran (change studio-apercu-arbre-paysage) : zones dans l'ordre
+// d'affichage, widgets avec libellé court. Les fantômes (zones absentes) sont
+// exclus — l'arbre reflète l'écran courant du nœud.
+const ORDRE_ZONES: ZoneId[] = ["header", "content", "footer", "overlay"];
+
+const NOM_ZONE_ARBRE: Record<ZoneId, string> = {
+  header: "En-tête",
+  content: "Contenu",
+  footer: "Pied de page",
+  overlay: "Surimpression",
+};
+
+function libelleWidget(w: Widget): string {
+  switch (w.type) {
+    case "text":
+      return w.text ? (w.text.length > 24 ? `${w.text.slice(0, 24)}…` : w.text) : "texte";
+    case "image":
+      return "image";
+    case "button":
+      return w.label || "bouton";
+    case "module":
+      return "module";
+    case "progress":
+      return "progression";
+    case "spacer":
+      return "espaceur";
+  }
+}
 
 const ICONE_TYPE: Record<string, "etape" | "lieu" | "tirage" | "fin" | "zone" | "essai"> = {
   QUIZ: "etape",
@@ -29,6 +58,10 @@ export function NodeList({
   sel,
   selMulti = [],
   onChoisir,
+  onChoisirZone,
+  onChoisirWidget,
+  selZoneId,
+  selWidgetIndex,
   onBasculer,
   onToutBasculer,
   toutSelectionne = false,
@@ -37,6 +70,9 @@ export function NodeList({
   onReplier,
   onAjouter,
   onSupprimer,
+  moduleCreation,
+  onModuleCreation,
+  typesModule,
 }: {
   game: Game;
   statuts: Record<string, { state: string }>;
@@ -46,6 +82,13 @@ export function NodeList({
   // la sélection visible = `{sel} ∪ selMulti`, optionnelle pour compatibilité.
   selMulti?: string[];
   onChoisir: (id: string) => void;
+  // Sous-arbre écran (change studio-apercu-arbre-paysage) : sélection d'une
+  // zone ou d'un widget depuis la liste (même sélection que le clic canvas).
+  // Absents = pas d'arbre (ex. vue mobile, relecture).
+  onChoisirZone?: (id: string, zoneId: ZoneId) => void;
+  onChoisirWidget?: (id: string, zoneId: ZoneId, index: number) => void;
+  selZoneId?: ZoneId | null;
+  selWidgetIndex?: number | null;
   // Maj+clic / Maj+Entrée : bascule le nœud dans la sélection partagée (D2).
   onBasculer?: (id: string) => void;
   // Action groupée unique « Tout sélectionner / Tout désélectionner » (D3),
@@ -57,10 +100,26 @@ export function NodeList({
   onReplier?: () => void;
   onAjouter?: (preset: "etape" | "tirage" | "fin" | "lieu") => void;
   onSupprimer?: (id: string) => void;
+  // Mini-jeu choisi en premier à la création (change studio-module-first) :
+  // détermine module, données et écran initial des étapes créées.
+  moduleCreation?: string;
+  onModuleCreation?: (type: string) => void;
+  typesModule?: string[];
 }) {
   const selectionnes = new Set([...selMulti, ...(sel ? [sel] : [])]);
   const [recherche, setRecherche] = useState("");
   const [filtre, setFiltre] = useState<FiltreListe>("tous");
+  // Étapes dont le sous-arbre écran est déplié (change
+  // studio-apercu-arbre-paysage) : état local, jamais persisté.
+  const [deplies, setDeplies] = useState<Set<string>>(new Set());
+  const basculerArbre = (id: string) => {
+    setDeplies((p) => {
+      const next = new Set(p);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const elements = useMemo(() => {
     const q = recherche.trim().toLowerCase();
@@ -80,16 +139,26 @@ export function NodeList({
       {onAjouter && !lectureSeule && (
         <div className="flex items-center gap-1 px-2 py-1 border-b border-rule">
           <span className="text-[8px] font-bold uppercase text-fog mr-1">Ajouter</span>
-          <button className="btn min-h-8 px-2 text-[8px]" onClick={() => onAjouter("etape")} title="Créer une étape Quiz / jeu" aria-label="Étape de jeu">
+          {onModuleCreation && typesModule && (
+            <label className="flex items-center gap-1" title="Mini-jeu des étapes créées (premier choix : détermine l'écran initial)">
+              <span className="sr-only">Mini-jeu des étapes créées</span>
+              <select className="champ min-h-8 max-w-24 text-[8px]" value={moduleCreation ?? "QUIZ"} onChange={(e) => onModuleCreation(e.target.value)} aria-label="Mini-jeu des étapes créées">
+                {typesModule.filter((t) => t !== "RANDOM_POOL").map((t) => (
+                  <option key={t} value={t}>{MODULES_FR[t]?.nom ?? t}</option>
+                ))}
+              </select>
+            </label>
+          )}
+          <button className="btn btn-compact min-h-8 px-2 text-[8px]" onClick={() => onAjouter("etape")} title="Créer une étape de jeu" aria-label="Étape de jeu">
             <Icon name="etape" size={14} /> Étape
           </button>
-          <button className="btn min-h-8 px-2 text-[8px]" onClick={() => onAjouter("lieu")} title="Créer un lieu avec zone GPS" aria-label="Lieu GPS">
+          <button className="btn btn-compact min-h-8 px-2 text-[8px]" onClick={() => onAjouter("lieu")} title="Créer un lieu avec zone GPS" aria-label="Lieu GPS">
             <Icon name="lieu" size={14} /> Lieu
           </button>
-          <button className="btn min-h-8 px-2 text-[8px]" onClick={() => onAjouter("tirage")} title="Créer un tirage au sort parmi des étapes" aria-label="Tirage au sort">
+          <button className="btn btn-compact min-h-8 px-2 text-[8px]" onClick={() => onAjouter("tirage")} title="Créer un tirage au sort parmi des étapes" aria-label="Tirage au sort">
             <Icon name="tirage" size={14} /> Tirage
           </button>
-          <button className="btn min-h-8 px-2 text-[8px]" onClick={() => onAjouter("fin")} title="Créer l'étape de fin du jeu" aria-label="Fin du jeu">
+          <button className="btn btn-compact min-h-8 px-2 text-[8px]" onClick={() => onAjouter("fin")} title="Créer l'étape de fin du jeu" aria-label="Fin du jeu">
             <Icon name="fin" size={14} /> Fin
           </button>
         </div>
@@ -100,7 +169,7 @@ export function NodeList({
           <h2 className="text-[9px] font-bold">Étapes ({elements.length}/{game.nodes.length})</h2>
           <span className="flex-1" />
           {onToutBasculer && (
-            <button className="btn min-h-8 px-2 text-[8px]" onClick={onToutBasculer}
+            <button className="btn btn-compact min-h-8 px-2 text-[8px]" onClick={onToutBasculer}
               disabled={game.nodes.length === 0}
               title={toutSelectionne ? "Désélectionner toutes les étapes" : "Sélectionner toutes les étapes"}
               aria-label={toutSelectionne ? "Tout désélectionner" : "Tout sélectionner"}>
@@ -113,7 +182,7 @@ export function NodeList({
             </span>
           )}
           {onReplier && (
-            <ChevronRepli direction="droite" titre="Replier la liste" replie={false} onBasculer={onReplier} />
+            <ChevronRepli direction="gauche" titre="Replier la liste" replie={false} onBasculer={onReplier} />
           )}
         </div>
         <div className="flex gap-2">
@@ -166,9 +235,15 @@ className="champ min-w-0 flex-1 min-h-10"
             .map((c) => CONDITIONS_FR[c.type]?.nom ?? c.type)
             .slice(0, 2)
             .join(" + ");
+          // Sous-arbre écran (change studio-apercu-arbre-paysage) : zones
+          // présentes du nœud, fantômes exclus. Rendu seulement si les
+          // callbacks de sélection sont fournis (liste auteur).
+          const zonesArbre = ORDRE_ZONES.filter((z) => n.screen?.zones?.[z] != null);
+          const avecArbre = zonesArbre.length > 0 && (onChoisirZone || onChoisirWidget);
+          const arbreOuvert = deplies.has(n.id);
           return (
+            <div key={n.id}>
             <div
-              key={n.id}
               id={`liste-${n.id}`}
               role="option"
               aria-selected={choisi}
@@ -210,6 +285,18 @@ className={`${choisi ? "etape-courante" : ""} flex items-start gap-2.5 w-full mi
               </span>
               <span className="min-w-0 flex-1">
                 <span className="flex items-center gap-1.5 flex-wrap">
+                  {avecArbre ? (
+                    <button
+                      type="button"
+                      className="shrink-0 rounded px-0.5 text-fog hover:text-snow"
+                      onClick={(e) => { e.stopPropagation(); basculerArbre(n.id); }}
+                      title={arbreOuvert ? "Replier l'écran" : "Déplier l'écran (zones et widgets)"}
+                      aria-label={arbreOuvert ? `Replier l'écran de ${n.id}` : `Déplier l'écran de ${n.id}`}
+                      aria-expanded={arbreOuvert}
+                    >
+                      <Icon name={arbreOuvert ? "chevron-b" : "chevron-d"} size={13} />
+                    </button>
+                  ) : null}
                   <strong className="text-[9px]">{n.id}</strong>
                   {n.isEnding && (
                     <span className="puce puce-fin">
@@ -274,6 +361,48 @@ className={`${choisi ? "etape-courante" : ""} flex items-start gap-2.5 w-full mi
                   <Icon name="fermer" size={14} />
                 </button>
               )}
+            </div>
+            {avecArbre && arbreOuvert ? (
+              <div role="tree" aria-label={`Écran de ${n.id}`} className="ml-9 flex flex-col gap-0.5 border-l border-line pl-2 py-1">
+                {zonesArbre.map((z) => {
+                  const widgets = n.screen?.zones?.[z]?.widgets ?? [];
+                  const zoneChoisie = sel === n.id && selZoneId === z;
+                  return (
+                    <div key={z}>
+                      <button
+                        type="button"
+                        role="treeitem"
+                        aria-selected={zoneChoisie && selWidgetIndex == null}
+                        className={`flex w-full items-center gap-1 rounded px-1 py-0.5 text-left text-[8px] ${zoneChoisie && selWidgetIndex == null ? "bg-neon/10 text-neon" : "text-fog hover:text-snow"}`}
+                        onClick={(e) => { e.stopPropagation(); onChoisir(n.id); onChoisirZone?.(n.id, z); }}
+                        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); onChoisir(n.id); onChoisirZone?.(n.id, z); } }}
+                        title={`Voir la zone ${NOM_ZONE_ARBRE[z]}`}
+                      >
+                        <Icon name="zone" size={12} /> {NOM_ZONE_ARBRE[z]} ({widgets.length})
+                      </button>
+                      {widgets.map((w, i) => {
+                        const widgetChoisi = sel === n.id && selZoneId === z && selWidgetIndex === i;
+                        return (
+                          <button
+                            key={i}
+                            type="button"
+                            role="treeitem"
+                            aria-selected={widgetChoisi}
+                            className={`ml-4 flex w-[calc(100%-1rem)] items-center gap-1 rounded px-1 py-0.5 text-left text-[8px] ${widgetChoisi ? "bg-neon/10 text-neon" : "text-fog hover:text-snow"}`}
+                            onClick={(e) => { e.stopPropagation(); onChoisir(n.id); onChoisirWidget?.(n.id, z, i); }}
+                            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); onChoisir(n.id); onChoisirWidget?.(n.id, z, i); } }}
+                            title={`Voir le widget ${libelleWidget(w)}`}
+                          >
+                            <Icon name="etape" size={11} />
+                            <span className="overflow-hidden text-ellipsis whitespace-nowrap">{w.type} — {libelleWidget(w)}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
             </div>
           );
         })}

@@ -1,0 +1,14 @@
+{
+  "name": "geoplay-catalog",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Service catalogue GeoPlay : publication versionnée, codes à 4 chiffres, distribution de packs",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test server.test.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

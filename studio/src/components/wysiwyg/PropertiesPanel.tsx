@@ -89,6 +89,7 @@ export function PropertiesPanel({
   onAddWidget,
   onRemoveWidget,
   onMoveWidget,
+  onRemoveZone,
   onPatchWidget,
   onPatchBackground,
   onPatchGlobalStyles,
@@ -117,6 +118,7 @@ export function PropertiesPanel({
   onAddWidget: (zoneId: ZoneId, widget: Widget) => void;
   onRemoveWidget: (zoneId: ZoneId, index: number) => void;
   onMoveWidget?: (zoneId: ZoneId, index: number, dir: -1 | 1) => void;
+  onRemoveZone?: (zoneId: ZoneId) => void;
   onPatchWidget: (zoneId: ZoneId, index: number, widget: Widget) => void;
   onPatchBackground?: (bg: ScreenBackground) => void;
   onPatchGlobalStyles?: (styles: WidgetStyles) => void;
@@ -208,6 +210,7 @@ export function PropertiesPanel({
             onAddWidget={onAddWidget}
             onRemoveWidget={onRemoveWidget}
             onMoveWidget={onMoveWidget}
+            onRemoveZone={onRemoveZone}
           />
         </SectionStyle>
         {onPatchScreenStyles ? (

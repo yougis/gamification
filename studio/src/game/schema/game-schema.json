@@ -158,6 +158,10 @@
     "objects": {
       "type": "array",
       "items": {"$ref": "#/definitions/object"}
+    },
+    "recipes": {
+      "type": "array",
+      "items": {"$ref": "#/definitions/recipe"}
     }
   },
   "definitions": {
@@ -199,6 +203,7 @@
           ]
         },
         "latch": {"type": "boolean", "default": true},
+        "inventoryAccess": {"type": "boolean", "default": true},
         "onReentry": {"enum": ["ignore", "replay"], "default": "ignore"},
         "maxReentries": {"type": "integer", "minimum": 1},
         "scoreOnReplay": {"type": "boolean", "default": false},
@@ -362,9 +367,32 @@
         "id": {"type": "string", "minLength": 1},
         "name": {"type": "string"},
         "icon": {"type": "string"},
+        "image": {"type": "string"},
         "description": {"type": "string"},
         "consumable": {"type": "boolean", "default": false},
         "stackable": {"type": "boolean", "default": true}
+      }
+    },
+    "recipe": {
+      "type": "object",
+      "required": ["id", "inputs", "output"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "inputs": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "object",
+            "required": ["itemId"],
+            "additionalProperties": false,
+            "properties": {
+              "itemId": {"type": "string", "minLength": 1},
+              "consume": {"type": "boolean", "default": true}
+            }
+          }
+        },
+        "output": {"type": "string", "minLength": 1}
       }
     },
     "screen": {

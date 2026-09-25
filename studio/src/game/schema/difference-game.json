@@ -25,7 +25,8 @@
       }
     },
     "touchDilatation": {"type": "number", "minimum": 0},
-    "simplifyPx": {"type": "number", "minimum": 0}
+    "simplifyPx": {"type": "number", "minimum": 0},
+    "inventoryHints": {"$ref": "https://geoplay.example/schemas/modules/inventory-hints.json"}
   },
   "x-needs": {"gps": false, "compass": false, "camera": false, "map": false},
   "x-fallback": "dilatation tactile minimale 44 px (jouable gante)"

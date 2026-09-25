@@ -20,6 +20,7 @@ export function ZoneProperties({
   onAddWidget,
   onRemoveWidget,
   onMoveWidget,
+  onRemoveZone,
 }: {
   zone: ZoneContent;
   zoneId: ZoneId;
@@ -29,6 +30,9 @@ export function ZoneProperties({
   onAddWidget: (zoneId: ZoneId, widget: Widget) => void;
   onRemoveWidget: (zoneId: ZoneId, index: number) => void;
   onMoveWidget?: (zoneId: ZoneId, index: number, dir: -1 | 1) => void;
+  // Suppression de la zone (change studio-apercu-arbre-paysage) : absent =
+  // non supprimable (ex. zone content, base de l'écran).
+  onRemoveZone?: (zoneId: ZoneId) => void;
 }) {
   const widgets = zone.widgets ?? [];
   return (
@@ -106,6 +110,23 @@ export function ZoneProperties({
       <AddWidgetMenu
         onAddWidget={(type: AddableWidgetType) => onAddWidget(zoneId, defaultWidget(type))}
       />
+      {onRemoveZone && zoneId !== "content" ? (
+        <button
+          type="button"
+          className="btn-danger min-h-8 px-2.5 text-[8px]"
+          onClick={() => {
+            if (
+              widgets.length === 0 ||
+              window.confirm(`Supprimer la zone « ${NOM_ZONE[zoneId]} » et ses ${widgets.length} widget(s) ?`)
+            ) {
+              onRemoveZone(zoneId);
+            }
+          }}
+          title={`Supprimer la zone ${NOM_ZONE[zoneId]}`}
+        >
+          <Icon name="fermer" size={13} /> Supprimer la zone
+        </button>
+      ) : null}
     </div>
   );
 }

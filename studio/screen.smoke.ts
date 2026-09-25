@@ -221,4 +221,40 @@ assert(estImageAcceptable(fauxFichier("chateau.jpg", "image/jpeg")), "jpg accept
 assert(estImageAcceptable(fauxFichier("plan.SVG", "")), "svg accepte par extension");
 assert(!estImageAcceptable(fauxFichier("doc.pdf", "application/pdf")), "pdf refuse");
 
+// 15. Indices d'inventaire (change inventory-events-hints 1.2) : C1 rejette
+// un type hors vocabulaire en le nommant, C2 rejette un itemId orphelin.
+{
+  const jeuHints = (hints: unknown) => ({
+    gameId: "indices",
+    schemaVersion: "1.0.0",
+    minEngineVersion: "1.0.0",
+    objects: [{ id: "loupe", name: "Loupe" }],
+    nodes: [
+      {
+        id: "q",
+        module: { type: "QUIZ", data: { schemaVersion: "1.0.0", questions: [{ q: "?" }], inventoryHints: hints } },
+        activation: { requires: [{ type: "TIMER", anchor: "GAME_START", delaySeconds: 0 }] },
+      },
+      {
+        id: "fin",
+        isEnding: true,
+        module: { type: "INFO", data: {} },
+        activation: { requires: [{ type: "NODE_COMPLETED", nodeId: "q" }] },
+      },
+    ],
+  }) as unknown as Game;
+  const ok = validateGame(jeuHints([{ event: "ITEM_SELECTED", itemId: "loupe", hint: "Regarde en haut." }]));
+  assert(ok.layers[0].errors.length === 0, "hints valides passent C1");
+  assert(!ok.layers[1].errors.some((m) => m.includes("inventoryHints")), JSON.stringify(ok.layers[1].errors));
+  const koType = validateGame(jeuHints([{ event: "ITEM_DEVINE", hint: "?" }]));
+  assert(koType.layers[0].errors.some((m) => m.includes("ITEM_DEVINE")), JSON.stringify(koType.layers[0].errors));
+  const koRef = validateGame(jeuHints([{ event: "ITEM_SELECTED", itemId: "objet_inexistant", hint: "?" }]));
+  assert(koRef.layers[0].errors.length === 0, "itemId orphelin passe C1");
+  assert(
+    koRef.layers[1].errors.some((m) => m.includes("inventoryHints") && m.includes("objet_inexistant")),
+    JSON.stringify(koRef.layers[1].errors),
+  );
+  console.log("ok: hints C1 type fautif nommé, C2 itemId orphelin nommé");
+}
+
 console.log("screen.smoke: ALL OK");

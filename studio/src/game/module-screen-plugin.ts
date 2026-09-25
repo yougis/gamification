@@ -29,6 +29,10 @@ export interface ModulePlayerRendererProps {
   branding?: Branding;
   experienceStyle?: ExperienceStyle;
   onComplete?: (score: number) => void;
+  // Indice résolu depuis inventoryHints pour l'événement courant (Nœud
+  // ACTIVE uniquement, fourni par l'appelant). Passif : zone d'affichage,
+  // jamais de modale, ne vole pas le focus, ne change ni état ni score.
+  hint?: string | null;
 }
 
 export interface ModuleScreenPlugin {
@@ -67,4 +71,34 @@ export function getPreview(type: string): ComponentType<ModuleEditorPreviewProps
 // est inconnu ou sans renderer — l'appelant affiche un état non bloquant.
 export function getPlayer(type: string): ComponentType<ModulePlayerRendererProps> | null {
   return getScreenPlugin(type)?.playerRenderer ?? null;
+}
+
+// Ecran generique content-only (change studio-module-first) pour les types
+// sans screenPlugin : un widget `{ type: "module" }` rendu comme placeholder.
+const ECRAN_GENERIQUE: ScreenDefinition = {
+  layout: "default",
+  zones: { content: { layout: "stack", widgets: [{ type: "module" }] } },
+};
+
+// Ecran initial d'un Nœud (change studio-module-first) : clone profond du
+// `defaultScreen` du screenPlugin du type, ou ecran generique si le type n'a
+// pas de plugin (INFO, RANDOM_POOL, futurs types). Toujours un clone :
+// l'appelant peut muter sans affecter le registre.
+export function ecranDefautModule(type: string): ScreenDefinition {
+  const plugin = getScreenPlugin(type);
+  if (plugin) return JSON.parse(JSON.stringify(plugin.defaultScreen)) as ScreenDefinition;
+  return JSON.parse(JSON.stringify(ECRAN_GENERIQUE)) as ScreenDefinition;
+}
+
+// Donnees initiales d'un Module (change studio-module-first) : la forme requise
+// par le sous-schema est toujours posee (`schemaVersion` lue au registre),
+// le contenu restant a l'auteur (comme le QUIZ historique naissant avec
+// `questions: []`, invalide en contenu mais de forme complete). Les panneaux
+// savent afficher ces vides (etats incitatifs) et la validation guide la
+// suite. Types sans schema de donnees (INFO, RANDOM_POOL) : `{}`.
+export function donneesDefautModule(type: string): Record<string, unknown> {
+  const version = MODULE_REGISTRY[type]?.version;
+  const base: Record<string, unknown> = version ? { schemaVersion: version } : {};
+  if (type === "QUIZ") return { ...base, questions: [] };
+  return base;
 }

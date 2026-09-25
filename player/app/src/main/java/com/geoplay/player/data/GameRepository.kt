@@ -8,6 +8,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.geoplay.shared.model.GameProgressEntity
 import com.geoplay.shared.model.InventoryEntity
+import com.geoplay.shared.model.InventoryEventEntity
 import com.geoplay.shared.model.NodeCompletionEntity
 import com.geoplay.shared.model.RandomDrawEntity
 import com.geoplay.shared.model.ScoreEntity
@@ -131,11 +132,23 @@ class GameRepository(
             quantity = quantity,
             isCheat = isCheat
         )
-        withContext(Dispatchers.IO) { dao.insertInventoryWithTransaction(entry) }
+        withContext(Dispatchers.IO) {
+            dao.insertInventoryWithTransaction(entry)
+            // Le journal EST le bus (change inventory-events-hints) : l'effet
+            // GIVE_ITEM émet ITEM_GIVEN dans le même flux d'écriture.
+            dao.insertInventoryEventWithTransaction(
+                InventoryEventEntity(sessionId = sessionId, eventType = "ITEM_GIVEN", itemId = itemId, isCheat = isCheat)
+            )
+        }
     }
 
-    suspend fun removeItem(sessionId: String, itemId: String) {
-        withContext(Dispatchers.IO) { dao.removeInventoryItem(sessionId, itemId) }
+    suspend fun removeItem(sessionId: String, itemId: String, isCheat: Boolean = false) {
+        withContext(Dispatchers.IO) {
+            dao.removeInventoryItem(sessionId, itemId)
+            dao.insertInventoryEventWithTransaction(
+                InventoryEventEntity(sessionId = sessionId, eventType = "ITEM_REMOVED", itemId = itemId, isCheat = isCheat)
+            )
+        }
     }
 
     suspend fun getInventory(sessionId: String): List<InventoryEntity> =
@@ -149,5 +162,50 @@ class GameRepository(
 
     suspend fun clearInventory(sessionId: String) {
         withContext(Dispatchers.IO) { dao.clearInventory(sessionId) }
+    }
+
+    // Journal d'événements d'inventaire (change inventory-events-hints) :
+    // écriture immédiate, relecture par sessionId (reprise après kill).
+    suspend fun logInventoryEvent(sessionId: String, eventType: String, itemId: String? = null, isCheat: Boolean = false) {
+        withContext(Dispatchers.IO) {
+            dao.insertInventoryEventWithTransaction(
+                InventoryEventEntity(sessionId = sessionId, eventType = eventType, itemId = itemId, isCheat = isCheat)
+            )
+        }
+    }
+
+    suspend fun getInventoryEvents(sessionId: String): List<InventoryEventEntity> =
+        withContext(Dispatchers.IO) { dao.getInventoryEvents(sessionId) }
+
+    // Combinaison d'atelier (change inventory-crafting) : la confirmation
+    // du joueur appelle explicitement cette méthode après
+    // `availableRecipes` (proposition). Tout-ou-rien : entrées incomplètes
+    // → false, ZÉRO écriture ; sinon REMOVE des consommées + GIVE de la
+    // sortie + journal ITEM_COMBINED dans le même flux d'écriture.
+    suspend fun craft(sessionId: String, recipe: com.geoplay.shared.model.Recipe): Boolean {
+        val owned = withContext(Dispatchers.IO) {
+            dao.getInventory(sessionId).associate { it.itemId to it.quantity }
+        }
+        val decided = com.geoplay.shared.game.applyRecipe(
+            recipe,
+            com.geoplay.shared.game.InventoryState(items = owned)
+        ) ?: return false
+        withContext(Dispatchers.IO) {
+            // L'état décidé par le moteur pur fait foi : une ligne par
+            // objet avec sa quantité exacte (réconciliation totale).
+            for (itemId in owned.keys + decided.items.keys) {
+                dao.removeInventoryItem(sessionId, itemId)
+                val qty = decided.items[itemId] ?: 0
+                if (qty > 0) {
+                    dao.insertInventoryWithTransaction(
+                        com.geoplay.shared.model.InventoryEntity(sessionId = sessionId, itemId = itemId, quantity = qty)
+                    )
+                }
+            }
+            dao.insertInventoryEventWithTransaction(
+                InventoryEventEntity(sessionId = sessionId, eventType = "ITEM_COMBINED", itemId = recipe.output)
+            )
+        }
+        return true
     }
 }

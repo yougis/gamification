@@ -75,23 +75,21 @@ export function PhoneCanvas({
 }) {
   const zones = screen.zones ?? {};
   const format = VIEWPORTS.find((v) => v.id === viewport) ?? VIEWPORTS[0];
-  return (
-    <div className="flex items-start justify-center overflow-auto p-4">
-      <div style={scale && scale !== 1 ? { transform: `scale(${scale})`, transformOrigin: "top center" } : undefined}>
-        <div
-          role="button"
-          tabIndex={0}
-          aria-label="Écran du nœud"
-          onClick={() => onSelectZone?.(null)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              onSelectZone?.(null);
-            }
-          }}
-          className="relative flex flex-col overflow-hidden rounded-[2rem] border-4 border-line bg-surface text-snow"
-          style={{ width: format.largeur, height: format.hauteur, ...screenBackgroundStyle(screen.background) }}
-        >
+  const cadre = (
+    <div
+      role="button"
+      tabIndex={0}
+      aria-label="Écran du nœud"
+      onClick={() => onSelectZone?.(null)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelectZone?.(null);
+        }
+      }}
+      className="relative flex flex-col overflow-hidden rounded-[2rem] border-4 border-line bg-surface text-snow"
+      style={{ width: format.largeur, height: format.hauteur, ...screenBackgroundStyle(screen.background) }}
+    >
           {screen.background?.overlay != null ? (
             <div className="pointer-events-none absolute inset-0 bg-black" style={{ opacity: screen.background.overlay }} />
           ) : null}
@@ -177,7 +175,24 @@ export function PhoneCanvas({
             </div>
           ) : null}
         </div>
+  );
+  // Échelle ajustée (paysage plein cadre, miniatures) : la boîte occupe
+  // exactement les dimensions mises à l'échelle — aucun défilement, le cadre
+  // reste intégralement visible et centré.
+  if (scale != null && scale !== 1) {
+    return (
+      <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden">
+        <div className="shrink-0" style={{ width: format.largeur * scale, height: format.hauteur * scale }}>
+          <div style={{ transform: `scale(${scale})`, transformOrigin: "top left", width: format.largeur, height: format.hauteur }}>
+            {cadre}
+          </div>
+        </div>
       </div>
+    );
+  }
+  return (
+    <div className="flex items-start justify-center overflow-auto p-4">
+      {cadre}
     </div>
   );
 }

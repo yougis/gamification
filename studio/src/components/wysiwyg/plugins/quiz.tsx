@@ -282,7 +282,7 @@ export function QuizPropertiesPanel({ data, onChange, readOnly, minigameDefaults
 }
 
 // Rendu joueur interactif : selection, feedback, score, onComplete.
-export function QuizPlayerRenderer({ data, onComplete }: ModulePlayerRendererProps) {
+export function QuizPlayerRenderer({ data, onComplete, hint }: ModulePlayerRendererProps) {
   const questions = quizQuestions(data);
   const [index, setIndex] = useState(0);
   const [choix, setChoix] = useState<number | null>(null);
@@ -302,6 +302,7 @@ export function QuizPlayerRenderer({ data, onComplete }: ModulePlayerRendererPro
   return (
     <div className="flex flex-col gap-2">
       <p className="text-xs text-fog">Question {index + 1}/{questions.length} — Score {score}</p>
+      {hint ? <p className="rounded border border-line px-2 py-1 text-xs italic text-fog">💡 {hint}</p> : null}
       <p className="text-sm font-semibold">{q.q}</p>
       {options.map((opt, i) => (
         <button

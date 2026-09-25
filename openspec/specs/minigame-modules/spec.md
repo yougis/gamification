@@ -50,6 +50,9 @@ embarqué. Zones exprimées en % (responsive). Relecture overlay avec statuts.
 au clavier (accessibilité de base), progression sauvegardée en SQLite.
 Le découpage SHALL être exprimé en lignes × colonnes (`tileRows`, `tileCols`, entiers 2 à 6) ; le nombre de pièces SHALL égaler lignes × colonnes.
 `PUZZLE` SHALL porter `maxAttempts` (entier ≥ 1) et `timeLimitSeconds` (entier ≥ 0, 0 = illimité), résolus via les défauts globaux sauf surcharge locale.
+Au démarrage, les pièces SHALL être mélangées aléatoirement (jamais déjà résolu, sauf cas trivial 1 pièce exclu par les bornes).
+Le déplacement des tuiles SHALL suivre `module.data.mode` : `slide` (tap-à-tap : sélectionner une tuile puis une destination, échange des deux) ou `drag` (glisser-déposer direct) ; à défaut de `mode`, `slide` SHALL s'appliquer.
+La complétion SHALL exiger toutes les pièces bien placées et SHALL appeler `onComplete` ; essais épuisés ou temps écoulé SHALL appliquer `onTimeout` comme les autres mini-jeux.
 
 #### Scenario: Reprise puzzle
 
@@ -62,6 +65,24 @@ Le découpage SHALL être exprimé en lignes × colonnes (`tileRows`, `tileCols`
 - **GIVEN** un PUZZLE avec `tileRows:3, tileCols:3`
 - **WHEN** le module démarre
 - **THEN** 9 pièces sont mélangées et la complétion exige les 9 bien placées
+
+#### Scenario: Déplacement slide par échange
+
+- **GIVEN** un PUZZLE en `mode: "slide"` avec 2 tuiles mal placées
+- **WHEN** le joueur tape la première puis la seconde
+- **THEN** les deux tuiles sont échangées et la complétion est réévaluée
+
+#### Scenario: Déplacement drag
+
+- **GIVEN** un PUZZLE en `mode: "drag"`
+- **WHEN** le joueur glisse une tuile sur une autre position
+- **THEN** la tuile suit le pointeur puis s'ancre, et la complétion est réévaluée
+
+#### Scenario: Complétion du puzzle
+
+- **GIVEN** un PUZZLE dont la dernière tuile mal placée vient d'être posée
+- **WHEN** la grille est complète
+- **THEN** `onComplete` est appelé et le Nœud peut passer COMPLETED
 
 ### Requirement: AR_MARKER avec fallback 2D
 
@@ -86,3 +107,47 @@ L'orchestrateur ne SHALL jamais recevoir de cap.
 - **GIVEN** un heading instable et un fallback code animateur
 - **WHEN** la stabilisation échoue avant `onTimeout`
 - **THEN** le module propose le fallback au lieu de bloquer
+
+### Requirement: CODE_INPUT cadenas
+
+`CODE_INPUT` SHALL porter `code` (chaîne attendue non vide), `maxAttempts` (entier ≥ 1) et `timeLimitSeconds` (entier ≥ 0, 0 = illimité), résolus via les défauts globaux sauf surcharge locale, plus un `hint` optionnel et des messages `successMessage` / `failureMessage` optionnels.
+La mécanique SHALL être : pavé de saisie (clavier + boutons tactiles 0-9/A-Z selon le code), vérification à la validation, succès → `onComplete`, échec → essais décrémentés, essais épuisés ou temps écoulé → `onTimeout` comme les autres mini-jeux.
+Le sous-schéma `code-input.json` SHALL imposer `code` non vide et `additionalProperties: false`, monté en AJV comme les 5 schémas socle sans toucher au schéma racine.
+Le validateur applicatif SHALL rejeter un module CODE_INPUT sans `code` (symétrique de la règle condition existante).
+
+#### Scenario: Code correct
+
+- **GIVEN** un module CODE_INPUT avec `code: "1947"`
+- **WHEN** le joueur saisit « 1947 » et valide
+- **THEN** le succès est affiché et `onComplete` est appelé
+
+#### Scenario: Code incorrect puis épuisement
+
+- **GIVEN** un module CODE_INPUT avec `code: "1947"` et `maxAttempts: 2`
+- **WHEN** le joueur échoue 2 fois
+- **THEN** `onTimeout` est appliqué comme à l'expiration du temps
+
+#### Scenario: Module sans code rejeté
+
+- **GIVEN** un module CODE_INPUT sans `code`
+- **WHEN** la validation tourne
+- **THEN** le jeu est rejeté avec le nœud fautif nommé
+
+### Requirement: Indices sur événements d'inventaire
+
+Tout mini-jeu socle (QUIZ, DIFFERENCE_GAME, PUZZLE, AR_MARKER, BOUSSOLE, CODE_INPUT — via le registre, jamais de liste fermée en dur dans le moteur) MAY déclarer `inventoryHints: [{ event, itemId?, hint }]` dans son `module.data`, où `event` appartient au vocabulaire fermé des événements d'inventaire et `hint` est le texte d'indice à afficher. Quand un événement correspondant survient pendant que le Nœud est ACTIVE, le renderer SHALL afficher `hint` sans changer l'état du jeu (ni transition, ni effet, ni score). Les abonnements sans `itemId` réagissent à tout objet pour ce type d'événement.
+
+#### Scenario: Indice sur sélection
+- **GIVEN** un QUIZ avec `inventoryHints: [{event: "ITEM_SELECTED", itemId: "loupe", hint: "Regarde le coin supérieur droit."}]`, Nœud ACTIVE
+- **WHEN** le joueur sélectionne `loupe` dans la boîte à outils
+- **THEN** l'indice s'affiche dans le quiz, le Nœud reste ACTIVE, aucun event de progression n'est émis
+
+#### Scenario: Abonnement large
+- **GIVEN** un PUZZLE avec `inventoryHints: [{event: "ITEM_USED", hint: "Bien utilisé, continue."}]`
+- **WHEN** le joueur utilise n'importe quel objet pendant le Nœud ACTIVE
+- **THEN** l'indice s'affiche
+
+#### Scenario: Référence orpheline rejetée
+- **GIVEN** un `inventoryHints` avec `itemId: "objet_inexistant"` et aucun objet de cet `id` dans le jeu
+- **WHEN** la validation applicative tourne
+- **THEN** le jeu est rejeté avec l'objet fautif nommé

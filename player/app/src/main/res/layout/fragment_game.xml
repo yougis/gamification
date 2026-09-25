@@ -18,6 +18,21 @@
         android:layout_margin="16dp"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toStartOf="@id/btnToolbox" />
+
+    <!-- Boîte à outils (change player-inventory-toolbox) : icône persistante
+         en overlay, jamais une navigation. Visibilité pilotée par la règle
+         triple (objets + TOOLBOX + flag nœud) dans updateUI. -->
+    <Button
+        android:id="@+id/btnToolbox"
+        style="@style/Widget.GeoPlayPlayer.Button.Secondary"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_margin="16dp"
+        android:text="🎒"
+        android:visibility="gone"
+        android:contentDescription="Ouvrir la boîte à outils"
+        app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
     <TextView

@@ -53,3 +53,25 @@ fun verifyPackFiles(
         corruptedFiles = corruptedFiles
     )
 }
+
+/**
+ * Variante frontale pour les hôtes natifs (change studio-game-catalog, 2.2) :
+ * prend le manifest en texte et ne lève jamais — un manifest illisible donne
+ * un résultat invalide nommant le problème (les exceptions Kotlin ne doivent
+ * pas traverser la frontière Swift/ObjC).
+ */
+fun verifyPackJson(
+    manifestText: String,
+    files: Map<String, ByteArray>,
+): PackVerificationResult {
+    val manifest = try {
+        parseManifest(manifestText)
+    } catch (e: Exception) {
+        return PackVerificationResult(
+            isValid = false,
+            errors = listOf("Manifest illisible: ${e.message}"),
+            progressPercent = 0f,
+        )
+    }
+    return verifyPackFiles(manifest, files)
+}

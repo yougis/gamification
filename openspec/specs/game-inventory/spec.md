@@ -8,17 +8,23 @@ Définit le système d'inventaire pour les objets, outils et indices du joueur d
 Chaque objet dans l'inventaire SHALL être défini dans le JSON du jeu avec les propriétés suivantes :
 - `id` (string unique dans le jeu)
 - `name` (string, nom affiché au joueur)
-- `icon` (string optionnel, référence à un asset visuel)
+- `icon` (string optionnel, référence à un asset visuel — pictogramme de la boîte à outils)
+- `image` (string optionnel, référence à un asset du pack — illustration grande de la fiche objet)
 - `description` (string optionnel)
 - `consumable` (booléen, défaut `false`)
 - `stackable` (booléen, défaut `true`)
 
-La définition de l'objet SHALL être lue depuis le JSON du jeu, jamais codée en dur.
+Toutes ces propriétés SHALL être éditables après création (aucune n'est figée à la naissance de l'objet). La définition de l'objet SHALL être lue depuis le JSON du jeu, jamais codée en dur.
 
 #### Scenario: Définition d'objet dans le JSON
 - **GIVEN** un jeu avec un objet défini dans le JSON
 - **WHEN** le moteur charge le jeu
 - **THEN** l'objet est disponible dans le registre de l'inventaire
+
+#### Scenario: Objet avec image
+- **GIVEN** un objet avec `icon: "assets/cle.svg"` et `image: "assets/cle-grande.png"`
+- **WHEN** le joueur ouvre la fiche de l'objet
+- **THEN** la grande illustration s'affiche, tandis que la boîte à outils garde le pictogramme
 
 ### Requirement: Inventaire du joueur
 
@@ -137,3 +143,45 @@ L'inventaire ne SHALL jamais être recalculé. Il est lu depuis SQLite à la rep
 - **GIVEN** une partie terminée avec `sessionId: "abc123"`
 - **WHEN** le joueur commence une nouvelle partie avec `sessionId: "def456"`
 - **THEN** l'inventaire est vide
+
+### Requirement: Objet importé avec provenance et asset
+
+Un objet importé depuis un autre jeu SHALL conserver la provenance d'origine (`providerId`, licence, `sourceUrl` référençant le jeu source) dans les métas du Studio, et son `icon`/`image` SHALL être ré-enregistrée comme asset du pack courant (nouvelle entrée manifest avec son SHA-256, jamais de référence vers le pack source). Après import, l'objet SHALL être validé et référençable exactement comme un objet natif.
+
+#### Scenario: Traçabilité conservée
+- **GIVEN** un objet importé du jeu « Chasse »
+- **WHEN** l'auteur ouvre la relecture
+- **THEN** la provenance affiche le jeu source et sa licence, et l'export inclut l'asset dans le pack courant
+
+### Requirement: Recettes de combinaison productives
+
+Le jeu MAY définir `recipes: [{ id, inputs: [{ itemId, consume }], output }]` où `inputs` liste les objets requis (n >= 2 pour une combinaison ; une entrée seule relève de `ITEM_USED`, jamais d'une recette), `consume` indique si l'entrée est retirée (`true`) ou conservée (`false`), et `output` est l'objet produit. Quand le joueur réunit les entrées et confirme, le moteur SHALL appliquer atomiquement : retrait des entrées consommées, ajout de la sortie via le circuit `GIVE_ITEM`, journalisation de `ITEM_COMBINED`. Si une entrée manque au moment de confirmer, rien SHALL se produire (tout ou rien, pas d'état intermédiaire).
+
+#### Scenario: Combinaison avec destruction
+- **GIVEN** la recette `poudre + lettre → message` (`consume: true` pour les deux) et un inventaire `{poudre, lettre}`
+- **WHEN** le joueur confirme la combinaison
+- **THEN** poudre et lettre sont retirées, `message` est ajouté, `ITEM_COMBINED` est journalisé
+
+#### Scenario: Combinaison avec outil conservé
+- **GIVEN** la recette `loupe + carte → carte-annotée` (`consume: false` pour `loupe`) et un inventaire `{loupe, carte}`
+- **WHEN** le joueur confirme
+- **THEN** `loupe` reste, `carte` est retirée, `carte-annotée` est ajoutée
+
+#### Scenario: Entrée manquante
+- **GIVEN** la même recette et un inventaire `{loupe}` seul
+- **WHEN** le joueur tente de combiner
+- **THEN** la recette n'est pas proposée et aucun état ne change
+
+### Requirement: Événements d'inventaire journalisés
+
+Chaque action d'inventaire SHALL émettre un événement typé, persisté en SQLite avec écriture immédiate (même `sessionId` de reprise que le reste de la progression) : `INVENTORY_OPENED` (boîte à outils ouverte), `ITEM_SELECTED` (objet sélectionné/consulté), `ITEM_USED` (objet utilisé), `ITEM_COMBINED` (combinaison tentée, voir change craft), `ITEM_GIVEN` / `ITEM_REMOVED` (effets appliqués). Chaque événement porte `itemId` quand il concerne un objet, plus timestamp et flag triche le cas échéant. Le vocabulaire SHALL être fermé : seuls ces six types existent, versionnés avec le schéma.
+
+#### Scenario: Sélection journalisée
+- **GIVEN** un joueur possédant `loupe` qui la sélectionne dans la boîte à outils
+- **WHEN** l'action est effectuée
+- **THEN** un événement `ITEM_SELECTED {itemId: "loupe"}` est écrit en SQLite et rejouable après kill via le même `sessionId`
+
+#### Scenario: Type inconnu refusé
+- **GIVEN** un jeu référençant un type d'événement hors vocabulaire
+- **WHEN** la validation tourne
+- **THEN** le jeu est rejeté avec le type fautif nommé

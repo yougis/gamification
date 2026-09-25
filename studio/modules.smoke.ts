@@ -85,4 +85,5 @@ const root = new URL(".", import.meta.url).pathname;
     await import("node:fs/promises").then((fs) => fs.unlink(f)).catch(() => {});
   }
 }
+
 console.log("MODULES SMOKE OK");

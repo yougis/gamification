@@ -5,6 +5,7 @@ import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import com.geoplay.shared.model.GameProgressEntity
 import com.geoplay.shared.model.HoldJournalEntity
 import com.geoplay.shared.model.InventoryEntity
+import com.geoplay.shared.model.InventoryEventEntity
 import com.geoplay.shared.model.NodeCompletionEntity
 import com.geoplay.shared.model.RandomDrawEntity
 import com.geoplay.shared.model.ScoreEntity
@@ -76,6 +77,64 @@ class DatabasePersistenceTest {
             )
             assertEquals(1, db.gameDao().getHoldJournal("s1").size)
             assertTrue(db.gameDao().getHoldJournal("s1").first().success)
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
+    fun inventoryEventsJournalRoundTrip() = runTest {
+        val db = openDb()
+        try {
+            // Écriture immédiate des 6 types, relecture par sessionId
+            // (chemin de reprise après kill : même sessionId relit tout).
+            val writer = db.gameDao()
+            writer.insertInventoryEventWithTransaction(InventoryEventEntity(sessionId = "s1", eventType = "INVENTORY_OPENED"))
+            writer.insertInventoryEventWithTransaction(InventoryEventEntity(sessionId = "s1", eventType = "ITEM_SELECTED", itemId = "loupe"))
+            writer.insertInventoryEventWithTransaction(InventoryEventEntity(sessionId = "s1", eventType = "ITEM_USED", itemId = "cle", isCheat = true))
+            writer.insertInventoryEventWithTransaction(InventoryEventEntity(sessionId = "s1", eventType = "ITEM_COMBINED"))
+            writer.insertInventoryEventWithTransaction(InventoryEventEntity(sessionId = "s1", eventType = "ITEM_GIVEN", itemId = "poudre"))
+            writer.insertInventoryEventWithTransaction(InventoryEventEntity(sessionId = "s1", eventType = "ITEM_REMOVED", itemId = "poudre"))
+
+            // Relecture via une autre référence DAO (comme à la reprise).
+            val reader = db.gameDao()
+            val events = reader.getInventoryEvents("s1")
+            assertEquals(6, events.size)
+            assertEquals(
+                listOf("INVENTORY_OPENED", "ITEM_SELECTED", "ITEM_USED", "ITEM_COMBINED", "ITEM_GIVEN", "ITEM_REMOVED"),
+                events.map { it.eventType }
+            )
+            assertEquals("loupe", events[1].itemId)
+            assertTrue(events[2].isCheat)
+            assertEquals("s1", events.first().sessionId)
+            // Isolation par session.
+            assertTrue(reader.getInventoryEvents("s2").isEmpty())
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
+    fun craftOutcomePersistsBySession() = runTest {
+        val db = openDb()
+        try {
+            // Séquence d'écriture d'un craft confirmé (miroir
+            // GameRepository.craft) : REMOVE consommées + GIVE sortie +
+            // journal ITEM_COMBINED, puis relecture par sessionId (reprise).
+            val dao = db.gameDao()
+            dao.insertInventoryWithTransaction(InventoryEntity(sessionId = "s1", itemId = "poudre"))
+            dao.insertInventoryWithTransaction(InventoryEntity(sessionId = "s1", itemId = "lettre"))
+            dao.removeInventoryItem("s1", "poudre")
+            dao.removeInventoryItem("s1", "lettre")
+            dao.insertInventoryWithTransaction(InventoryEntity(sessionId = "s1", itemId = "message"))
+            dao.insertInventoryEventWithTransaction(InventoryEventEntity(sessionId = "s1", eventType = "ITEM_COMBINED", itemId = "message"))
+
+            val reader = db.gameDao()
+            assertEquals(listOf("message"), reader.getInventory("s1").map { it.itemId })
+            val events = reader.getInventoryEvents("s1")
+            assertEquals(1, events.size)
+            assertEquals("ITEM_COMBINED", events.first().eventType)
+            assertEquals("message", events.first().itemId)
         } finally {
             db.close()
         }

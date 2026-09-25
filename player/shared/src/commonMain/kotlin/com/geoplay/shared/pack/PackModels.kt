@@ -28,7 +28,6 @@ data class PackVerificationResult(
 
 /** JSON GeoPlay partagé : clés inconnues ignorées, valeurs contraintes (miroir Studio). */
 val GeoPlayJson = Json { ignoreUnknownKeys = true; coerceInputValues = true }
-
 /** Lit un game.json (lève une exception si invalide). */
 fun parseGameJson(text: String): Game =
     GeoPlayJson.decodeFromString(Game.serializer(), text)
@@ -53,3 +52,28 @@ fun buildSingleFileManifest(game: Game, fileBytes: ByteArray): PackManifest =
         ),
         version = 1
     )
+
+private const val BASE64_ALPHABET =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+
+// Décodeur base64 pur Kotlin (change player-pwa-shell) : le web lit les
+// assets binaires via FileReader data-URL, sans typed arrays JS.
+fun decodeBase64(s: String): ByteArray {
+    val clean = s.filter { it == '=' || it in BASE64_ALPHABET }
+    require(clean.length % 4 == 0) { "base64 invalide" }
+    val out = ByteArray(clean.length * 3 / 4 - (if (clean.endsWith("==")) 2 else if (clean.endsWith("=")) 1 else 0))
+    var o = 0
+    var i = 0
+    while (i < clean.length) {
+        val b0 = BASE64_ALPHABET.indexOf(clean[i])
+        val b1 = BASE64_ALPHABET.indexOf(clean[i + 1])
+        val b2 = if (clean[i + 2] == '=') 0 else BASE64_ALPHABET.indexOf(clean[i + 2])
+        val b3 = if (clean[i + 3] == '=') 0 else BASE64_ALPHABET.indexOf(clean[i + 3])
+        require(b0 >= 0 && b1 >= 0)
+        out[o++] = ((b0 shl 2) or (b1 shr 4)).toByte()
+        if (o < out.size) out[o++] = ((b1 shl 4) or (b2 shr 2)).toByte()
+        if (o < out.size) out[o++] = ((b2 shl 6) or b3).toByte()
+        i += 4
+    }
+    return out
+}

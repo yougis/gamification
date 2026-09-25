@@ -43,7 +43,8 @@
     },
     "timeLimitSeconds": {"type": "integer", "minimum": 0},
     "maxAttempts": {"type": "integer", "minimum": 1},
-    "onTimeout": {"type": "string"}
+    "onTimeout": {"type": "string"},
+    "inventoryHints": {"$ref": "https://geoplay.example/schemas/modules/inventory-hints.json"}
   },
   "x-needs": {"gps": false, "compass": false, "camera": false, "map": false},
   "x-fallback": "aucun requis (jouable partout)"

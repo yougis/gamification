@@ -115,4 +115,18 @@ class GameEngineCommonTest {
         val drawnState = evaluate(game, Sim(), mapOf("pool" to listOf("c")), emptyMap(), emptyMap(), emptySet())
         assertEquals(listOf("c"), drawnState.unlocked)
     }
+
+    @Test
+    fun applyEffectsGiveAndRemove() {
+        val giveNode = node("trouvaille").copy(
+            effects = listOf(com.geoplay.shared.model.Effect(type = "GIVE_ITEM", itemId = "poudre"))
+        )
+        val afterGive = applyEffects(giveNode, InventoryState())
+        assertEquals(1, afterGive.items["poudre"])
+        val removeNode = node("usage").copy(
+            effects = listOf(com.geoplay.shared.model.Effect(type = "REMOVE_ITEM", itemId = "poudre"))
+        )
+        val afterRemove = applyEffects(removeNode, afterGive)
+        assertTrue(afterRemove.items.isEmpty())
+    }
 }

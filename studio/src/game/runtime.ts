@@ -64,7 +64,45 @@ export type SessionEvent =
   | { type: "sessionPause"; timestamp: number; sessionId: string }
   | { type: "sessionResume"; timestamp: number; sessionId: string }
   | { type: "sessionEnd"; timestamp: number; sessionId: string }
-  | HoldEvent;
+  | HoldEvent
+  | InventoryEvent;
+
+// --- Événements d'inventaire (change inventory-events-hints) ---
+// Vocabulaire fermé : ces six types, ni plus ni moins. Le journal EST le
+// bus : l'écoute = filtre sur type (+ itemId) au rendu, jamais de callback.
+export type InventoryEventType =
+  | "INVENTORY_OPENED"
+  | "ITEM_SELECTED"
+  | "ITEM_USED"
+  | "ITEM_COMBINED"
+  | "ITEM_GIVEN"
+  | "ITEM_REMOVED";
+
+export const INVENTORY_EVENT_TYPES: readonly InventoryEventType[] = [
+  "INVENTORY_OPENED",
+  "ITEM_SELECTED",
+  "ITEM_USED",
+  "ITEM_COMBINED",
+  "ITEM_GIVEN",
+  "ITEM_REMOVED",
+];
+
+export interface InventoryEvent {
+  type: InventoryEventType;
+  timestamp: number;
+  sessionId: string;
+  itemId?: string;
+  isCheat?: boolean;
+}
+
+export function createInventoryEvent(
+  type: InventoryEventType,
+  sessionId: string,
+  itemId?: string,
+  isCheat = false,
+): InventoryEvent {
+  return { type, timestamp: Date.now(), sessionId, ...(itemId ? { itemId } : {}), isCheat };
+}
 
 export function createSessionEvent(type: SessionEvent["type"], sessionId: string): SessionEvent {
   return { type, timestamp: Date.now(), sessionId };

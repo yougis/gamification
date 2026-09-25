@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://geoplay.example/schemas/modules/inventory-hints.json",
+  "title": "inventoryHints partagés (change inventory-events-hints)",
+  "description": "Abonnements d'un mini-jeu aux événements d'inventaire : vocabulaire fermé, affichage passif uniquement.",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["event", "hint"],
+    "additionalProperties": false,
+    "properties": {
+      "event": {"enum": ["INVENTORY_OPENED", "ITEM_SELECTED", "ITEM_USED", "ITEM_COMBINED", "ITEM_GIVEN", "ITEM_REMOVED"]},
+      "itemId": {"type": "string", "minLength": 1},
+      "hint": {"type": "string", "minLength": 1}
+    }
+  }
+}

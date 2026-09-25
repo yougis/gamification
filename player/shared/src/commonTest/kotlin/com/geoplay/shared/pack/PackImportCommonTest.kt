@@ -52,6 +52,26 @@ class PackImportCommonTest {
     }
 
     @Test
+    fun verifyPackJsonAcceptsTextManifest() {
+        val gameJson = """{"gameId":"t","nodes":[]}"""
+        val bytes = gameJson.encodeToByteArray()
+        val manifest = PackManifest(
+            files = listOf(ManifestEntry("game.json", "1.0.0", bytes.size.toLong(), Sha256.hex(bytes))),
+        )
+        val result = verifyPackJson(encodeManifest(manifest), mapOf("game.json" to bytes))
+        assertTrue(result.isValid)
+        assertTrue(result.errors.isEmpty())
+    }
+
+    @Test
+    fun verifyPackJsonNeverThrowsOnGarbage() {
+        val result = verifyPackJson("ceci n'est pas du json {{{", emptyMap())
+        assertFalse(result.isValid)
+        assertTrue(result.errors.size == 1)
+        assertTrue(result.errors[0].startsWith("Manifest illisible:"))
+    }
+
+    @Test
     fun singleFileManifestRoundTrip() {
         val gameJson = """{"gameId":"roundtrip","schemaVersion":"1.0.0","nodes":[]}"""
         val game = parseGameJson(gameJson)
@@ -62,5 +82,14 @@ class PackImportCommonTest {
         val reparsed = parseManifest(encodeManifest(manifest))
         assertEquals(manifest, reparsed)
         assertTrue(verifyPackFiles(reparsed, mapOf("game.json" to gameJson.encodeToByteArray())).isValid)
+    }
+
+    @Test
+    fun decodeBase64Vectors() {
+        assertEquals(listOf<Byte>(1, 2, 3), decodeBase64("AQID").toList())
+        assertEquals("ab", decodeBase64("YWI=").decodeToString())
+        assertEquals("abc", decodeBase64("YWJj").decodeToString())
+        assertEquals(0, decodeBase64("").size)
+        assertEquals(255, decodeBase64("/w==")[0].toInt() and 0xFF)
     }
 }

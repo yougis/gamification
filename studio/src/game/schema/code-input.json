@@ -12,7 +12,8 @@
     "successMessage": {"type": "string"},
     "failureMessage": {"type": "string"},
     "maxAttempts": {"type": "integer", "minimum": 1},
-    "timeLimitSeconds": {"type": "integer", "minimum": 0}
+    "timeLimitSeconds": {"type": "integer", "minimum": 0},
+    "inventoryHints": {"$ref": "https://geoplay.example/schemas/modules/inventory-hints.json"}
   },
   "x-needs": {"gps": false, "compass": false, "camera": false, "map": false},
   "x-fallback": "indice auteur + essais (tactile + clavier)"

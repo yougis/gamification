@@ -25,6 +25,9 @@ fun QuizScreen(
     questions: List<QuizQuestion>,
     onComplete: (Int) -> Unit,
     modifier: Modifier = Modifier,
+    // Indice résolu depuis inventoryHints (Nœud ACTIVE uniquement, fourni
+    // par l'appelant). Passif : zone d'affichage, jamais de modale.
+    hint: String? = null,
 ) {
     var index by remember { mutableStateOf(0) }
     var picked by remember { mutableStateOf<Int?>(null) }
@@ -36,6 +39,14 @@ fun QuizScreen(
     val question = questions[index]
     val validated = picked != null
     Column(modifier = modifier.padding(16.dp)) {
+        if (hint != null) {
+            Text(
+                text = "💡 $hint",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
+        }
         Text(
             text = "Question ${index + 1}/${questions.size}",
             style = MaterialTheme.typography.labelLarge,

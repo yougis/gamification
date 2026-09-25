@@ -30,7 +30,7 @@ export function ChevronRepli({
 }) {
   return (
     <button
-      className="btn min-h-8 px-2"
+      className="btn btn-compact min-h-8 px-2"
       onClick={onBasculer}
       title={titre}
       aria-label={titre}
@@ -65,7 +65,7 @@ export function RailReplie({
 }) {
   return (
     <div className="carte flex w-12 shrink-0 flex-col items-center gap-2 p-2" aria-label={titre}>
-      <button className="btn px-2.5" onClick={onDeplier} title={titre} aria-label={titre} aria-expanded={false}>
+      <button className="btn btn-compact px-2.5" onClick={onDeplier} title={titre} aria-label={titre} aria-expanded={false}>
         <Icon name={icone} size={17} />
       </button>
       {actions.map((a) =>
@@ -74,7 +74,7 @@ export function RailReplie({
         ) : (
           <button
             key={a.titre}
-            className="btn px-2"
+            className="btn btn-compact px-2"
             onClick={a.onAction}
             title={a.titre}
             aria-label={a.titre}

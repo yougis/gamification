@@ -8,6 +8,7 @@ import androidx.room.TypeConverters
 import com.geoplay.shared.model.GameProgressEntity
 import com.geoplay.shared.model.HoldJournalEntity
 import com.geoplay.shared.model.InventoryEntity
+import com.geoplay.shared.model.InventoryEventEntity
 import com.geoplay.shared.model.NodeCompletionEntity
 import com.geoplay.shared.model.RandomDrawEntity
 import com.geoplay.shared.model.ScoreEntity
@@ -34,8 +35,9 @@ import com.geoplay.shared.model.SessionEntity
         SessionEntity::class,
         HoldJournalEntity::class,
         InventoryEntity::class,
+        InventoryEventEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)

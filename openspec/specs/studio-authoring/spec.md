@@ -146,11 +146,11 @@ sur les events.** La fixture neutre 1/5→FIN SHALL être rejouable en un clic c
 
 ### Requirement: Organisation en écrans
 
-Le Studio SHALL organiser son interface en 6 écrans — Composer, Importer, Relire, Valider, Prévisualiser, Exporter — accessibles depuis une navigation latérale. Les préoccupations transverses (i18n, difficultés/modes) SHALL être des calques superposés, jamais des écrans séparés.
+Le Studio SHALL organiser son interface en 7 écrans — Composer, Importer, Relire, Valider, Prévisualiser, Exporter, Inventaire — accessibles depuis une navigation latérale. Les préoccupations transverses (i18n, difficultés/modes) SHALL être des calques superposés, jamais des écrans séparés.
 
 Une barre globale SHALL afficher en permanence : le nom du jeu (champ auto-largeur suivant son contenu), son statut (`draft`/`reviewed`), les compteurs (nœuds, draft, reviewed), la pastille validation C1/C2, l'undo/redo sous forme d'icônes flèches et l'accès à l'export.
 
-La navigation latérale SHALL être repliable en une colonne d'icônes sur grand écran, sans actions de création (la création vit dans la box des étapes et le rail replié).
+La navigation latérale SHALL être repliable en une colonne d'icônes sur grand écran, sans actions de création (la création vit dans la box des étapes et le rail replié). Le repli SHALL fonctionner dans les deux sens : le menu ouvert SHALL exposer un contrôle « Replier le menu » (chevron, même logique icône + tooltip que les autres panneaux) et le rail replié SHALL exposer le contrôle « Déplier le menu ». L'état SHALL persister en localStorage et être restauré au chargement.
 
 Le détail de validation (verdicts C1/C2, listes d'erreurs, impasses navigables) SHALL vivre exclusivement dans l'écran Valider. Le Composer SHALL ne jamais afficher de liste d'erreurs détaillée : il affiche uniquement une pastille compacte d'état (ex. `⚠ N problèmes` / `✓ Valide`), cliquable vers l'écran Valider.
 
@@ -163,6 +163,16 @@ Le détail de validation (verdicts C1/C2, listes d'erreurs, impasses navigables)
 - **GIVEN** le Studio en mode grand écran avec le menu latéral replié
 - **WHEN** l'auteur regarde la barre latérale
 - **THEN** seuls les écrans sont visibles en tant qu'icônes cliquables ; la création se fait dans la box des étapes ou le rail replié
+
+#### Scenario: Replier depuis le menu ouvert
+- **GIVEN** le Studio en mode grand écran avec le menu latéral ouvert
+- **WHEN** l'auteur active le contrôle « Replier le menu »
+- **THEN** le menu se rétracte en colonne d'icônes et le Composer occupe l'espace libéré
+
+#### Scenario: Aller-retour persistant du menu
+- **GIVEN** un menu replié par l'auteur
+- **WHEN** l'auteur recharge la page
+- **THEN** le menu est toujours replié ; le dépliage depuis le rail restaure le menu ouvert
 
 #### Scenario: Pastille compacte vers Valider
 - **GIVEN** un jeu avec 3 erreurs de validation affiché dans le Composer
@@ -181,49 +191,75 @@ Le détail de validation (verdicts C1/C2, listes d'erreurs, impasses navigables)
 - **WHEN** l'auteur regarde la barre globale
 - **THEN** le champ nom affiche le titre entier sans troncature, et undo/redo sont des icônes flèches avec tooltips
 
+### Requirement: Densité compacte des boutons du Composer
+
+Sur grand écran (`lg+`, usage pointeur), tous les boutons d'action du Composer (toolbar centrale Graphe/Carte/Screen, en-têtes liste/détail, rails, chevrons) SHALL utiliser une densité compacte : paddings, hauteurs et tailles d'icônes réduits d'un cran via une variante partagée, sans changer les libellés, les tooltips ni les actions déclenchées. Sur la vue étroite (`<lg`, onglets tactiles), les cibles SHALL rester conformes à la règle 44 px.
+
+#### Scenario: Toolbar centrale compacte
+- **GIVEN** le Composer en mode grand écran
+- **WHEN** l'auteur regarde la barre du panneau central (Graphe, Carte, Screen, Tout sélectionner)
+- **THEN** les boutons sont en densité compacte, avec libellés et tooltips inchangés, et commutent les vues comme avant
+
+#### Scenario: Tactile non dégradé
+- **GIVEN** le Composer en vue étroite sur tablette tactile
+- **WHEN** l'auteur utilise les onglets et boutons
+- **THEN** chaque cible tactile respecte 44 px minimum et reste activable au doigt
+
 ### Requirement: Repli en cascade des panneaux du Composer
 
-Le Composer SHALL appliquer une règle de repli unique : le graphe se rétracte vers la gauche (contre la navigation), la liste et le détail se rétractent vers la droite. Un panneau replié SHALL laisser un rail fin à son emplacement et les panneaux voisins SHALL s'étendre ; quand liste et détail sont repliés, leurs rails SHALL s'empiler à droite dans l'ordre (liste puis détail).
+Le Composer SHALL appliquer une règle de repli unique sur grand écran : ordre fixe en 3 colonnes — liste à gauche, panneau central (graphe/carte/screen) au centre, détail à droite. Seuls la liste et le détail sont repliables ; le panneau central n'est JAMAIS repliable (pas de chevron, pas de rail) et occupe tout l'espace restant en `flex-1`. Un panneau latéral replié SHALL laisser un rail fin à son emplacement (liste : rail à gauche ; détail : rail à droite) et le panneau central SHALL s'étendre ; quand liste et détail sont repliés, leurs rails restent à leur côté respectif (liste à gauche, détail à droite).
 
-La commande de repli SHALL être un chevron ancré au bord du panneau, dont le sens indique la direction du mouvement (`>` sur le bord droit d'un panneau ouvert, `<` sur son rail pour déplier). Aucun bouton texte « Replier » / « Déplier » / « Détail » ne SHALL exister dans le Composer.
+La commande de repli SHALL être un chevron ancré au bord du panneau, dont le sens indique la direction du mouvement (`<` sur le bord du panneau liste ouvert vers la gauche, `>` sur le bord droit du panneau détail ouvert). Aucun bouton texte « Replier » / « Déplier » / « Détail » ne SHALL exister dans le Composer.
 
 Le rail replié SHALL afficher la seule icône du panneau avec un tooltip (« Liste des étapes — cliquer pour déplier »), selon la même logique icône + tooltip que la navigation des écrans et les tabs de l'Inspecteur. Aucun menu « molette » (engrenage) ne SHALL exister dans le Composer.
 
-Les actions de réglage autrefois dans la molette SHALL être relocalisées : Recentrer/Aligner vers les contrôles natifs ReactFlow du canvas (Aligner reste désactivé si moins de 2 nœuds sélectionnés), réinitialisation des largeurs vers un double-clic sur le Splitter (découvrable via tooltip). L'état replié/déplié SHALL persister en localStorage.
+Les actions de réglage autrefois dans la molette SHALL être relocalisées : Recentrer/Aligner vers les contrôles natifs ReactFlow du canvas (Aligner reste désactivé si moins de 2 nœuds sélectionnés), réinitialisation des largeurs vers un double-clic sur le Splitter (découvrable via tooltip). L'état replié/déplié des panneaux latéraux SHALL persister en localStorage ; la clé historique `repliees.graphe` SHALL être ignorée (centre forcé déplié) puis nettoyée.
 
 #### Scenario: Cascade liste puis détail
-- **GIVEN** le Composer avec graphe, liste et détail ouverts
+
+- **GIVEN** le Composer avec liste, centre et détail ouverts
 - **WHEN** l'auteur replie la liste puis le détail
-- **THEN** deux rails `[L][D]` s'empilent à droite dans cet ordre et le graphe occupe l'espace libéré
+- **THEN** un rail `[L]` reste à gauche et un rail `[D]` reste à droite, et le panneau central occupe l'espace libéré sans jamais disparaître
 
 #### Scenario: Chevron directionnel
-- **GIVEN** le panneau détail ouvert
-- **WHEN** l'auteur regarde son bord droit
-- **THEN** un chevron `>` est visible (le contenu partira à droite)
+
+- **GIVEN** le panneau liste ouvert
+- **WHEN** l'auteur regarde son bord
+- **THEN** un chevron `<` est visible (le contenu partira à gauche)
 - **WHEN** l'auteur clique le chevron puis regarde le rail
-- **THEN** le rail affiche l'icône du panneau et un chevron `<` (le contenu reviendra)
+- **THEN** le rail affiche l'icône du panneau avec le tooltip de dépliage
 
 #### Scenario: Rail icon-only avec tooltip
-- **GIVEN** la liste repliée en rail
+
+- **GIVEN** la liste repliée en rail à gauche
 - **WHEN** l'auteur survole le rail
 - **THEN** un tooltip « Liste des étapes — cliquer pour déplier » s'affiche, sans aucun label texte permanent
 
 #### Scenario: Persistance du repli
+
 - **GIVEN** un Composer avec la liste repliée
 - **WHEN** l'auteur recharge la page
-- **THEN** la liste est toujours repliée, le graphe et le détail inchangés
+- **THEN** la liste est toujours repliée, le centre et le détail inchangés ; un état persisté `repliees.graphe: true` est ignoré (centre visible)
+
+#### Scenario: Centre non repliable
+
+- **GIVEN** le Composer avec les 3 panneaux ouverts
+- **WHEN** l'auteur cherche à replier le panneau central
+- **THEN** aucune commande de repli n'existe sur le panneau central, qui reste visible en permanence
 
 ### Requirement: Rail d'actions de la liste
 
-Le rail de la liste repliée SHALL exposer, outre l'icône du panneau (déplier tel quel), les 4 icônes de création (Étape, Lieu, Tirage, Fin) avec leurs tooltips. Cliquer une icône de création SHALL créer le nœud correspondant **sans déplier** la liste (via l'action de création existante). Les champs texte (recherche, filtre) SHALL rester panneau-ouvert uniquement et n'ont aucun équivalent dans le rail.
+Le rail de la liste repliée SHALL rester à gauche et exposer, outre l'icône du panneau (déplier tel quel), les 4 icônes de création (Étape, Lieu, Tirage, Fin) avec leurs tooltips. Cliquer une icône de création SHALL créer le nœud correspondant **sans déplier** la liste (via l'action de création existante). Les champs texte (recherche, filtre) SHALL rester panneau-ouvert uniquement et n'ont aucun équivalent dans le rail.
 
 #### Scenario: Création sans déplier
-- **GIVEN** la liste repliée en rail
+
+- **GIVEN** la liste repliée en rail à gauche
 - **WHEN** l'auteur clique l'icône Lieu
 - **THEN** un nœud lieu est créé et sélectionné, la liste reste repliée
 
 #### Scenario: Déplier tel quel
-- **GIVEN** la liste repliée en rail
+
+- **GIVEN** la liste repliée en rail à gauche
 - **WHEN** l'auteur clique l'icône du panneau liste
 - **THEN** la liste se déploie dans son état précédent (recherche, filtre et sélection inchangés)
 
@@ -241,39 +277,33 @@ Le rail du détail replié SHALL exposer, outre l'icône du panneau, les 9 icôn
 - **WHEN** l'auteur regarde le rail
 - **THEN** seule l'icône du panneau est affichée, avec le tooltip de dépliage
 
-### Requirement: Rail d'actions du graphe
-
-Le rail du graphe replié SHALL exposer, outre l'icône du panneau (déplier tel quel), les 3 icônes de vues (Graphe, Carte, Screen) et la pastille validation. Cliquer une icône de vue SHALL déplier le graphe **et** commuter vers cette vue. Cliquer la pastille SHALL naviguer vers l'écran Valider sans déplier (comme en panneau ouvert).
-
-#### Scenario: Vue depuis le rail
-- **GIVEN** le graphe replié en vue graphe
-- **WHEN** l'auteur clique l'icône Carte du rail
-- **THEN** le graphe se déploie directement en vue carte
-
-#### Scenario: Pastille depuis le rail
-- **GIVEN** le graphe replié avec 2 erreurs
-- **WHEN** l'auteur clique la pastille du rail
-- **THEN** l'écran Valider s'ouvre, le graphe reste replié
-
 ### Requirement: Toolbar graphe conditionnelle à la vue
 
-Recentrer / Aligner H / Aligner V SHALL être intégrés aux contrôles natifs ReactFlow du canvas (`Controls` + `ControlButton`, bouton fit natif pour Recentrer). Aucune toolbar flottante custom ne SHALL exister sur le panneau graphe : seul le chevron de repli reste en overlay. Dans les vues carte et screen, les contrôles natifs restent disponibles selon leur sens (Recentrer sans objet hors canvas). La règle d'activation Aligner (désactivé si moins de 2 nœuds sélectionnés, tooltip explicatif) SHALL être inchangée.
+Recentrer / Aligner H / Aligner V SHALL être intégrés aux contrôles natifs ReactFlow du canvas (`Controls` + `ControlButton`, bouton fit natif pour Recentrer). Aucune toolbar flottante custom ne SHALL exister sur le panneau central et aucun chevron de repli ne SHALL s'afficher en overlay du centre : le sélecteur de vues (Graphe, Carte, Screen) SHALL vivre dans la toolbar du panneau central. Dans les vues carte et screen, les contrôles natifs restent disponibles selon leur sens (Recentrer sans objet hors canvas). La règle d'activation Aligner (désactivé si moins de 2 nœuds sélectionnés, tooltip explicatif) SHALL être inchangée.
 
 #### Scenario: Aligner masqué en vue carte
-- **GIVEN** le panneau graphe ouvert en vue carte
+
+- **GIVEN** le panneau central ouvert en vue carte
 - **WHEN** l'auteur regarde les contrôles natifs
-- **THEN** Recentrer et Aligner sont absents, le chevron de repli reste visible
+- **THEN** Recentrer et Aligner sont absents, aucun chevron de repli n'est visible
 
 #### Scenario: Aligner présent en vue graphe
-- **GIVEN** le panneau graphe ouvert en vue graphe avec 1 nœud sélectionné
+
+- **GIVEN** le panneau central ouvert en vue graphe avec 1 nœud sélectionné
 - **WHEN** l'auteur regarde les contrôles natifs
 - **THEN** Recentrer, Aligner H et Aligner V sont visibles, Aligner désactivés avec le tooltip de sélection
+
+#### Scenario: Sélecteur de vues dans le centre
+
+- **GIVEN** le panneau central ouvert
+- **WHEN** l'auteur regarde sa toolbar
+- **THEN** les 3 vues (Graphe, Carte, Screen) sont commutables sans replier ni déplier aucun panneau
 
 ### Requirement: Pastille validation dans le Composer
 
 Le Composer SHALL afficher une pastille compacte d'état de validation dans la barre globale de l'application (à côté du nom du jeu et des compteurs) : `✓ Valide` si aucune erreur, `⚠ N problèmes` sinon (N = nombre total d'erreurs C1 + C2). La pastille SHALL être cliquable vers l'écran Valider et SHALL porter un tooltip explicite (« Voir le détail dans Valider »).
 
-La pastille ne SHALL jamais afficher le détail des erreurs (messages, nœuds fautifs, impasses) — ce détail vit exclusivement dans l'écran Valider. Le rail du graphe replié conserve sa pastille (navigation sans déplier).
+La pastille ne SHALL jamais afficher le détail des erreurs (messages, nœuds fautifs, impasses) — ce détail vit exclusivement dans l'écran Valider. Il n'existe plus de pastille sur un rail central (le centre n'ayant plus de rail).
 
 #### Scenario: Pastille verte sans erreur
 - **GIVEN** un jeu valide affiché dans le Composer
@@ -404,6 +434,8 @@ Les tabs à icônes des 9 familles de l'Inspecteur SHALL être conservés (navig
 
 Le panneau d'inspection SHALL présenter des sections fixes dans cet ordre : `module` (type + version) → `activation` → `latch`/rejeu → `discovery` → `effects` → `inventoryRef` → `position`, générées depuis le registre de modules sans aucun champ codé en dur dans l'UI.
 
+La section `module` SHALL afficher sous le dropdown de type le formulaire de configuration du module (le `propertiesPanel` du registre) quand le type en dispose un : chaque champ requis au schéma du module SHALL être renseignable ici, sans JSON. L'inline historique propre à un type (questions QUIZ) SHALL être supprimé au profit de ce panneau unique.
+
 Le panneau d'inspection SHALL utiliser un système de sidebar à icônes : une colonne d'icônes identifiant chaque section, avec un contenu qui s'affiche lorsqu'une icône est sélectionnée. Si aucun nœud n'est sélectionné, la sidebar affiche un placeholder indiquant de sélectionner un nœud.
 
 Si le module déclare `needsLock: true` alors que `holdMode == none`, le champ HOLD correspondant SHALL être affiché en lecture seule avec un lien direct vers la configuration globale et l'explication du blocage, jamais un blocage muet.
@@ -429,6 +461,16 @@ Des `presentationNeeds`/`experienceNeeds` non satisfaits par la config globale a
 - **GIVEN** un nœud sélectionné dans l'inspecteur
 - **WHEN** l'auteur clique sur l'icône "Effets" (section 7)
 - **THEN** le contenu de la section Effets s'affiche dans le panneau, les autres sections sont masquées
+
+#### Scenario: Formulaire module sous le dropdown
+- **GIVEN** un nœud BOUSSOLE avec `toleranceDeg` vide, ouvert dans l'Inspecteur
+- **WHEN** l'auteur regarde sous le dropdown « Mini-jeu »
+- **THEN** le champ tolérance est affiché (pas de JSON) et le renseigner fait passer la C1 sur ce champ
+
+#### Scenario: Pas de doublon QUIZ
+- **GIVEN** un nœud QUIZ ouvert dans l'Inspecteur
+- **WHEN** l'auteur regarde la section module
+- **THEN** un seul formulaire questions est affiché (le panneau registre), sans inline historique séparé
 
 ### Requirement: Gestion de l'inventaire
 
@@ -888,3 +930,79 @@ Les contrôles P2 SHALL vivre repliés dans des sections « Avancé » en bas de
 - **GIVEN** un contrôle P2 déplacé en section Avancé
 - **WHEN** l'auteur l'ouvre et l'utilise
 - **THEN** la même opération MCP est journalisée avec les mêmes validations qu'avant le déplacement
+
+### Requirement: Création d'étape avec choix du module premier
+
+Le choix du Module mini-jeu SHALL être le premier choix à la création d'une étape : l'auteur SHALL sélectionner le type de Module (parmi les types du registre, jamais une liste fermée en dur) avant toute composition d'écran. Le Nœud créé SHALL porter le `screen` issu du `defaultScreen` du Module choisi, avec un widget `{ type: "module" }` présent dans la zone content dès la création.
+
+#### Scenario: Création avec module choisi
+
+- **GIVEN** l'auteur crée une étape en choisissant le module PUZZLE
+- **WHEN** l'étape est créée
+- **THEN** son écran affiche le content par défaut du PUZZLE avec le widget du mini-jeu, sans action supplémentaire
+
+#### Scenario: Création avec type sans plugin
+
+- **GIVEN** l'auteur crée une étape en choisissant le module INFO (sans screenPlugin)
+- **WHEN** l'étape est créée
+- **THEN** son écran contient un widget `{ type: "module" }` générique dans la zone content
+
+### Requirement: Changement de type de mini-jeu destructif
+
+Changer le type du Module d'un Nœud via le dropdown « Mini-jeu » de la famille épreuve SHALL afficher un message indiquant que les modifications seront perdues et SHALL exiger une confirmation explicite. Sur confirmation, les `module.data` SHALL être détruites et seule la zone content SHALL être remplacée ; sur refus, le Nœud SHALL rester strictement inchangé.
+
+#### Scenario: Changement confirmé
+
+- **GIVEN** un Nœud QUIZ avec questions et content customisé
+- **WHEN** l'auteur choisit PUZZLE dans le dropdown et confirme le message « modifications perdues »
+- **THEN** les data du QUIZ sont détruites, les data par défaut du PUZZLE sont appliquées, et seule la zone content est remplacée (header/footer préservés)
+
+#### Scenario: Changement refusé
+
+- **GIVEN** un Nœud QUIZ avec questions
+- **WHEN** l'auteur choisit PUZZLE dans le dropdown mais refuse la confirmation
+- **THEN** le Nœud reste QUIZ avec ses data et son screen inchangés
+
+### Requirement: Écran Inventaire dédié
+
+L'écran Inventaire SHALL lister les objets du jeu chargé avec pour chacun : `icon` (vignette), `name`, `description`, badges `consumable`/`stackable`, et la mention « utilisé par : nœuds… » (réutilisant le calcul existant) avec navigation vers le nœud. Il SHALL permettre : création (`id` unique vérifié, `name`), édition de `name`/`description`/`consumable`/`stackable` après création, choix d'`icon` et d'`image` via parcours du poste ou dépôt (circuit manifest SHA-256 existant, non-image refusée), duplication (nouvel `id` proposé), réordonnancement (ordre = ordre d'affichage joueur), suppression avec confirmation listant les nœuds impactés. La carte « Objets / inventaire » SHALL disparaître de l'écran Configuration. Toute action SHALL passer par une opération MCP nommée et journalisée (historique undo/redo lisible).
+
+#### Scenario: Création complète d'objet
+- **GIVEN** l'écran Inventaire d'un jeu sans objet
+- **WHEN** l'auteur crée « cle » (nom, description, icône déposée, consommable coché)
+- **THEN** l'objet apparaît avec sa vignette et le JSON porte `id`/`name`/`description`/`icon`/`consumable`, le manifest contient l'icône
+
+#### Scenario: Suppression avec impact
+- **GIVEN** un objet `cle` requis par 2 nœuds
+- **WHEN** l'auteur demande sa suppression
+- **THEN** une confirmation liste les 2 nœuds avant toute suppression, et le refus laisse le jeu inchangé
+
+### Requirement: Import d'objet depuis le catalogue
+
+L'écran Inventaire SHALL proposer « Importer depuis le catalogue » : l'auteur SHALL choisir un jeu publié (liste du catalogue), puis un objet de ce jeu, puis valider la copie. En cas de collision d'`id`, un nouvel `id` SHALL être proposé (`id-importé`) avant validation, jamais écrasé silencieusement. L'import SHALL passer par une opération MCP nommée et journalisée.
+
+#### Scenario: Import sans collision
+- **GIVEN** l'écran Inventaire et le jeu « Chasse » publié avec l'objet `boussole-antique`
+- **WHEN** l'auteur importe `boussole-antique`
+- **THEN** l'objet apparaît à l'identique (nom, description, réglages) avec son icône ré-enregistrée au manifest
+
+#### Scenario: Collision d'identifiant
+- **GIVEN** le jeu courant contenant déjà `cle`
+- **WHEN** l'auteur importe `cle` depuis un autre jeu
+- **THEN** `cle-importé` est proposé, modifiable avant validation, l'objet d'origine est intact
+
+### Requirement: Arbre des widgets dans la liste des étapes
+
+Chaque ligne d'étape de la liste SHALL exposer un sous-arbre dépliable des éléments de son écran : zones présentes (en-tête, contenu, pied de page, surimpression) puis widgets de chaque zone (type + libellé court). Sélectionner une entrée de l'arbre SHALL sélectionner la zone ou le widget correspondant (même sélection que le clic canvas) et afficher ses détails dans le panneau de droite. Le sous-arbre SHALL refléter l'écran courant du nœud (zones fantômes exclues) et rester replié par défaut pour préserver la densité de la liste.
+
+#### Scenario: Dépliage de l'arbre d'une étape
+
+- **GIVEN** la liste avec un nœud `baker` (header + content avec quiz)
+- **WHEN** l'auteur déplie le sous-arbre de `baker`
+- **THEN** les zones header et content apparaissent, avec le widget module sous content
+
+#### Scenario: Sélection d'un widget depuis l'arbre
+
+- **GIVEN** le sous-arbre déplié d'un nœud avec un widget texte dans le header
+- **WHEN** l'auteur clique l'entrée du widget texte
+- **THEN** le widget est sélectionné (surligné dans le canvas) et le panneau de droite affiche ses propriétés

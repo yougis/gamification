@@ -10,7 +10,8 @@
     "marker": {"type": "string", "minLength": 1},
     "model": {"type": "string"},
     "modelSizeMb": {"type": "number", "exclusiveMinimum": 0},
-    "fallback2D": {"type": "object"}
+    "fallback2D": {"type": "object"},
+    "inventoryHints": {"$ref": "https://geoplay.example/schemas/modules/inventory-hints.json"}
   },
   "x-needs": {"gps": false, "compass": false, "camera": true, "map": false},
   "x-fallback": "fallback 2D obligatoire (soleil, permission, vieil appareil)"

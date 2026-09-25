@@ -222,6 +222,23 @@ button {
     background: var(--couleur-alerte-douce);
 }
 
+/* Variante compacte (change studio-navbar-boutons-densite) : un cran de densité
+   pour les boutons d'action du Composer (hauteur, paddings, icônes), libellés
+   et tailles de texte inchangés (restent pilotés par les classes locales).
+   Active uniquement en lg+ (usage pointeur) : en vue étroite la règle
+   44 px (tactile) reste la référence, la classe y est inerte. */
+@media (min-width: 1024px) {
+  .btn-compact {
+    min-height: 32px;
+    padding: 0 8px;
+    gap: 4px;
+  }
+  .btn-compact svg {
+    width: 13px;
+    height: 13px;
+  }
+}
+
 .champ {
     min-height: var(--min-touch);
     border: 1px solid var(--line-forte);

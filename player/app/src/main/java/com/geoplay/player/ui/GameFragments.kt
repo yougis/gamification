@@ -332,11 +332,52 @@ class GameFragment : Fragment() {
 
             binding.btnComplete.setOnClickListener { completeCurrent(false) }
             binding.btnAbandon.setOnClickListener { completeCurrent(true) }
+
+            // Boîte à outils (change player-inventory-toolbox) : règle
+            // triple lue du JSON — l'overlay ne touche ni moteur ni file.
+            binding.btnToolbox.visibility =
+                if (com.geoplay.shared.game.toolboxIconVisible(game, activeId)) View.VISIBLE else View.GONE
+            binding.btnToolbox.setOnClickListener { openToolbox() }
         }
     }
 
-    private fun completeCurrent(abandon: Boolean) {
-        val id = activeId ?: run {
+    // Boîte à outils en overlay (change player-inventory-toolbox) : un
+    // dialogue par-dessus l'écran courant, fermeture = reprise exacte
+    // (aucun état moteur, file ou progression n'est touché — seuls les
+    // events de journal INVENTORY_OPENED/ITEM_SELECTED sont appendés).
+    private fun openToolbox() {
+        val game = this.game ?: return
+        val sid = sessionId ?: return
+        lifecycleScope.launch {
+            repository.logInventoryEvent(sid, "INVENTORY_OPENED")
+            val owned = withContext(Dispatchers.IO) { repository.getInventory(sid) }
+            val names = game.objects.associate { it.id to it.name }
+            val lines = owned.map { e -> "${names[e.itemId] ?: e.itemId} × ${e.quantity}" }
+            val items = owned.map { it.itemId }.toTypedArray()
+            val dialog = android.app.AlertDialog.Builder(requireContext())
+                .setTitle("Boîte à outils")
+                .setNegativeButton("Fermer", null)
+            if (lines.isEmpty()) {
+                dialog.setMessage("Boîte à outils vide.")
+            } else {
+                dialog.setItems(lines.toTypedArray()) { _, which ->
+                    val itemId = items[which]
+                    lifecycleScope.launch {
+                        repository.logInventoryEvent(sid, "ITEM_SELECTED", itemId)
+                        val desc = game.objects.find { it.id == itemId }?.description
+                        Toast.makeText(
+                            requireContext(),
+                            (names[itemId] ?: itemId) + (if (desc.isNullOrBlank()) "" else " — $desc"),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+            }
+            dialog.show()
+        }
+    }
+
+    private fun completeCurrent(abandon: Boolean) {        val id = activeId ?: run {
             Toast.makeText(requireContext(), "Aucune etape active", Toast.LENGTH_SHORT).show()
             return
         }
@@ -361,6 +402,19 @@ class GameFragment : Fragment() {
                     repository.completeNode(sid, id, score = 10, isReplay = isReplay, isCheat = isCheatMode)
                     val scoreKept = !isReplay || node.scoreOnReplay
                     repository.recordScore(sid, id, if (scoreKept) 10 else 0, isCheatMode)
+                    // Effets d'inventaire (même règle que la PWA) : GIVE/REMOVE
+                    // alimentent la boîte à outils + journal (flag triche suivi).
+                    for (effect in node.effects) {
+                        val itemId = effect.itemId ?: continue
+                        when (effect.type) {
+                            "GIVE_ITEM" -> {
+                                val qty = (effect.value as? kotlinx.serialization.json.JsonPrimitive)
+                                    ?.content?.toIntOrNull() ?: 1
+                                repository.addItem(sid, itemId, qty, isCheatMode)
+                            }
+                            "REMOVE_ITEM" -> repository.removeItem(sid, itemId, isCheatMode)
+                        }
+                    }
                     repository.saveProgress(
                         com.geoplay.shared.model.GameProgressEntity(
                             sessionId = sid,
@@ -424,7 +478,37 @@ class ImportFragment : Fragment() {
             pickFile()
         }
 
+        // Catalogue des jeux (change studio-game-catalog) : URL persistée,
+        // code à 4 chiffres, même vérification manifest à l'arrivée.
+        val prefs = requireContext().getSharedPreferences("geoplay", android.content.Context.MODE_PRIVATE)
+        binding.etCatalogUrl.setText(prefs.getString("catalog_url", ""))
+        binding.btnImportCode.setOnClickListener {
+            val base = binding.etCatalogUrl.text.toString().trim()
+            val code = com.geoplay.player.data.PackManager.normalizeCode(binding.etCatalogCode.text.toString())
+            if (base.isBlank() || code.length != 4) {
+                Toast.makeText(requireContext(), "Service + code à 4 chiffres requis", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            prefs.edit().putString("catalog_url", base).apply()
+            importFromCatalog(base, code)
+        }
+
         // Deep-link borne : geoplay://import?url=<https> ou jeu pre-rempli par la MainActivity.
+        // Catalogue (change studio-game-catalog) : geoplay://import?code=4217&service=<https>
+        // pré-remplit le bloc catalogue (D3 : le QR/lien encode {urlService, code}).
+        val intentData = requireActivity().intent?.data
+        val pendingService = intentData?.getQueryParameter("service")
+            ?: intentData?.getQueryParameter("urlService")
+        val pendingCode = com.geoplay.player.data.PackManager.normalizeCode(
+            intentData?.getQueryParameter("code") ?: ""
+        )
+        if (!pendingService.isNullOrBlank() && pendingCode.length == 4 &&
+            binding.etCatalogCode.text.isNullOrBlank()
+        ) {
+            prefs.edit().putString("catalog_url", pendingService).apply()
+            binding.etCatalogUrl.setText(pendingService)
+            binding.etCatalogCode.setText(pendingCode)
+        }
         val pendingUrl = requireActivity().intent?.data?.getQueryParameter("url")
             ?: requireActivity().intent?.getStringExtra("pending_import_url")
         if (!pendingUrl.isNullOrBlank() && binding.etImportUrl.text.isNullOrBlank()) {
@@ -453,13 +537,30 @@ class ImportFragment : Fragment() {
     }
 
     private fun handleQrContent(content: String?) {
-        if (content.isNullOrBlank()) return
-        // Le QR auteur encode soit une URL https vers le .zip, soit un deep-link geoplay://import?url=...
+        if (content.isNullOrBlank()) return;
+        // Le QR auteur encode soit une URL https vers le .zip, soit un deep-link geoplay://import?url=...,
+        // soit un objet catalogue {urlService, code} (change studio-game-catalog).
+        val trimmed = content.trim();
+        if (trimmed.startsWith("{")) {
+            try {
+                val obj = org.json.JSONObject(trimmed);
+                val base = obj.optString("urlService", obj.optString("url", ""));
+                val code = com.geoplay.player.data.PackManager.normalizeCode(obj.optString("code", ""));
+                if (base.isNotBlank() && code.length == 4) {
+                    binding.etCatalogUrl.setText(base);
+                    binding.etCatalogCode.setText(code);
+                    importFromCatalog(base, code);
+                    return;
+                }
+            } catch (e: Exception) {
+                // Pas un objet catalogue : repli URL ci-dessous.
+            }
+        }
         val url = try {
-            val uri = android.net.Uri.parse(content.trim())
-            uri.getQueryParameter("url") ?: content.trim()
+            val uri = android.net.Uri.parse(trimmed)
+            uri.getQueryParameter("url") ?: trimmed
         } catch (e: Exception) {
-            content.trim()
+            trimmed
         }
         binding.etImportUrl.setText(url)
         importFromUrl(url)
@@ -494,6 +595,29 @@ class ImportFragment : Fragment() {
             } finally {
                 binding.progressBar.visibility = View.GONE
                 binding.btnImportUrl.isEnabled = true
+            }
+        }
+    }
+
+    private fun importFromCatalog(baseUrl: String, code: String) {
+        lifecycleScope.launch {
+            binding.progressBar.visibility = View.VISIBLE
+            binding.progressBar.progress = 0
+            binding.btnImportCode.isEnabled = false
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    packManager.importPackFromCatalog(baseUrl, code) { progress ->
+                        launch(Dispatchers.Main) {
+                            binding.progressBar.progress = (progress * 100).toInt()
+                        }
+                    }
+                }
+                showVerification(result)
+            } catch (e: Exception) {
+                Toast.makeText(requireContext(), "Erreur : " + e.message, Toast.LENGTH_LONG).show()
+            } finally {
+                binding.progressBar.visibility = View.GONE
+                binding.btnImportCode.isEnabled = true
             }
         }
     }

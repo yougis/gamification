@@ -308,6 +308,23 @@ export function patchScreenZone(game: Game, nodeId: string, zoneId: ZoneId, patc
   };
 }
 
+// Suppression d'une zone (change studio-apercu-arbre-paysage) : `content` est
+// la base insuppressible (le fantome n'existe pas pour elle), les autres
+// zones retombent sur leur fantome de creation. Retourne le jeu inchange si
+// la zone est absente ou si c'est `content`.
+export function removeScreenZone(game: Game, nodeId: string, zoneId: ZoneId): Game {
+  if (zoneId === "content") return game;
+  return {
+    ...game,
+    nodes: game.nodes.map((n) => {
+      if (n.id !== nodeId || !n.screen?.zones?.[zoneId]) return n;
+      const zones = { ...(n.screen.zones ?? {}) };
+      delete zones[zoneId];
+      return { ...n, screen: { ...(n.screen ?? {}), zones } };
+    }),
+  };
+}
+
 function withScreenWidgets(game: Game, nodeId: string, zoneId: ZoneId, fn: (widgets: Widget[]) => Widget[]): Game {
   return {
     ...game,
@@ -438,6 +455,22 @@ export function addObject(game: Game, obj: GameObject): Game {
 
 export function setObjects(game: Game, objects: GameObject[]): Game {
   return { ...game, objects };
+}
+
+// Duplication d'objet (change studio-inventory-menu) : clone avec nouvel id
+// `id-copie` (suffixe incrémenté si pris), inséré après la source.
+export function duplicateObject(game: Game, id: string): Game {
+  const objs = game.objects ?? [];
+  const at = objs.findIndex((o) => o.id === id);
+  if (at < 0) throw new Error(`Objet inexistant : ${id}`);
+  let newId = `${id}-copie`;
+  let counter = 2;
+  while (objs.some((o) => o.id === newId)) {
+    newId = `${id}-copie-${counter}`;
+    counter++;
+  }
+  const clone: GameObject = { ...JSON.parse(JSON.stringify(objs[at])), id: newId };
+  return { ...game, objects: [...objs.slice(0, at + 1), clone, ...objs.slice(at + 1)] };
 }
 
 // --- Updated validateGame wrapper (tache 5.5) ---
