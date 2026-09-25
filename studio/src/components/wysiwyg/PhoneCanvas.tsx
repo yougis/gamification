@@ -54,6 +54,9 @@ export function PhoneCanvas({
   onMoveWidgetAcross,
   onCreateZone,
   renderModule,
+  dissimulationJoueur,
+  cleContexte,
+  couleurMessage,
 }: {
   screen: ScreenDefinition;
   moduleType?: string;

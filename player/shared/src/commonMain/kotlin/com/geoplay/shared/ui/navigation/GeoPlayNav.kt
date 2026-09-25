@@ -8,10 +8,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -103,7 +105,20 @@ fun GeoPlayApp(
         NavHost(navController = navController, startDestination = GeoPlayRoutes.GRAPH, modifier = Modifier.weight(1f)) {
             composable(GeoPlayRoutes.GRAPH) {
                 val activeId = states.entries.find { it.value == NodeState.ACTIVE }?.key
-                if (showHomeDashboard(game, activeId)) {
+                // Onglet Accueil permanent (change studio-home-accueil) : quand
+                // HOME est présent, le tableau reste accessible à tout moment
+                // via l'onglet, sans changer la règle d'affichage par défaut
+                // (tableau si aucune modale ACTIVE). Navigation pure : ni
+                // transition d'état ni event.
+                val homeDisponible = game.global.presentation.contains("HOME")
+                var ongletAccueil by remember(game, activeId) { mutableStateOf(showHomeDashboard(game, activeId)) }
+                if (homeDisponible) {
+                    Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+                        TextButton(onClick = { ongletAccueil = true }) { Text("Accueil") }
+                        TextButton(onClick = { ongletAccueil = false }) { Text("Vue") }
+                    }
+                }
+                if ((homeDisponible && ongletAccueil) || (!homeDisponible && showHomeDashboard(game, activeId))) {
                     HomeDashboard(
                         game = game,
                         states = states,

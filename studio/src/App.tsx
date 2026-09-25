@@ -16,7 +16,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import { validateGame, deadEnds } from "./game/validate";
 import { evaluate, drawPool, type Sim } from "./game/evaluate";
-import { composeNodes, setActivation, registerAsset, exportPackFull, canExport, addSecoursCode, importGame, addObject, setObjects, duplicateObject, setReview, removeNode, renameNode, duplicateNode, patchScreenZone, removeScreenZone, addScreenWidget, setScreenWidget as mcpSetScreenWidget, removeScreenWidget, moveScreenWidget, moveScreenWidgetAcross, setNodeScreen, setScreenBackground, setScreenStyles, setGlobalScreenStyles, setMinigameDefaults, type ManifestFile } from "./game/mcp";
+import { composeNodes, setActivation, registerAsset, exportPackFull, canExport, addSecoursCode, importGame, addObject, setObjects, duplicateObject, setReview, removeNode, renameNode, duplicateNode, patchScreenZone, removeScreenZone, addScreenWidget, setScreenWidget as mcpSetScreenWidget, removeScreenWidget, moveScreenWidget, moveScreenWidgetAcross, setNodeScreen, setScreenBackground, setScreenStyles, setGlobalScreenStyles, setMinigameDefaults, setPresentation, type ManifestFile } from "./game/mcp";
 import { emptyMeta, type Condition, type Effect, type Game, type GameNode, type GameObject, type MinigameDefaults, type Predicate, type StudioMeta, type ExperienceStyle, type Branding, type GameMode, type Difficulty, type ZoneContent, type ZoneId } from "./game/types";
 import { buildCompatSidecar, canExportToChannel, type ChannelId } from "./game/compat";
 import { fetchAsset, fetchPack, getCatalogUrl, listGames, publishGame, setCatalogUrl as sauvegarderCatalogUrl, type CatalogEntry } from "./game/catalog";
@@ -1769,6 +1769,7 @@ const noeuds: Node[] = useMemo(
           <div className="p-6 max-w-2xl">
             <h2 className="font-display font-extrabold text-2xl tracking-widest uppercase text-snow mb-6">Configuration</h2>
             <ModePanel game={game} edit={edit} lectureSeule={relecture} />
+            <PresentationPanel game={game} edit={edit} lectureSeule={relecture} />
             <ExperienceStylePanel game={game} edit={edit} lectureSeule={relecture} />
             <BrandingPanel game={game} edit={edit} lectureSeule={relecture} onPickFile={prendreImage} />
             <ScreenGlobalPanel game={game} edit={edit} lectureSeule={relecture} onPickFile={prendreImage} />
@@ -3301,9 +3302,78 @@ function ModePanel({ game, edit, lectureSeule }: {
       <label className="text-[8px] flex gap-1 items-center mt-1">
         Difficulté :
         <select className="champ" value={game.difficulty ?? "FAMILLE"} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, difficulty: e.target.value as any } }), "setDifficulty")}>
-          {["ENFANT", "FAMILLE", "EXPERT"].map((d) => <option key={d} value={d}>{d}</option>)}
+          {[ "ENFANT", "FAMILLE", "EXPERT"].map((d) => <option key={d} value={d}>{d}</option>)}
         </select>
       </label>
+    </div>
+  );
+}
+
+// Modes de présentation du player (change studio-home-accueil) : cases
+// écrivant `global.presentation` via l'op MCP `setPresentation`
+// (traçée undo/redo), rappel du preset navigationModel, avertissement si un
+// `presentationNeeds` de module n'est pas couvert, aperçu du tableau HOME.
+const PRESENTATIONS: { id: string; nom: string; aide: string }[] = [
+  { id: "MAP", nom: "Carte", aide: "Carte numérique avec position et POI" },
+  { id: "LIST", nom: "Liste", aide: "Liste des étapes" },
+  { id: "STORY", nom: "Récit", aide: "Récit narratif séquentiel" },
+  { id: "CLUE", nom: "Indices", aide: "Affichage d'indices" },
+  { id: "TOOLBOX", nom: "Boîte à outils", aide: "Boîte à outils / inventaire" },
+  { id: "TIMELINE", nom: "Frise", aide: "Frise chronologique de progression" },
+  { id: "HOME", nom: "Accueil", aide: "Tableau de bord entre les étapes (temps, rebours, états, ouverture)" },
+];
+
+function PresentationPanel({ game, edit, lectureSeule }: {
+  game: Game;
+  edit: (fn: (s: { game: Game; meta: StudioMeta }) => { game: Game; meta: StudioMeta }) => void;
+  lectureSeule: boolean;
+}) {
+  const actives = game.global?.presentation ?? [];
+  const basculer = (id: string) => {
+    edit(
+      (s) => ({ ...s, game: setPresentation(s.game, actives.includes(id) ? actives.filter((x) => x !== id) : [...actives, id]) }),
+      "setPresentation",
+    );
+  };
+  const besoinsKO = [...new Set(
+    game.nodes.flatMap((n) => MODULE_REGISTRY[n.module.type]?.presentationNeeds ?? [])
+      .filter((p) => !actives.includes(p)),
+  )];
+  const homeCoche = actives.includes("HOME");
+  const pois = game.nodes.filter((n) => !n.randomPool);
+  const toolbox = actives.includes("TOOLBOX") && (game.objects ?? []).length > 0;
+  return (
+    <div className="carte p-3">
+      <h3 className="flex items-center gap-1.5 font-bold text-[13px]">
+        <Icon name="graphe" size={15} /> Présentations player
+      </h3>
+      <p className="text-[8px] text-fog">Preset navigation : {game.global?.navigationModel ?? "BASIC"} — les cases définissent les vues du player, sans figer le jeu.</p>
+      <div className="flex flex-wrap gap-2 mt-1">
+        {PRESENTATIONS.map((p) => (
+          <label key={p.id} className="flex items-center gap-1 text-[8px]" title={p.aide}>
+            <input type="checkbox" checked={actives.includes(p.id)} disabled={lectureSeule} onChange={() => basculer(p.id)} /> {p.nom}
+          </label>
+        ))}
+      </div>
+      {besoinsKO.length > 0 && (
+        <p className="puce puce-erreur whitespace-normal mt-1">
+          <Icon name="alerte" size={13} /> Présentation(s) non couverte(s) : {besoinsKO.join(", ")} — exigée(s) par un module, édition possible sans bloquer.
+        </p>
+      )}
+      {homeCoche && (
+        <div className="mt-2 rounded border border-line p-2" aria-label="Aperçu du tableau de bord">
+          <p className="text-[8px] font-bold">Aperçu Accueil — ce que verra le joueur entre les étapes :</p>
+          <ul className="text-[8px] text-fog">
+            {pois.map((n) => {
+              const timer = n.activation.requires.find((c) => c.type === "TIMER");
+              return (
+                <li key={n.id}>• {n.id}{timer ? ` — rebours ${timer.delaySeconds ?? 0}s après ${timer.anchor ?? "GAME_START"}` : ""}</li>
+              );
+            })}
+          </ul>
+          <p className="text-[8px] text-fog">{toolbox ? "Boîte à outils proposée." : "Pas d'entrée inventaire (objets ou TOOLBOX manquants)."}</p>
+        </div>
+      )}
     </div>
   );
 }

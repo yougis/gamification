@@ -1006,3 +1006,87 @@ Chaque ligne d'étape de la liste SHALL exposer un sous-arbre dépliable des él
 - **GIVEN** le sous-arbre déplié d'un nœud avec un widget texte dans le header
 - **WHEN** l'auteur clique l'entrée du widget texte
 - **THEN** le widget est sélectionné (surligné dans le canvas) et le panneau de droite affiche ses propriétés
+
+### Requirement: Données valides du nœud start par défaut
+
+Le nœud `start` créé par défaut (jeu vide, import d'un fichier sans nœud) SHALL porter des données conformes au sous-schéma de son type de module : pour `INFO`, `schemaVersion` + au moins un step au contenu générique de bienvenue. Le `start` SHALL être accepté en couche 1 sur son `module.data`, indépendamment des autres champs.
+
+#### Scenario: Jeu vide au commit initial
+- **GIVEN** un auteur créant un nouveau jeu
+- **WHEN** le `start` par défaut est validé en couche 1
+- **THEN** aucune erreur ne porte sur `module/data` (le step de bienvenue est valide)
+
+### Requirement: Ajout d'objet référencé créant une ligne
+
+Dans la famille inventaire de l'inspecteur, le bouton « Ajouter un objet référencé » SHALL créer immédiatement une ligne éditable (sélecteur d'objet vide) : l'auteur choisit ensuite l'objet, modifie son choix ou supprime la ligne. Cliquer le bouton SHALL toujours faire apparaître une ligne ; il ne SHALL jamais produire un tableau vide sans ligne.
+
+#### Scenario: Premier ajout
+
+- **GIVEN** une étape sans objet référencé
+- **WHEN** l'auteur clique « Ajouter un objet référencé »
+- **THEN** une ligne avec sélecteur apparaît, l'auteur y choisit « Clé », et le JSON porte `inventoryRef: ["cle"]`
+
+#### Scenario: Ajouts successifs
+
+- **GIVEN** une étape avec un objet référencé
+- **WHEN** l'auteur clique à nouveau « Ajouter un objet référencé »
+- **THEN** une seconde ligne vide apparaît sans effacer la première
+
+### Requirement: Effets multiples par étape
+
+Une étape SHALL accepter N effets (N ≥ 0) : ajouter, réordonner implicitement (ordre du tableau), modifier et supprimer chaque effet indépendamment. Le bouton d'ajout SHALL rester disponible quel que soit le nombre d'effets existants (zéro, un ou plusieurs), et non disparaître après le premier. Chaque effet SHALL être validé et exporté comme aujourd'hui.
+
+#### Scenario: Deuxième effet
+
+- **GIVEN** une étape avec un effet `GIVE_ITEM {cle}`
+- **WHEN** l'auteur ajoute un effet `REVEAL_NODE {message_secret}`
+- **THEN** les deux effets coexistent dans le JSON, éditables et supprimables séparément
+
+### Requirement: Entrée MODE JEUX depuis le premier nœud
+
+Lancer le terminal joueur (« ▶ Mode Jeux ») sans nœud actif SHALL ouvrir le premier nœud éligible du jeu (tête de file de la simulation) au lieu de la salle d'attente. Si aucun nœud n'est éligible, la salle d'attente existante SHALL s'afficher (comportement inchangé). L'enchaînement suivant (effectuer les modules, compléter, ouvrir le suivant) SHALL rester piloté par la file existante, sans transition d'état ajoutée.
+
+#### Scenario: Lancement depuis le début
+
+- **GIVEN** une simulation neuve dont la file propose `baker` en premier
+- **WHEN** l'auteur lance « ▶ Mode Jeux » sans nœud actif
+- **THEN** le terminal affiche directement l'écran de `baker`, prêt à jouer
+
+#### Scenario: File vide inchangée
+
+- **GIVEN** une simulation sans nœud éligible
+- **WHEN** l'auteur lance « ▶ Mode Jeux »
+- **THEN** la salle d'attente s'affiche comme aujourd'hui
+
+### Requirement: Libellé d'essai sans suffixe
+
+Le bouton de l'écran Prévisualiser SHALL s'intituler « Essai du parcours », sans le suffixe « (triche tracée) ». Le comportement (essai avec triche tracée et badge SIMULÉ) SHALL rester inchangé ; seul le libellé est simplifié.
+
+#### Scenario: Libellé simplifié
+
+- **GIVEN** l'écran Prévisualiser affiché
+- **WHEN** l'auteur regarde les actions d'essai
+- **THEN** le bouton affiche « Essai du parcours », et l'essai trace toujours la triche comme avant
+
+### Requirement: Écran Modules avec éditeur 7-erreurs
+
+Le Studio SHALL offrir un écran « Modules » dans la navigation, hébergeant l'éditeur de zones du 7-erreurs en grand format : sélecteur du nœud DIFFERENCE_GAME (pré-sélectionné si deep-link), image source à son ratio réel occupant l'espace, calque de zones en %, outils rectangle et polygone, liste + suppression, le tout via l'opération nommée existante (undo natif). L'éditeur SHALL NE PAS vivre dans Relire : l'overlay de Relire reste en lecture seule (validation humaine) avec le même rendu proportionné.
+
+#### Scenario: Édition grand format depuis le détail
+- **GIVEN** un nœud 7-erreurs avec 2 zones, auteur dans le détail
+- **WHEN** il touche « Éditer les zones »
+- **THEN** l'écran Modules s'ouvre sur ce nœud, l'image est à son ratio, les 2 zones sont tracées, et un polygone ajouté persiste via undo
+
+#### Scenario: Relire ne modifie rien
+- **GIVEN** l'overlay Relire d'un 7-erreurs affiché au ratio réel
+- **WHEN** l'auteur clique sur une zone
+- **THEN** rien n'est modifié (lecture seule), seul l'écran Modules édite
+
+### Requirement: Aperçu réduit et renvoi dans le détail
+
+Le volet détail du Composer SHALL afficher pour un nœud DIFFERENCE_GAME un aperçu réduit STRICTEMENT proportionné à la source (ratio des dimensions naturelles, taille réduite pour tenir dans le volet, zones en %) avec le compteur de zones, plus un bouton « Éditer les zones » renvoyant vers l'écran Modules avec le nœud sélectionné (deep-link). L'aperçu SHALL NE JAMAIS déformer (fini le cadre 16:9 imposé).
+
+#### Scenario: Aperçu fidèle puis renvoi
+- **GIVEN** un 7-erreurs avec source panoramique (2:1) et 3 zones, volet détail étroit
+- **WHEN** l'auteur regarde le détail puis touche « Éditer les zones »
+- **THEN** l'aperçu est panoramique réduit avec les 3 zones au bon endroit, puis l'écran Modules s'ouvre sur ce nœud

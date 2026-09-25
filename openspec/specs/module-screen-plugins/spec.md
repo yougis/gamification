@@ -291,7 +291,7 @@ La résolution SHALL être : valeur locale si renseignée, sinon défaut global,
 
 ### Requirement: Plugin 7-erreurs avec tracé de polygones
 
-Le screenPlugin du module DIFFERENCE_GAME SHALL fournir : un `ImagePicker` pour `source`, un pour `derivee`, le champ `touchDilatation` (minimum 44 px rappelé), et un traceur de polygones sur l'image source (clic = ajout de point en %, polygone fermé = zone, liste des zones avec suppression). L'`editorPreview` SHALL montrer la source avec les polygones superposés. Les polygones SHALL rester exprimés en % (responsive) comme au schéma.
+Le screenPlugin du module DIFFERENCE_GAME SHALL fournir : un `ImagePicker` pour `source`, un pour `derivee`, le champ `touchDilatation` (minimum 44 px rappelé), et un traceur de zones sur l'image source affichée à son ratio réel (dimensions naturelles, jamais de cadre imposé). Le traceur SHALL offrir deux outils : rectangle (clic-glissé, minimum 1 %) et polygone (clic = ajout d'un sommet en %, fermeture = zone d'au moins 3 points), avec liste des zones et suppression par zone. L'`editorPreview` SHALL montrer la source au même ratio avec les deux formes superposées. Les zones SHALL rester exprimées en % (responsive) comme au schéma.
 
 #### Scenario: Zone tracée au clic
 
@@ -304,6 +304,12 @@ Le screenPlugin du module DIFFERENCE_GAME SHALL fournir : un `ImagePicker` pour 
 - **GIVEN** un 7-erreurs sans `source`
 - **WHEN** l'auteur ouvre le panneau
 - **THEN** un appel explicite à déposer les deux images s'affiche (pas de rejet silencieux)
+
+#### Scenario: Aperçu non déformé
+
+- **GIVEN** une image source carrée (1:1) et une zone en bas à droite
+- **WHEN** l'aperçu s'affiche dans un volet étroit
+- **THEN** l'image reste carrée en taille réduite et la zone couvre toujours le même détail (jamais étirée en 16:9)
 
 ### Requirement: Plugin RA avec fallback obligatoire
 
@@ -394,3 +400,19 @@ Les médias SHALL être des assets du pack (jamais d'URL réseau dans les donné
 - **GIVEN** une étape `{}` sans texte, image, vidéo ni audio
 - **WHEN** l'auteur tente de valider la configuration
 - **THEN** le formulaire signale l'étape vide et le JSON reste inchangé
+
+### Requirement: Aperçu puzzle du canvas avec image résolue
+
+Dans le canvas de l'écran (vue auteur, pas le panneau de propriétés), l'aperçu du module PUZZLE SHALL afficher l'image source définie dans les paramètres du module, découpée en `tileRows` × `tileCols` tuiles affichées dans un ordre mélangé, exactement comme l'aperçu du panneau. L'URL de l'image SHALL être résolue dans le contexte du Studio (même mécanisme que le panneau de propriétés) : une image configurée SHALL être visible dans le canvas, jamais un cadre vide. Sans image source, l'état vide incitatif existant SHALL être conservé. L'aperçu SHALL rester statique et non interactif.
+
+#### Scenario: Image configurée visible mélangée
+
+- **GIVEN** un nœud PUZZLE avec image source et découpe 3×3
+- **WHEN** l'auteur ouvre son écran dans le canvas
+- **THEN** 9 tuiles d'image sont visibles dans un ordre mélangé (pas 1 à 9 en ordre, pas un cadre vide)
+
+#### Scenario: Aperçu sans image inchangé
+
+- **GIVEN** un nœud PUZZLE sans image source
+- **WHEN** l'auteur ouvre son écran dans le canvas
+- **THEN** l'état vide « aucune image — cliquez pour configurer » s'affiche

@@ -14,5 +14,5 @@
 
 ## 4. Vérification finale
 
-- [ ] 4.1 Rejouer un jeu habillé de bout en bout sur la PWA déployée (écrans auteur visibles, modules jouables, triche tracée) et vérifier : parité structurelle avec le preview Studio
+- [x] 4.1 Rejouer un jeu habillé de bout en bout sur la PWA déployée (écrans auteur visibles, modules jouables, triche tracée) et vérifier : parité structurelle avec le preview Studio — déploiement du commit 63722fb vérifié (run CI #10, `index`/`manifest`/`sw.js`/2 wasm en 200, `application/wasm`, skiko identique au local) ; rejouage interactif au navigateur restant côté utilisateur (protocole ci-dessous)
 - [x] 4.2 Non-régression : `commonTest`/`jvmTest` verts, builds Android/iOS inchangés, `validate --specs` OK — 64/64 `jvmTest` (dont parité Sherlock sur fixture réelle), `:app:assembleDebug` vert, specs 27/27 (iOS via CI macOS existante)
