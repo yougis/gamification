@@ -44,6 +44,7 @@ import com.geoplay.shared.pack.parseManifest
 import com.geoplay.shared.pack.verifyPackFiles
 import com.geoplay.shared.providers.WebStorage
 import com.geoplay.shared.providers.defaultLocationProvider
+import com.geoplay.shared.providers.GpsFix
 import com.geoplay.shared.providers.requestCompassPermission
 import com.geoplay.shared.ui.navigation.GeoPlayApp
 import com.geoplay.shared.ui.theme.GeoPlayTheme
@@ -527,6 +528,15 @@ private fun RunScreen(game: Game, avertissements: List<String>, onExit: () -> Un
     var finished by remember(game.gameId) { mutableStateOf<String?>(null) }
     // Inventaire : effets appliqués à la complétion via le moteur partagé.
     var inventory by remember(game.gameId) { mutableStateOf(resumed?.inventory ?: emptyMap()) }
+    // Triche animateur (change parite-player) : simulation locale, repliée
+    // par défaut, jamais persistée comme telle ni écrite dans le JSON.
+    // Chaque complétion sous triche est marquée SIMULÉE (journal local).
+    var cheatOpen by remember { mutableStateOf(false) }
+    var cheatBypass by remember(game.gameId) { mutableStateOf(false) }
+    var simLat by remember(game.gameId) { mutableStateOf("") }
+    var simLng by remember(game.gameId) { mutableStateOf("") }
+    var drawForced by remember(game.gameId) { mutableStateOf(false) }
+    var cheatedIds by remember(game.gameId) { mutableStateOf(emptySet<String>()) }
 
     // Horloge session : nowMs = temps écoulé (reprise exacte après kill).
     LaunchedEffect(game.gameId) {
@@ -539,13 +549,21 @@ private fun RunScreen(game: Game, avertissements: List<String>, onExit: () -> Un
     val nowMs = baseElapsed + if (wallStart == 0L || tickWall == 0L) 0L else tickWall - wallStart
 
     // GPS réel : présence par distance, dwell suivi dans le temps.
-    val fix = locationProvider.currentPosition()
-    val presence = remember(fix, game) {
+    // Position simulée (triche) : remplace le fix quand renseignée.
+    val realFix = locationProvider.currentPosition()
+    val simFix = run {
+        val la = simLat.trim().replace(',', '.').toDoubleOrNull()
+        val ln = simLng.trim().replace(',', '.').toDoubleOrNull()
+        if (la != null && ln != null) GpsFix(la, ln, 5f, fallback = true) else null
+    }
+    val fix = simFix ?: realFix
+    val presence = remember(fix, game, cheatBypass) {
         game.nodes.mapNotNull { n ->
             val cond = n.activation.requires.firstOrNull {
                 it.type == ConditionType.GEOFENCE && it.lat != null && it.lng != null && it.radiusMeters != null
             } ?: return@mapNotNull null
-            val inside = haversineMeters(fix.lat, fix.lng, cond.lat!!, cond.lng!!) <= (cond.radiusMeters ?: 30)
+            val inside = if (cheatBypass) true
+            else haversineMeters(fix.lat, fix.lng, cond.lat!!, cond.lng!!) <= (cond.radiusMeters ?: 30)
             n.id to inside
         }.toMap()
     }
@@ -557,16 +575,25 @@ private fun RunScreen(game: Game, avertissements: List<String>, onExit: () -> Un
         }
         if (next != insideSince) insideSince = next
     }
-    val dwellOk = remember(insideSince, nowMs, game) {
-        game.nodes.mapNotNull { n ->
-            val dwells = n.activation.requires.filter {
-                it.type == ConditionType.GEOFENCE && it.predicate == Predicate.DWELL
-            }
-            if (dwells.isEmpty()) return@mapNotNull null
-            val since = insideSince[n.id] ?: return@mapNotNull null
-            val need = dwells.maxOf { it.dwellMs ?: 0L }
-            if (nowMs - since >= need) n.id else null
-        }.toSet()
+    val dwellOk = remember(insideSince, nowMs, game, cheatBypass) {
+        if (cheatBypass) {
+            game.nodes.mapNotNull { n ->
+                val hasDwell = n.activation.requires.any {
+                    it.type == ConditionType.GEOFENCE && it.predicate == Predicate.DWELL
+                }
+                if (hasDwell) n.id else null
+            }.toSet()
+        } else {
+            game.nodes.mapNotNull { n ->
+                val dwells = n.activation.requires.filter {
+                    it.type == ConditionType.GEOFENCE && it.predicate == Predicate.DWELL
+                }
+                if (dwells.isEmpty()) return@mapNotNull null
+                val since = insideSince[n.id] ?: return@mapNotNull null
+                val need = dwells.maxOf { it.dwellMs ?: 0L }
+                if (nowMs - since >= need) n.id else null
+            }.toSet()
+        }
     }
     val insideIds = remember(presence) { presence.filterValues { it }.keys }
 
@@ -632,6 +659,8 @@ private fun RunScreen(game: Game, avertissements: List<String>, onExit: () -> Un
         if (node != null) {
             inventory = applyEffects(node, InventoryState(items = inventory)).items
         }
+        // Flag triche : complétion sous bypass, position simulée ou tirage forcé.
+        if (cheatBypass || simFix != null || drawForced) cheatedIds = cheatedIds + id
         completedAt = completedAt + (id to nowMs)
         completedCount = completedCount + (id to ((completedCount[id] ?: 0) + 1))
         active = null
@@ -670,6 +699,51 @@ private fun RunScreen(game: Game, avertissements: List<String>, onExit: () -> Un
                 modifier = Modifier.padding(horizontal = 16.dp),
             ) {
                 Text("Activer la boussole")
+            }
+        }
+        if (cheatedIds.isNotEmpty() || cheatBypass || simFix != null) {
+            Text(
+                text = "SIMULÉ" + (if (cheatedIds.isNotEmpty()) " : ${cheatedIds.joinToString(", ")}" else " : triche active"),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            )
+        }
+        Button(
+            onClick = { cheatOpen = !cheatOpen },
+            modifier = Modifier.padding(horizontal = 16.dp),
+        ) {
+            Text(if (cheatOpen) "Masquer la triche animateur" else "Triche animateur")
+        }
+        if (cheatOpen) {
+            Column(modifier = Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Simulation locale — ne modifie jamais le JSON.", style = MaterialTheme.typography.labelSmall)
+                Button(onClick = { cheatBypass = !cheatBypass }) {
+                    Text(if (cheatBypass) "Bypass GEOFENCE : ON" else "Bypass GEOFENCE : OFF")
+                }
+                OutlinedTextField(
+                    value = simLat,
+                    onValueChange = { simLat = it },
+                    label = { Text("Latitude simulée (vide = GPS)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                )
+                OutlinedTextField(
+                    value = simLng,
+                    onValueChange = { simLng = it },
+                    label = { Text("Longitude simulée (vide = GPS)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                )
+                for (p in game.nodes.filter { it.randomPool != null }) {
+                    Text("Tirage forcé — ${p.id} :", style = MaterialTheme.typography.labelSmall)
+                    for (cand in p.randomPool!!.candidates) {
+                        Button(onClick = {
+                            draws = draws + (p.id to listOf(cand))
+                            drawForced = true
+                        }) { Text(cand) }
+                    }
+                }
             }
         }
         if (finished != null) {

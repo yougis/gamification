@@ -26,10 +26,10 @@ import {
   MODULES_FR, CONDITIONS_FR, FAMILLES, PRESETS_RAYON, MILIEUX, ETATS_FR,
   OPERATEURS_FR, erreurFR, IMPORTER, type Milieu,
 } from "./game/i18n-ui";
-import registre from "./game/schema/registry.json";
 import { MODULE_REGISTRY } from "./game/modules";
+import { typesCreation } from "./game/module-registry";
 
-const TYPES_MODULE = ["INFO", ...Object.keys(registre), "RANDOM_POOL"];
+const TYPES_MODULE = typesCreation();
 
 // Mise en page par défaut (change studio-composer-3-colonnes) : largeurs en px,
 // bornées à l'usage (droite 280–640, liste 220–520), sections latérales dépliées.
@@ -64,7 +64,7 @@ import { ImagePicker } from "./components/wysiwyg/ImagePicker";
 import { PropertiesPanel } from "./components/wysiwyg/PropertiesPanel";
 import { TemplatePicker } from "./components/wysiwyg/TemplatePicker";
 import { PlayerTerminal } from "./components/wysiwyg/PlayerTerminal";
-import { ZoneTracer, ZoneForme, type DiffZone } from "./components/wysiwyg/plugins/difference-game";
+import { ZoneTracer, ApercuZones, type DiffZone } from "./components/wysiwyg/plugins/difference-game";
 import { ScreenProperties } from "./components/wysiwyg/ScreenProperties";
 import { resolveScreen } from "./game/screen-utils";
 import { donneesDefautModule, ecranDefautModule, getScreenPlugin } from "./game/module-screen-plugin";
@@ -85,7 +85,7 @@ const jeuVide = (): Game => ({
   nodes: [
     {
       id: "start",
-      module: { type: "INFO", data: {} },
+      module: { type: "INFO", data: { schemaVersion: "1.0.0", steps: [{ text: "Bienvenue. Modifiez ce texte pour raconter le début de votre jeu." }] } },
       activation: { requires: [] },
       discovery: { mode: "VISIBLE_NOW" },
     },
@@ -1402,6 +1402,7 @@ const noeuds: Node[] = useMemo(
                 nouveauType={nouveauType} setNouveauType={setNouveauType} lectureSeule={relecture}
                 onAllerConfig={() => setEcran("config")} onPickFile={prendreImage}
                 activeFamille={activeFamille} setActiveFamille={setActiveFamille}
+                onEditerZones={(id) => { choisirNoeud(id); setEcran("modules"); }}
               />
             }
             onPatchZone={(z, patch) => editGame((g) => patchScreenZone(g, etape.id, z, patch), "patchScreenZone")}
@@ -1418,6 +1419,7 @@ const noeuds: Node[] = useMemo(
               nouveauType={nouveauType} setNouveauType={setNouveauType} lectureSeule={relecture}
               onAllerConfig={() => setEcran("config")} onPickFile={prendreImage}
               activeFamille={activeFamille} setActiveFamille={setActiveFamille}
+              onEditerZones={(id) => { choisirNoeud(id); setEcran("modules"); }}
             />
         )
       ) : (
@@ -1813,6 +1815,9 @@ const noeuds: Node[] = useMemo(
             <ObjetsPanel game={game} editGame={editGame} lectureSeule={relecture} onChoisir={choisirNoeud} onPickFile={prendreImage} catalogUrl={catalogUrl} onProvenance={(id, prov) => edit((s) => ({ ...s, meta: { ...s.meta, provenance: { ...s.meta.provenance, [id]: prov } } }), "definirProvenance")} />
           </div>
         </div>
+      )}
+      {ecran === "modules" && (
+        <ModulesScreen game={game} editGame={editGame} lectureSeule={relecture} preselection={sel} />
       )}
     </>
   );
@@ -2267,8 +2272,8 @@ function EffetBloc({
 // rend le propertiesPanel du screenPlugin du type de module, cable sur node.module.data.
 // Sans plugin : undefined (PropertiesPanel affiche son placeholder).
 // Les defauts globaux mini-jeux sont transmis pour affichage heritage (change studio-screen-editor).
-function PanneauModule({ node, globalDefaults, onPickFile, lectureSeule, editGame }: {
-  node: GameNode; globalDefaults?: MinigameDefaults; onPickFile?: (file: File) => Promise<string>; lectureSeule: boolean; editGame: (fn: (g: Game) => Game, op?: string) => void;
+function PanneauModule({ node, globalDefaults, onPickFile, lectureSeule, editGame, onEditerZones }: {
+  node: GameNode; globalDefaults?: MinigameDefaults; onPickFile?: (file: File) => Promise<string>; lectureSeule: boolean; editGame: (fn: (g: Game) => Game, op?: string) => void; onEditerZones?: () => void;
 }) {
   const plugin = getScreenPlugin(node.module.type);
   if (!plugin) return null;
@@ -2279,6 +2284,7 @@ function PanneauModule({ node, globalDefaults, onPickFile, lectureSeule, editGam
       readOnly={lectureSeule}
       minigameDefaults={globalDefaults}
       onPickFile={onPickFile}
+      onEditerZones={onEditerZones}
       onChange={(data) =>
         editGame(
           (g) => ({ ...g, nodes: g.nodes.map((n) => (n.id === node.id ? { ...n, module: { ...n.module, data } } : n)) }),
@@ -2289,7 +2295,7 @@ function PanneauModule({ node, globalDefaults, onPickFile, lectureSeule, editGam
   );
 }
 
-function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauType, lectureSeule, onAllerConfig, activeFamille, setActiveFamille, onPickFile }: {
+function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauType, lectureSeule, onAllerConfig, activeFamille, setActiveFamille, onPickFile, onEditerZones }: {
   game: Game; node: GameNode; meta: StudioMeta;
   editGame: (fn: (g: Game) => Game, op?: string) => void;
   edit: (fn: (s: { game: Game; meta: StudioMeta }) => { game: Game; meta: StudioMeta }) => void;
@@ -2298,6 +2304,7 @@ function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauT
   onAllerConfig?: () => void;
   activeFamille: string; setActiveFamille: (id: string) => void;
   onPickFile?: (file: File) => Promise<string>;
+  onEditerZones?: (nodeId: string) => void;
 }) {
   const [expertModuleOuvert, basculerExpertModule] = useAccordeon("insp-expert-module", false);
   const [expertMetaOuvert, basculerExpertMeta] = useAccordeon("insp-expert-meta", false);
@@ -2491,7 +2498,7 @@ function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauT
         })()}
         {/* Formulaire du module (registre) sous le dropdown : meme panneau que le
             WYSIWYG, sans plugin = rien (JSON expert ci-dessous). */}
-        <PanneauModule node={node} globalDefaults={game.global?.minigameDefaults} onPickFile={onPickFile} lectureSeule={lectureSeule} editGame={editGame} />
+        <PanneauModule node={node} globalDefaults={game.global?.minigameDefaults} onPickFile={onPickFile} lectureSeule={lectureSeule} editGame={editGame} onEditerZones={onEditerZones ? () => onEditerZones(node.id) : undefined} />
         <Accordeon id="insp-expert-module" titre="Données expertes (JSON)" badge={<span className="puce">JSON</span>} ouvert={expertModuleOuvert} onToggle={basculerExpertModule}>
           <textarea rows={3} className="w-full champ font-mono text-[8px]" value={JSON.stringify(node.module.data)} onChange={(e) => {
             try {
@@ -3522,7 +3529,64 @@ function BlocValidation({ couches, verdicts, game, onVoir }: {
   );
 }
 
-function ReviewOverlay({ game, meta }: { game: Game; meta: StudioMeta }) {  const diffs = game.nodes.filter((n) => n.module.type === "DIFFERENCE_GAME");
+// Écran Modules (change zones-7-erreurs) : atelier grand format des éditeurs
+// par module. Aujourd'hui : zones du 7-erreurs (rectangles + polygones).
+// `preselection` = deep-link du bouton « Éditer les zones » (nœud courant).
+function ModulesScreen({ game, editGame, lectureSeule, preselection }: {
+  game: Game;
+  editGame: (fn: (g: Game) => Game, op?: string) => void;
+  lectureSeule: boolean;
+  preselection: string | null;
+}) {
+  const diffs = game.nodes.filter((n) => n.module.type === "DIFFERENCE_GAME");
+  const [choisi, setChoisi] = useState<string | null>(null);
+  const id = (choisi && diffs.some((n) => n.id === choisi) ? choisi : null)
+    ?? (preselection && diffs.some((n) => n.id === preselection) ? preselection : null)
+    ?? diffs[0]?.id ?? null;
+  const noeud = diffs.find((n) => n.id === id) ?? null;
+  const data = (noeud?.module.data ?? {}) as { source?: string; polygons?: DiffZone[] };
+  const zones = Array.isArray(data.polygons) ? data.polygons : [];
+  const sauver = (polygons: DiffZone[]) => {
+    if (!id) return;
+    editGame((g) => ({
+      ...g,
+      nodes: g.nodes.map((n) => (n.id === id ? { ...n, module: { ...n.module, data: { ...n.module.data, polygons } } } : n)),
+    }), "modifierNoeud");
+  };
+  return (
+    <div className="h-full overflow-y-auto">
+      <div className="p-6 max-w-4xl">
+        <h2 className="font-display font-extrabold text-2xl tracking-widest uppercase text-snow mb-6">Modules — 7 erreurs</h2>
+        {!diffs.length ? (
+          <p className="text-[9px] text-fog">Aucun nœud 7 erreurs dans ce jeu. Crée une étape avec le mini-jeu 7 erreurs dans le Composer.</p>
+        ) : (
+          <>
+            {diffs.length > 1 ? (
+              <label className="flex items-center gap-2 text-[9px] mb-3">Nœud
+                <select className="champ" value={id ?? ""} onChange={(e) => setChoisi(e.target.value)} aria-label="Nœud 7 erreurs à éditer">
+                  {diffs.map((n) => {
+                    const nb = Array.isArray((n.module.data as { polygons?: unknown }).polygons) ? ((n.module.data as { polygons: unknown[] }).polygons.length) : 0;
+                    return <option key={n.id} value={n.id}>{n.id} ({nb} zone(s))</option>;
+                  })}
+                </select>
+              </label>
+            ) : (
+              <p className="text-[9px] font-mono text-fog mb-3">Nœud : <b>{id}</b> · {zones.length} zone(s)</p>
+            )}
+            {!noeud || !data.source ? (
+              <p className="text-[9px] text-fog">Dépose l'image source dans le détail du nœud (famille épreuve), puis reviens tracer ici.</p>
+            ) : (
+              <ZoneTracer source={data.source} zones={zones} readOnly={lectureSeule} onChange={sauver} />
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ReviewOverlay({ game, meta }: { game: Game; meta: StudioMeta }) {
+  const diffs = game.nodes.filter((n) => n.module.type === "DIFFERENCE_GAME");
   if (!diffs.length) return null;
   return (
     <div className="carte p-3">
@@ -3530,18 +3594,13 @@ function ReviewOverlay({ game, meta }: { game: Game; meta: StudioMeta }) {  cons
         <Icon name="essai" size={15} /> Relecture 7 erreurs (calques)
       </h3>
       {diffs.map((n) => {
-        const d = n.module.data as { source?: string; derivee?: string; polygons?: { x: number; y: number; w: number; h: number }[] };
-        const polys = d.polygons ?? [];
+        const d = n.module.data as { source?: string; derivee?: string; polygons?: DiffZone[] };
+        const polys = Array.isArray(d.polygons) ? d.polygons : [];
         const statut = meta.status[n.id]?.state ?? "draft";
         return (
           <div key={n.id} className="carte p-2 my-1 shadow-none">
             <div className="font-mono text-[9px] text-snow mb-2">{n.id} — {ETATS_FR[statut]} — {polys.length} zone(s)</div>
-            <div className="relative w-full" style={{ paddingTop: "56%", background: "var(--surface-2)", borderRadius: 8 }}>
-              <span className="absolute top-0 left-1 font-mono text-[8px] text-fog">{String(d.source ?? "image source ?")}</span>
-              {polys.map((p, i) => (
-                <div key={i} className="absolute" style={{ left: `${p.x}%`, top: `${p.y}%`, width: `${p.w}%`, height: `${p.h}%`, border: "2px solid #00e5ff" }} />
-              ))}
-            </div>
+            <ApercuZones source={d.source} zones={polys} compteur={false} />
           </div>
         );
       })}

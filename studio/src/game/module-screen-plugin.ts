@@ -22,6 +22,10 @@ export interface ModulePropertiesPanelProps {
   // Enregistrement d'un fichier image au manifest (change
   // studio-media-templates) : retourne le chemin d'asset.
   onPickFile?: (file: File) => Promise<string>;
+  // Renvoi vers l'atelier d'édition (change zones-7-erreurs) : quand fourni,
+  // le panneau affiche un aperçu + un bouton vers l'éditeur grand format
+  // au lieu du traceur intégré. Absent = comportement historique.
+  onEditerZones?: () => void;
 }
 
 export interface ModulePlayerRendererProps {

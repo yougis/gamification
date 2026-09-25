@@ -70,4 +70,25 @@ class DashboardCommonTest {
         assertEquals("06:00", com.geoplay.shared.ui.home.formatDuration(360_000L))
         assertEquals("1:02:03", com.geoplay.shared.ui.home.formatDuration(3_723_000L))
     }
+
+    @Test
+    fun defaultViewRule() {
+        val home = com.geoplay.shared.model.Game(
+            gameId = "v",
+            nodes = listOf(
+                GameNode(
+                    id = "a",
+                    module = ModuleData(type = "INFO"),
+                    activation = com.geoplay.shared.model.Activation()
+                )
+            ),
+            global = com.geoplay.shared.model.GlobalData(presentation = listOf("HOME"))
+        )
+        assertEquals(true, showHomeDashboard(home, null))
+        assertEquals(false, showHomeDashboard(home, "a"))
+        val combo = home.copy(global = com.geoplay.shared.model.GlobalData(presentation = listOf("HOME", "MAP", "TOOLBOX")))
+        assertEquals(true, showHomeDashboard(combo, null))
+        val plain = home.copy(global = com.geoplay.shared.model.GlobalData(presentation = listOf("MAP")))
+        assertEquals(false, showHomeDashboard(plain, null))
+    }
 }

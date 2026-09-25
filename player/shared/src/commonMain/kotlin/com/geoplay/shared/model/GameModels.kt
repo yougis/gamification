@@ -122,7 +122,10 @@ data class GlobalData(
     val gpxTrace: GpxTrace = GpxTrace(),
     val experienceStyle: ExperienceStyle? = null,
     val gameMode: GameMode = GameMode.NORMAL,
-    val difficulty: Difficulty = Difficulty.FAMILLE
+    val difficulty: Difficulty = Difficulty.FAMILLE,
+    // Template d'écran par défaut (change parite-player, miroir Draft-07) :
+    // absent = écran par défaut. Jamais requis (compat ascendante).
+    val screen: ScreenDefinition? = null
 )
 
 @Serializable
@@ -176,7 +179,84 @@ data class GameNode(
     val inventoryAccess: Boolean = true,
     val discovery: Discovery? = null,
     val effects: List<Effect> = emptyList(),
-    val inventoryRef: List<String> = emptyList()
+    val inventoryRef: List<String> = emptyList(),
+    // Écran auteur WYSIWYG (change parite-player, miroir Draft-07) :
+    // absent = héritage du global puis écran par défaut.
+    val screen: ScreenDefinition? = null
+)
+
+// Écran auteur (change parite-player) : ScreenDefinition plate, miroir du
+// sous-schéma Draft-07 `screen`. Types plats + champs optionnels (même
+// pattern que `Condition`) : aucune variante inconnue ne casse le parse
+// (GeoPlayJson ignoreUnknownKeys). Les widgets sont discriminés par `type`
+// (text|image|button|progress|module|spacer), chaque variante ne lisant
+// que ses champs.
+@Serializable
+data class WidgetStyles(
+    val fontFamily: String? = null,
+    val fontSize: Double? = null,
+    val fontWeight: String? = null,
+    val color: String? = null,
+    val align: String? = null
+)
+
+@Serializable
+data class ScreenBackground(
+    val type: String = "color",
+    val value: String = "",
+    val overlay: Double? = null
+)
+
+@Serializable
+data class ScreenWidget(
+    val type: String,
+    val text: String? = null,
+    val style: String? = null,
+    val fontSize: Double? = null,
+    val color: String? = null,
+    val align: String? = null,
+    val src: String? = null,
+    val width: JsonElement? = null,
+    val height: JsonElement? = null,
+    val fit: String? = null,
+    val alt: String? = null,
+    val label: String? = null,
+    val action: String? = null,
+    val icon: String? = null,
+    val variant: String? = null,
+    val progressType: String? = null,
+    val showLabel: Boolean? = null,
+    val styles: WidgetStyles? = null
+)
+
+@Serializable
+data class ZoneContent(
+    val layout: String = "stack",
+    val widgets: List<ScreenWidget> = emptyList(),
+    val fermable: Boolean = false
+)
+
+@Serializable
+data class ScreenZones(
+    val header: ZoneContent? = null,
+    val content: ZoneContent? = null,
+    val footer: ZoneContent? = null,
+    val overlay: ZoneContent? = null
+)
+
+@Serializable
+data class ScreenTransitions(
+    val enter: String? = null,
+    val exit: String? = null
+)
+
+@Serializable
+data class ScreenDefinition(
+    val layout: String? = null,
+    val background: ScreenBackground? = null,
+    val zones: ScreenZones? = null,
+    val transitions: ScreenTransitions? = null,
+    val styles: WidgetStyles? = null
 )
 
 @Serializable

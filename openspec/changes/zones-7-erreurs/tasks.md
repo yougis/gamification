@@ -5,10 +5,10 @@
 
 ## 2. Atelier Modules et aperçu
 
-- [ ] 2.1 Créer l'écran « Modules » avec l'éditeur 7-erreurs grand format (ratio naturel, calque %, outils rectangle + polygone, liste + suppression, op nommée), et vérifier tracé des deux formes + undo
-- [ ] 2.2 Afficher dans le détail un aperçu réduit au ratio naturel avec compteur + bouton « Éditer les zones » (deep-link écran + nœud), et vérifier fidélité des zones puis navigation
-- [ ] 2.3 Rendre l'overlay Relire proportionné en lecture seule (fini le 16:9 imposé), et vérifier clic sans modification
+- [x] 2.1 Créer l'écran « Modules » avec l'éditeur 7-erreurs grand format (ratio naturel, calque %, outils rectangle + polygone, liste + suppression, op nommée), et vérifier tracé des deux formes + undo
+- [x] 2.2 Afficher dans le détail un aperçu réduit au ratio naturel avec compteur + bouton « Éditer les zones » (deep-link écran + nœud), et vérifier fidélité des zones puis navigation
+- [x] 2.3 Rendre l'overlay Relire proportionné en lecture seule (fini le 16:9 imposé), et vérifier clic sans modification
 
 ## 3. Non-régression
 
-- [ ] 3.1 Revalider Sherlock (1 zone rectangle) couches 1+2 et rejouer tap ganté, et vérifier 0 erreur et zone toujours valide sans migration
+- [x] 3.1 Revalider Sherlock (1 zone rectangle) couches 1+2 et rejouer tap ganté, et vérifier 0 erreur et zone toujours valide sans migration

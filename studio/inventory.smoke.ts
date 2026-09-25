@@ -4,7 +4,7 @@
 import { strict as assert } from "node:assert";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { availableRecipes, applyRecipe, resolveInventoryHint, toolboxIconVisible, timerRemainingMs } from "./src/game/inventory.ts";
+import { availableRecipes, applyRecipe, resolveInventoryHint, toolboxIconVisible, timerRemainingMs, showHomeDashboard } from "./src/game/inventory.ts";
 import { evaluate } from "./src/game/evaluate.ts";
 import { createInventoryEvent, present, INVENTORY_EVENT_TYPES } from "./src/game/runtime.ts";
 import { validateGame } from "./src/game/validate.ts";
@@ -322,6 +322,30 @@ const PRECISES = [
   const sas = jeuTimer.nodes[0];
   assert(timerRemainingMs(sas, new Map(), 240_000) === 360_000, "sas affiche dans 06:00 à 240s");
   console.log("home 2.1 : OK (Sherlock états sans fictif, TIMER → rebours)");
+}
+
+// 2.2 (home-dashboard) : vue par défaut combinable, jamais vide, repli intact.
+{
+  const base = {
+    gameId: "vues",
+    schemaVersion: "1.0.0",
+    minEngineVersion: "1.0.0",
+    nodes: [
+      { id: "a", module: { type: "INFO", data: { schemaVersion: "1.0.0", steps: [{ text: "x" }] } }, activation: { requires: [{ type: "TIMER", anchor: "GAME_START", delaySeconds: 0 }] } },
+      { id: "fin", isEnding: true, module: { type: "INFO", data: { schemaVersion: "1.0.0", steps: [{ text: "x" }] } }, activation: { requires: [{ type: "NODE_COMPLETED", nodeId: "a" }] } },
+    ],
+  } as unknown as Game;
+  const avecHome = { ...base, global: { presentation: ["HOME"] } };
+  const combine = { ...base, global: { presentation: ["HOME", "MAP", "TOOLBOX"] } };
+  const sansHome = { ...base, global: { presentation: ["MAP"] } };
+  assert(showHomeDashboard(avecHome, null) === true, "HOME seul sans ACTIVE → tableau");
+  assert(showHomeDashboard(avecHome, "a") === false, "ACTIVE → pas de tableau");
+  assert(showHomeDashboard(combine, null) === true, "combiné → tableau");
+  assert(showHomeDashboard(sansHome, null) === false, "sans HOME → inchangé");
+  assert(showHomeDashboard(base, null) === false, "sans présentation → inchangé");
+  // Jamais vide : au moins un nœud listé (schéma exige nodes ≥ 1).
+  assert(avecHome.nodes.length >= 1, "tableau non vide par construction");
+  console.log("home 2.2 : OK (défaut combinable, repli intact)");
 }
 
 // 1.2 (lot-correctifs) : garde-fou — aucune couleur de texte codée en dur

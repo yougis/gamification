@@ -2,7 +2,7 @@
 // Jeu des 7 erreurs : images source + derivee (assets du pack), dilatation
 // tactile, trace de zones RECTANGLES en % sur l'image source (clic-glisse,
 // normalise sur l'image affichee — responsive par construction).
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   ModuleEditorPreviewProps,
   ModulePropertiesPanelProps,
@@ -103,6 +103,40 @@ export function DifferenceEditorPreview({ data }: ModuleEditorPreviewProps) {
       <p className="text-[10px] text-fog">
         {zones.length} zone(s){d.derivee ? " — dérivée configurée" : " — dérivée manquante"}
       </p>
+    </div>
+  );
+}
+
+// Apercu fidele partage (change zones-7-erreurs) : image a son ratio reel
+// (dimensions naturelles, fallback 16:9), calque de zones en %, compteur.
+// Utilise par le detail (reduit), l'atelier Modules et la relecture.
+export function ApercuZones({ source, zones, compteur = true }: { source?: string; zones: DiffZone[]; compteur?: boolean }) {
+  const [ratio, setRatio] = useState<number | null>(null);
+  useEffect(() => { setRatio(null); }, [source]);
+  if (!source) {
+    return <p className="text-[11px] text-fog">Sans image source — déposez-la pour voir les zones.</p>;
+  }
+  return (
+    <div className="flex flex-col gap-1">
+      <div
+        className="relative overflow-hidden rounded border border-line"
+        style={ratio ? { aspectRatio: `${ratio}` } : undefined}
+      >
+        <img
+          src={source}
+          alt="Source du 7 erreurs"
+          className={ratio ? "absolute inset-0 h-full w-full" : "block w-full"}
+          draggable={false}
+          onLoad={(e) => {
+            const img = e.target as HTMLImageElement;
+            if (img.naturalWidth > 0 && img.naturalHeight > 0) setRatio(img.naturalWidth / img.naturalHeight);
+          }}
+        />
+        {zones.map((p, i) => (
+          <ZoneForme key={i} zone={p} index={i} />
+        ))}
+      </div>
+      {compteur ? <p className="font-mono text-[10px] text-fog">{zones.length} zone(s)</p> : null}
     </div>
   );
 }
@@ -271,8 +305,9 @@ export function ZoneTracer({
   );
 }
 
-// Panneau de proprietes : source + derivee, dilatation, traceur.
-export function DifferencePropertiesPanel({ data, onChange, readOnly, onPickFile }: ModulePropertiesPanelProps) {
+// Panneau de proprietes : source + derivee, dilatation, apercu + renvoi vers
+// l'atelier (change zones-7-erreurs) ou traceur integre si aucun renvoi fourni.
+export function DifferencePropertiesPanel({ data, onChange, readOnly, onPickFile, onEditerZones }: ModulePropertiesPanelProps) {
   const d = data as DifferenceData;
   const zones = Array.isArray(d.polygons) ? d.polygons : [];
   const [ouvert, basculer] = useAccordeon("difference-config", true);
@@ -330,12 +365,28 @@ export function DifferencePropertiesPanel({ data, onChange, readOnly, onPickFile
               />
             </label>
             {d.source ? (
-              <ZoneTracer
-                source={d.source}
-                zones={zones}
-                readOnly={readOnly}
-                onChange={(polygons) => onChange({ ...data, polygons })}
-              />
+              onEditerZones ? (
+                <div className="flex flex-col gap-1">
+                  <ApercuZones source={d.source} zones={zones} />
+                  {!readOnly ? (
+                    <button
+                      type="button"
+                      className="btn min-h-8 px-2.5 text-[8px]"
+                      onClick={onEditerZones}
+                      title="Ouvrir l'atelier de zonage grand format"
+                    >
+                      Éditer les zones
+                    </button>
+                  ) : null}
+                </div>
+              ) : (
+                <ZoneTracer
+                  source={d.source}
+                  zones={zones}
+                  readOnly={readOnly}
+                  onChange={(polygons) => onChange({ ...data, polygons })}
+                />
+              )
             ) : null}
           </div>
         </Accordeon>

@@ -39,6 +39,7 @@ Le schéma Draft-07 SHALL définir `node.screen` et `global.screen` comme objets
 Une `ZoneContent` SHALL contenir :
 - `layout` (string, défaut `"stack"`) : `"stack"` (vertical), `"grid"` (colonnes), `"free"` (positionnement libre)
 - `widgets` (tableau de Widget, >=0 éléments)
+- `fermable` (booléen optionnel, défaut `false`) : réservé à la zone `overlay` — `true` autorise le joueur à masquer la surimpression (clic sur le fond) et à la réafficher (icône message). Sur les autres zones, la valeur est ignorée.
 
 `additionalProperties: false` SHALL être appliqué.
 
@@ -53,6 +54,18 @@ Une `ZoneContent` SHALL contenir :
 - **GIVEN** une zone avec `layout: "flexbox"`
 - **WHEN** la validation Draft-07 tourne
 - **THEN** la zone est rejeté (valeur non dans l'enum)
+
+#### Scenario: Overlay fermable acceptée
+
+- **GIVEN** une zone overlay avec `fermable: true` et 1 widget
+- **WHEN** la validation Draft-07 tourne
+- **THEN** la zone est acceptée
+
+#### Scenario: Overlay sans fermable (défaut fermé)
+
+- **GIVEN** une zone overlay sans champ `fermable`
+- **WHEN** le joueur clique le fond de la surimpression
+- **THEN** rien ne se masque (comportement historique, compat ascendante)
 
 ### Requirement: Définitions Widget
 
@@ -187,6 +200,9 @@ Le canvas SHALL supporter :
 - Réordonnancement de widgets par drag & drop dans une zone
 - Suppression de widget par bouton ou touche Delete
 - Suppression de zone (header, footer, overlay) par bouton dans le panneau de propriétés — la zone `content` restant la base insuppressible ; après suppression, le fantôme de création correspondant SHALL réapparaître
+- Masquage temporaire de la surimpression par toggle « œil » (état local d'édition, jamais persisté) pour voir et éditer le fond dessous ; la zone reste sélectionnable via le panneau, l'arbre ou le réaffichage
+
+Le panneau de propriétés d'une zone overlay SHALL exposer une case « fermable par le joueur » reflétant `fermable` (défaut décochée).
 
 Un clic sur une zone SHALL sélectionner cette zone sans la désélectionner aussitôt : le clic ne SHALL jamais bouillonner vers le fond du canvas (qui vide la sélection). Seul un clic sur le fond vide du canvas SHALL vider la sélection.
 
@@ -245,6 +261,18 @@ Le contenu des widgets texte SHALL être éditable en place : un clic sur un tex
 - **GIVEN** un écran avec une zone overlay créée précédemment
 - **WHEN** l'auteur supprime la zone depuis le panneau de propriétés et annule (undo)
 - **THEN** la zone disparaît puis réapparaît à l'annulation, et le fantôme « + Surimpression » est visible quand la zone est absente
+
+#### Scenario: Œil masquant la surimpression
+
+- **GIVEN** un écran avec une zone overlay remplie qui recouvre le fond
+- **WHEN** l'auteur active le toggle « œil »
+- **THEN** la surimpression se masque (fond éditable), le JSON est inchangé, et la zone reste sélectionnable via le panneau ou l'arbre
+
+#### Scenario: Case fermable reflétée
+
+- **GIVEN** une zone overlay avec `fermable: false`
+- **WHEN** l'auteur coche « fermable par le joueur »
+- **THEN** le JSON porte `fermable: true` (opération annulable par undo)
 
 #### Scenario: Édition en place d'un texte
 

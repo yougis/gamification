@@ -33,3 +33,14 @@ export const MODULE_REGISTRY_BASE: Record<string, ModuleRegistryEntry> = {
   ITEM_DROPPER: { type: "ITEM_DROPPER", schema: "item-dropper.json", version: "1.0.0", needsInventory: true, presentationNeeds: ["TOOLBOX"], producesEffects: ["GIVE_ITEM"] },
   ITEM_CONSUMER: { type: "ITEM_CONSUMER", schema: "item-consumer.json", version: "1.0.0", needsInventory: true, presentationNeeds: ["TOOLBOX"], producesEffects: ["REMOVE_ITEM"] }
 };
+
+// Types proposés à la création d'étape (change
+// studio-info-registry-cleanup) : entrées du registre dans l'ordre,
+// INFO premier par habitude, RANDOM_POOL structurel en dernier. Fonction
+// pure (importable hors navigateur) : chaque type exactement une fois —
+// aucun doublon possible même quand un type rejoint le registre, et les
+// clés techniques (`$comment` de registry.json) n'y figurent jamais.
+export function typesCreation(): string[] {
+  const types = Object.keys(MODULE_REGISTRY_BASE).filter((t) => t !== "INFO" && !t.startsWith("$"));
+  return ["INFO", ...types, "RANDOM_POOL"];
+}

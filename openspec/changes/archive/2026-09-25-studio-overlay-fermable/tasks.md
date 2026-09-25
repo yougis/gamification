@@ -1,7 +1,7 @@
 ## 1. Schéma et Studio
 
-- [ ] 1.1 Ajouter `fermable?: boolean` à `ZoneContent` (Draft-07, défaut `false`, ignoré hors overlay) et vérifier C1 accepte `fermable: true` sur overlay et que l'absence du champ garde le comportement historique
-- [ ] 1.2 Ajouter le toggle « œil » (état local, jamais persisté) + la case « fermable par le joueur » dans les propriétés de la zone overlay, et vérifier masquage/réaffichage sans toucher au JSON (undo inchangé)
+- [x] 1.1 Ajouter `fermable?: boolean` à `ZoneContent` (Draft-07, défaut `false`, ignoré hors overlay) et vérifier C1 accepte `fermable: true` sur overlay et que l'absence du champ garde le comportement historique
+- [x] 1.2 Ajouter le toggle « œil » (état local, jamais persisté) + la case « fermable par le joueur » dans les propriétés de la zone overlay, et vérifier masquage/réaffichage sans toucher au JSON (undo inchangé)
 
 ## 2. Terminal simulé (seul renderer d'écrans existant)
 

@@ -62,7 +62,7 @@ export async function importGame(file: File): Promise<Game> {
       nodes: [
         {
           id: "start",
-          module: { type: "INFO", data: {} },
+          module: { type: "INFO", data: { schemaVersion: "1.0.0", steps: [{ text: "Bienvenue. Modifiez ce texte pour raconter le début de votre jeu." }] } },
           activation: { requires: [] },
           discovery: { mode: "VISIBLE_NOW" },
         },

@@ -56,6 +56,12 @@ export function toolboxIconVisible(game: Game, activeNodeId?: string | null): bo
   return game.nodes.find((n) => n.id === activeNodeId)?.inventoryAccess !== false;
 }
 
+// Vue par défaut (change player-home-dashboard 2.2, miroir du shared
+// Kotlin) : tableau quand HOME est présent et aucune modale ACTIVE.
+export function showHomeDashboard(game: Game, activeNodeId?: string | null): boolean {
+  return (game.global?.presentation ?? []).includes("HOME") && activeNodeId == null;
+}
+
 // Compte à rebours d'un POI (change player-home-dashboard, miroir du
 // shared Kotlin) : première condition TIMER non satisfaite, `ancre +
 // délai − nowMs` en ms (jamais négatif) ; ancre NODE_COMPLETION absente →
