@@ -10,4 +10,4 @@
 
 ## 3. Non-régression
 
-- [ ] 3.1 Archiver `player-home-dashboard` d'abord puis rebaser ce delta si besoin, revalider (`openspec validate`), rejouer C1+C2 Sherlock/fixture à 0 erreur
+- [x] 3.1 Archiver `player-home-dashboard` d'abord puis rebaser ce delta si besoin, revalider (`openspec validate`), rejouer C1+C2 Sherlock/fixture à 0 erreur

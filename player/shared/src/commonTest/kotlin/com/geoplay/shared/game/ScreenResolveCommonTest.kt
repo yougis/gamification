@@ -137,4 +137,20 @@ class ScreenResolveCommonTest {
         assertNotNull(resolved.zones?.content)
         assertTrue(resolved.zones?.content?.widgets?.isEmpty() == true)
     }
+
+    @Test
+    fun paginateContentMirrorsStudioRule() {
+        fun w(t: String) = ScreenWidget(type = t, text = "x")
+        val p1 = paginateContent(listOf(w("text"), w("module"), w("text"), w("image")))
+        assertEquals(3, p1.size)
+        assertEquals(listOf("text"), p1[0].map { it.type })
+        assertEquals(listOf("module", "text"), p1[1].map { it.type })
+        assertEquals(listOf("image"), p1[2].map { it.type })
+        val p2 = paginateContent(listOf(w("text"), w("button")))
+        assertEquals(1, p2.size)
+        assertEquals(2, p2[0].size)
+        val p3 = paginateContent(emptyList())
+        assertEquals(1, p3.size)
+        assertTrue(p3[0].isEmpty())
+    }
 }

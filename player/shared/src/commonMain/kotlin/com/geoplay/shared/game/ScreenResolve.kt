@@ -60,3 +60,17 @@ fun resolveScreen(game: Game, node: GameNode): ScreenDefinition {
 
 fun resolveWidgetStyle(game: Game, node: GameNode, widget: ScreenWidget): WidgetStyles =
     mergeWidgetStyles(resolveScreen(game, node).styles, widget.styles) ?: WidgetStyles()
+
+// Découpage en sous-pages (change screen-subpages) : chaque widget
+// `module` ou `image` (non premier) ouvre une nouvelle sous-page ; les
+// autres widgets appartiennent à la sous-page courante. Miroir exact de
+// `paginateContent` côté Studio TS. Règle dérivée, jamais persistée.
+fun paginateContent(widgets: List<ScreenWidget>): List<List<ScreenWidget>> {
+    val pages = mutableListOf(mutableListOf<ScreenWidget>())
+    for (w in widgets) {
+        val ouvre = (w.type == "module" || w.type == "image") && pages.last().isNotEmpty()
+        if (ouvre) pages.add(mutableListOf())
+        pages.last().add(w)
+    }
+    return pages
+}

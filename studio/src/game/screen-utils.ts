@@ -1,7 +1,7 @@
 // Resolution d'ecran WYSIWYG : fusion global.screen -> node.screen (change studio-screen-wysiwyg).
 // Regle : le global sert de template, le noeud remplace par zone (pas d'append).
 import type { CSSProperties } from "react";
-import type { GameNode, MinigameDefaults, ScreenBackground, ScreenDefinition, StyleOrigin, WidgetStyles } from "./types";
+import type { GameNode, MinigameDefaults, ScreenBackground, ScreenDefinition, StyleOrigin, Widget, WidgetStyles } from "./types";
 
 export const DEFAULT_SCREEN: ScreenDefinition = {
   layout: "default",
@@ -102,6 +102,20 @@ export interface ResolvedMinigameParam {
   origin: MinigameParamOrigin;
 }
 
+// Découpage en sous-pages (change screen-subpages) : chaque widget
+// `module` ou `image` (non premier) ouvre une nouvelle sous-page ; les
+// autres widgets appartiennent à la sous-page courante. Un module ne
+// partage jamais sa page. Règle dérivée (jamais persistée), miroir exact
+// de `paginateContent` côté `shared` Kotlin.
+export function paginateContent(widgets: Widget[]): Widget[][] {
+  const pages: Widget[][] = [[]];
+  for (const w of widgets) {
+    const ouvre = (w.type === "module" || w.type === "image") && pages[pages.length - 1].length > 0;
+    if (ouvre) pages.push([]);
+    pages[pages.length - 1].push(w);
+  }
+  return pages;
+}
 // Resolution locale → globale → defaut module (change studio-screen-editor,
 // design D4). `undefined` + origine `defaut` = comportement actuel du module.
 export function resolveMinigameParam(

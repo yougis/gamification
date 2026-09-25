@@ -66,6 +66,9 @@ export function WidgetRenderer({
   // le widget est de type "module", rendu à la place de ModuleWidgetRenderer
   // (ex. renderer joueur en mode terminal). Absent = aperçu éditeur.
   renderModule?: (widget: Widget) => ReactNode;
+  // Contexte de sous-page (change screen-subpages) : transmis au widget
+  // progress pour refléter l'avancement. Absent = échantillon statique.
+  contextePage?: { index: number; total: number };
 }) {
   const [edition, setEdition] = useState(false);
   const [survol, setSurvol] = useState(false);
@@ -154,7 +157,7 @@ export function WidgetRenderer({
       ) : null}
       {widget.type === "image" ? <ImageWidgetRenderer widget={widget} /> : null}
       {widget.type === "button" ? <ButtonWidgetRenderer widget={widget} /> : null}
-      {widget.type === "progress" ? <ProgressBarWidgetRenderer widget={widget} /> : null}
+      {widget.type === "progress" ? <ProgressBarWidgetRenderer widget={widget} contextePage={contextePage} /> : null}
       {widget.type === "module" ? (renderModule ? renderModule(widget) : <ModuleWidgetRenderer widget={widget} moduleType={moduleType} moduleData={moduleData} />) : null}
       {widget.type === "spacer" ? <SpacerWidgetRenderer widget={widget} /> : null}
     </div>

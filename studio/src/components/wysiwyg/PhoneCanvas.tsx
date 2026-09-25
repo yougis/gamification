@@ -4,8 +4,8 @@
 // overlay en calque absolu. Clic sur le fond -> selection de l'ecran (null).
 import type { ScreenDefinition, Widget, ZoneId } from "../../game/types";
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
-import { couleurTexteDefaut, screenBackgroundStyle } from "../../game/screen-utils";
+import { useEffect, useRef, useState } from "react";
+import { couleurTexteDefaut, paginateContent, screenBackgroundStyle } from "../../game/screen-utils";
 import { ZoneRenderer } from "./ZoneRenderer";
 import { Icon } from "../icons";
 
@@ -57,6 +57,7 @@ export function PhoneCanvas({
   dissimulationJoueur,
   cleContexte,
   couleurMessage,
+  afficherPagination = true,
 }: {
   screen: ScreenDefinition;
   moduleType?: string;
@@ -86,6 +87,9 @@ export function PhoneCanvas({
   cleContexte?: string;
   // Accent de l'icône « message » (branding résolu par l'appelant).
   couleurMessage?: string;
+  // Pagination des sous-pages (change screen-subpages) : onglets + nav
+  // active. `false` pour les miniatures (ex. TemplatePicker).
+  afficherPagination?: boolean;
 }) {
   const zones = screen.zones ?? {};
   const format = VIEWPORTS.find((v) => v.id === viewport) ?? VIEWPORTS[0];

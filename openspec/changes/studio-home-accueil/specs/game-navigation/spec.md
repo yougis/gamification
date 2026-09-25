@@ -13,7 +13,7 @@ Les modes de présentation SHALL inclure :
 - `TIMELINE` : frise chronologique de progression
 - `HOME` : tableau de bord entre les étapes (temps écoulé, comptes à rebours par POI, états, proposition d'ouverture)
 
-Un jeu peut combiner plusieurs présentations simultanément (ex. `MAP + TOOLBOX + CLUE` pour un escape game géolocalisé).
+Un jeu peut combiner plusieurs présentations simultanément (ex. `MAP + TOOLBOX + CLUE` pour un escape game géolocalisé, `HOME + MAP + TOOLBOX` pour un jeu d'orientation avec accueil joueur).
 
 Quand `presentation` inclut `HOME`, le player SHALL exposer en permanence une entrée « Accueil » (tab/barre) affichant le tableau de bord, y compris quand une autre vue est active ; l'affichage par défaut (tableau si aucune modale ACTIVE) est inchangé. Aller vers ou quitter l'Accueil SHALL ne produire ni transition d'état ni event de progression. Les vues restent exclusives (pas de superposition).
 
@@ -31,6 +31,11 @@ Quand `presentation` inclut `HOME`, le player SHALL exposer en permanence une en
 - **GIVEN** un jeu GUIDED avec `presentation: ["STORY"]`
 - **WHEN** le joueur complète une étape
 - **THEN** l'étape suivante s'affiche dans le récit narratif
+
+#### Scenario: Tableau de bord par défaut avec HOME
+- **GIVEN** un jeu avec `presentation: ["HOME", "TOOLBOX"]`
+- **WHEN** le joueur est entre deux étapes (aucune modale ACTIVE)
+- **THEN** le tableau de bord s'affiche par défaut avec le temps écoulé, les POI et l'étape à ouvrir
 
 #### Scenario: Retour à l'Accueil depuis une autre vue
 - **GIVEN** un jeu avec `presentation: ["HOME", "MAP"]`, joueur sur la carte avec une modale ACTIVE fermée

@@ -47,8 +47,9 @@ Les modes de présentation SHALL inclure :
 - `CLUE` : affichage d'indices
 - `TOOLBOX` : boîte à outils / inventaire
 - `TIMELINE` : frise chronologique de progression
+- `HOME` : tableau de bord entre les étapes (temps écoulé, comptes à rebours par POI, états, proposition d'ouverture)
 
-Un jeu peut combiner plusieurs présentations simultanément (ex. `MAP + TOOLBOX + CLUE` pour un escape game géolocalisé).
+Un jeu peut combiner plusieurs présentations simultanément (ex. `MAP + TOOLBOX + CLUE` pour un escape game géolocalisé, `HOME + MAP + TOOLBOX` pour un jeu d'orientation avec accueil joueur).
 
 #### Scenario: Présentation MAP pour BASIC
 - **GIVEN** un jeu BASIC avec `presentation: ["MAP"]`
@@ -64,6 +65,11 @@ Un jeu peut combiner plusieurs présentations simultanément (ex. `MAP + TOOLBOX
 - **GIVEN** un jeu GUIDED avec `presentation: ["STORY"]`
 - **WHEN** le joueur complète une étape
 - **THEN** l'étape suivante s'affiche dans le récit narratif
+
+#### Scenario: Tableau de bord par défaut avec HOME
+- **GIVEN** un jeu avec `presentation: ["HOME", "TOOLBOX"]`
+- **WHEN** le joueur est entre deux étapes (aucune modale ACTIVE)
+- **THEN** le tableau de bord s'affiche par défaut avec le temps écoulé, les POI et l'étape à ouvrir
 
 ### Requirement: Préfixes de référence fonctionnels
 

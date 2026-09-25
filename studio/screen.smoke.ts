@@ -4,13 +4,13 @@
 // + moveScreenWidgetAcross() (deplacement inter-zones en une operation),
 // + validation AJV des styles, minigameDefaults, QCM image et puzzle
 // (change studio-screen-editor).
-import { resolveScreen, DEFAULT_SCREEN, resolveStyles, resolveMinigameParam, couleurTexteDefaut } from "./src/game/screen-utils";
+import { resolveScreen, DEFAULT_SCREEN, resolveStyles, resolveMinigameParam, couleurTexteDefaut, paginateContent } from "./src/game/screen-utils";
 import { moveScreenWidgetAcross, patchScreenZone } from "./src/game/mcp";
 import { SCREEN_TEMPLATES, getScreenTemplate, loadCustomTemplates, saveCustomTemplate, allScreenTemplates } from "./src/game/screen-templates";
 import { estImageAcceptable } from "./src/components/wysiwyg/image-files";
 import { validateGame } from "./src/game/validate";
 import game5poi from "./src/game/game-5poi.json";
-import type { Game, GameNode, ScreenDefinition } from "./src/game/types";
+import type { Game, GameNode, ScreenDefinition, Widget } from "./src/game/types";
 
 function assert(cond: boolean, msg: string): void {
   if (!cond) throw new Error(`screen.smoke: ${msg}`);
@@ -267,6 +267,22 @@ assert(!estImageAcceptable(fauxFichier("doc.pdf", "application/pdf")), "pdf refu
   assert(couleurTexteDefaut({ type: "image", value: "a.jpg" }) === undefined, "fond image → héritage thème");
   assert(couleurTexteDefaut({ type: "color", value: "granule" }) === undefined, "couleur illisible → héritage thème");
   console.log("ok: contraste écran calculé, héritage sinon");
+}
+
+// Sous-pages (change screen-subpages) : module/image (non premier) ouvre
+// une page ; texte/bouton/progress/spacer suivent la page courante.
+{
+  const w = (t: Widget["type"]): Widget => ({ type: t, text: "x" }) as Widget;
+  const p1 = paginateContent([w("text"), w("module"), w("text"), w("image")]);
+  assert(p1.length === 3, "[texte,module,texte,image] -> 3 sous-pages");
+  assert(p1[0].map((x) => x.type).join(",") === "text", "page 1 = texte");
+  assert(p1[1].map((x) => x.type).join(",") === "module,text", "page 2 = module+texte");
+  assert(p1[2].map((x) => x.type).join(",") === "image", "page 3 = image");
+  const p2 = paginateContent([w("text"), w("button")]);
+  assert(p2.length === 1 && p2[0].length === 2, "sans media -> 1 sous-page inchangee");
+  const p3 = paginateContent([]);
+  assert(p3.length === 1 && p3[0].length === 0, "zone vide -> 1 sous-page vide");
+  console.log("ok: decoupage sous-pages");
 }
 
 console.log("screen.smoke: ALL OK");

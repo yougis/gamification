@@ -43,6 +43,8 @@ export function ZoneRenderer({
   // Slot module remplaçable (change studio-player-preview), transmis au
   // WidgetRenderer. Absent = aperçu éditeur.
   renderModule?: (widget: Widget) => ReactNode;
+  // Contexte de sous-page (change screen-subpages), transmis aux widgets.
+  contextePage?: { index: number; total: number };
 }) {
   const widgets = zone.widgets ?? [];
   const [survol, setSurvol] = useState(false);
@@ -101,6 +103,7 @@ export function ZoneRenderer({
               onSelect={(index) => onSelectWidget?.(zoneId, index)}
               onCommitText={onCommitText}
               renderModule={renderModule}
+              contextePage={contextePage}
               onDropBefore={
                 dndActif
                   ? (fromZone, fromIndex, toZone, toIndex) => onMoveWidgetAcross?.(fromZone, fromIndex, toZone, toIndex)

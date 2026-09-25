@@ -88,6 +88,11 @@ fun ScreenRenderer(
     styleOf: (ScreenWidget) -> WidgetStyles = { it.styles ?: WidgetStyles() },
     onButtonAction: (action: String?) -> Unit = {},
     progressFraction: Float? = null,
+    // Contexte de sous-page (change screen-subpages) : quand le contenu est
+    // paginé, le widget progress (steps) reflète page i/N. Une fraction
+    // explicite (ex. score) garde la priorité.
+    pageIndex: Int? = null,
+    pageTotal: Int? = null,
     modifier: Modifier = Modifier,
 ) {
     val zones = screen.zones
@@ -106,13 +111,13 @@ fun ScreenRenderer(
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = scrim!!.toFloat().coerceIn(0f, 1f))))
         }
         Column(Modifier.fillMaxSize()) {
-            zones?.header?.let { ZoneBlock(it, branding, moduleSlot, imageContent, styleOf, onButtonAction, progressFraction) }
+            zones?.header?.let { ZoneBlock(it, branding, moduleSlot, imageContent, styleOf, onButtonAction, progressFraction, pageIndex, pageTotal) }
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 zones?.content?.let {
-                    ZoneBlock(it, branding, moduleSlot, imageContent, styleOf, onButtonAction, progressFraction)
+                    ZoneBlock(it, branding, moduleSlot, imageContent, styleOf, onButtonAction, progressFraction, pageIndex, pageTotal)
                 }
             }
-            zones?.footer?.let { ZoneBlock(it, branding, moduleSlot, imageContent, styleOf, onButtonAction, progressFraction) }
+            zones?.footer?.let { ZoneBlock(it, branding, moduleSlot, imageContent, styleOf, onButtonAction, progressFraction, pageIndex, pageTotal) }
         }
         val overlay = zones?.overlay
         if (overlay != null && !overlayDismissed) {
@@ -123,7 +128,7 @@ fun ScreenRenderer(
                     .padding(24.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                ZoneBlock(overlay, branding, moduleSlot, imageContent, styleOf, onButtonAction, progressFraction)
+                ZoneBlock(overlay, branding, moduleSlot, imageContent, styleOf, onButtonAction, progressFraction, pageIndex, pageTotal)
             }
         }
         if (overlay != null && overlay.fermable && overlayDismissed) {
@@ -144,11 +149,13 @@ private fun ZoneBlock(
     styleOf: (ScreenWidget) -> WidgetStyles,
     onButtonAction: (action: String?) -> Unit,
     progressFraction: Float?,
+    pageIndex: Int?,
+    pageTotal: Int?,
 ) {
     // Phase 1 : `stack` pour tous les layouts (grid/free suivront).
     Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(12.dp)) {
         for (w in zone.widgets) {
-            WidgetBlock(w, branding, moduleSlot, imageContent, styleOf(w), onButtonAction, progressFraction)
+            WidgetBlock(w, branding, moduleSlot, imageContent, styleOf(w), onButtonAction, progressFraction, pageIndex, pageTotal)
         }
     }
 }
@@ -162,6 +169,8 @@ private fun WidgetBlock(
     style: WidgetStyles,
     onButtonAction: (action: String?) -> Unit,
     progressFraction: Float?,
+    pageIndex: Int?,
+    pageTotal: Int?,
 ) {
     val primary = parseHexColor(branding?.primaryColor) ?: MaterialTheme.colorScheme.primary
     when (widget.type) {
@@ -186,10 +195,20 @@ private fun WidgetBlock(
             }
         }
         "progress" -> {
-            if (widget.showLabel == true && progressFraction != null) {
-                Text("${(progressFraction * 100).toInt()} %", style = MaterialTheme.typography.labelSmall)
+            // Fraction explicite prioritaire ; sinon avancement de sous-page.
+            val pageFraction = if (pageIndex != null && pageTotal != null && pageTotal > 0) {
+                (pageIndex + 1).toFloat() / pageTotal
+            } else null
+            val fraction = progressFraction ?: pageFraction
+            if (widget.showLabel == true) {
+                val label = if (progressFraction == null && pageFraction != null && pageIndex != null && pageTotal != null) {
+                    "${pageIndex + 1}/$pageTotal"
+                } else if (fraction != null) {
+                    "${(fraction * 100).toInt()} %"
+                } else null
+                if (label != null) Text(label, style = MaterialTheme.typography.labelSmall)
             }
-            if (progressFraction != null) LinearProgressIndicator(progress = { progressFraction }, modifier = Modifier.fillMaxWidth())
+            if (fraction != null) LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth())
             else LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
         }
         "module" -> moduleSlot()
