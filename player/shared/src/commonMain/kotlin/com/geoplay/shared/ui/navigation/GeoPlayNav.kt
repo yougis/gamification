@@ -17,6 +17,8 @@ import com.geoplay.shared.ui.quiz.parseQuizQuestions
 import com.geoplay.shared.ui.theme.GeoPlayTheme
 import com.geoplay.shared.ui.toolbox.ToolboxDialog
 import com.geoplay.shared.ui.toolbox.ToolboxIconButton
+import com.geoplay.shared.game.toolboxIconVisible
+import com.geoplay.shared.ui.home.HomeDashboard
 
 // Navigation commune (change player-kmp-migration, 4.1) : graphe -> module.
 // Les apps Android/iOS hébergent `GeoPlayApp` et fournissent états + callbacks.
@@ -37,12 +39,30 @@ fun GeoPlayApp(
     inventory: Map<String, Int> = emptyMap(),
     onInventoryOpen: () -> Unit = {},
     onItemSelected: (String) -> Unit = {},
+    // Tableau de bord (change player-home-dashboard) : vue par défaut quand
+    // aucune modale ACTIVE et presentation inclut HOME. Défauts = pas de
+    // tableau (comportement actuel inchangé).
+    elapsedMs: Long = 0L,
+    countdownsMs: Map<String, Long?> = emptyMap(),
+    queueHeadId: String? = null,
+    onOpenNode: ((String) -> Unit)? = null,
 ) {
     val navController = rememberNavController()
     // Id du nœud en cours hoisté (pas d'arguments de route : `Bundle.getString`
     // n'existe pas en commonMain navigation-compose).
     var selectedNodeId by remember { mutableStateOf<String?>(null) }
     var toolboxOpen by remember { mutableStateOf(false) }
+    fun openNode(id: String) {
+        if (onOpenNode != null) {
+            onOpenNode(id)
+            return
+        }
+        val node = game.nodes.find { it.id == id } ?: return
+        if (node.module.type == "QUIZ") {
+            selectedNodeId = id
+            navController.navigate(GeoPlayRoutes.QUIZ)
+        }
+    }
     GeoPlayTheme {
         androidx.compose.foundation.layout.Column(modifier = modifier) {
             ToolboxIconButton(
@@ -63,6 +83,23 @@ fun GeoPlayApp(
             }
         NavHost(navController = navController, startDestination = GeoPlayRoutes.GRAPH, modifier = Modifier.weight(1f)) {
             composable(GeoPlayRoutes.GRAPH) {
+                val activeId = states.entries.find { it.value == NodeState.ACTIVE }?.key
+                if ("HOME" in game.global.presentation && activeId == null) {
+                    HomeDashboard(
+                        game = game,
+                        states = states,
+                        elapsedMs = elapsedMs,
+                        countdownsMs = countdownsMs,
+                        queueHeadId = queueHeadId,
+                        showInventoryEntry = toolboxIconVisible(game, activeId),
+                        inventoryCount = inventory.values.sum(),
+                        onOpen = ::openNode,
+                        onInventoryOpen = {
+                            toolboxOpen = true
+                            onInventoryOpen()
+                        },
+                    )
+                } else {
                 GameGraphScreen(
                     nodes = game.nodes,
                     states = states,
@@ -74,6 +111,7 @@ fun GeoPlayApp(
                         }
                     },
                 )
+                }
             }
             composable(GeoPlayRoutes.QUIZ) {
                 val nodeId = selectedNodeId.orEmpty()

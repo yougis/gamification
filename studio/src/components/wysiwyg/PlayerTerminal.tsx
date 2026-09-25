@@ -65,6 +65,9 @@ export function PlayerTerminal({
           moduleData={data}
           viewport="phone-portrait"
           showGhosts={false}
+          dissimulationJoueur
+          cleContexte={node.id}
+          couleurMessage={branding?.primaryColor}
           renderModule={() =>
             Player ? (
               <Player data={data} branding={branding} experienceStyle={experienceStyle} onComplete={onCompleteNode} />

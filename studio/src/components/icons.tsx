@@ -31,6 +31,7 @@ export type IconName =
   | "ajouter"
   | "choix"
   | "oeil"
+  | "message"
   | "package"
   | "engrenage"
   | "soleil"
@@ -233,6 +234,14 @@ const PATHS: Record<IconName, React.ReactNode> = {
     <>
       <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z" />
       <circle cx="12" cy="12" r="3" />
+    </>
+  ),
+  // Enveloppe / message (change studio-overlay-fermable) : réafficher une
+  // surimpression masquée. Même trait sobre que le reste du kit.
+  message: (
+    <>
+      <rect x="2.5" y="5" width="19" height="14" rx="2" />
+      <path d="M2.5 7.5 12 13.5 21.5 7.5" />
     </>
   ),
   package: (

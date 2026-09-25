@@ -2,7 +2,8 @@
 // Change inventory-events-hints : écoute passive des événements.
 // Change inventory-crafting : recettes (proposer + appliquer atomiquement).
 // Change player-inventory-toolbox : règle d'affichage de l'icône.
-import type { Game, InventoryEventType, InventoryHint, Recipe } from "./types";
+// Change player-home-dashboard : compte à rebours par POI.
+import type { Game, GameNode, InventoryEventType, InventoryHint, Recipe } from "./types";
 
 // Dernier abonnement correspondant gagne : plusieurs abonnements sont
 // cumulables, un seul emplacement d'affichage. `itemId` absent = écoute
@@ -53,4 +54,24 @@ export function toolboxIconVisible(game: Game, activeNodeId?: string | null): bo
   if (!(game.global?.presentation ?? []).includes("TOOLBOX")) return false;
   if (activeNodeId == null) return true;
   return game.nodes.find((n) => n.id === activeNodeId)?.inventoryAccess !== false;
+}
+
+// Compte à rebours d'un POI (change player-home-dashboard, miroir du
+// shared Kotlin) : première condition TIMER non satisfaite, `ancre +
+// délai − nowMs` en ms (jamais négatif) ; ancre NODE_COMPLETION absente →
+// null ; aucun TIMER ou tous satisfaits → null.
+export function timerRemainingMs(
+  node: GameNode,
+  completedAt: Map<string, number>,
+  nowMs: number,
+): number | null {
+  for (const c of node.activation.requires) {
+    if (c.type !== "TIMER") continue;
+    const anchor = c.anchor === "NODE_COMPLETION" ? (completedAt.get(c.anchorNodeId!) ?? null) : 0;
+    if (anchor == null) return null;
+    const dueAt = anchor + (c.delaySeconds ?? 0) * 1000;
+    if (nowMs >= dueAt) continue;
+    return dueAt - nowMs;
+  }
+  return null;
 }

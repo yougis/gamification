@@ -107,7 +107,9 @@ export function DifferenceEditorPreview({ data }: ModuleEditorPreviewProps) {
   );
 }
 
-// Traceur : clic-glisse sur l'image -> rectangle % (min 1 %), liste + suppression.
+// Traceur : rectangle (clic-glisse, min 1 %) ou polygone (clic = sommet,
+// Fermer = zone si >= 3 sommets), en % sur l'image affichee a son ratio reel
+// (dimensions naturelles, fallback 16:9). Liste + suppression.
 export function ZoneTracer({
   source,
   zones,
@@ -122,6 +124,9 @@ export function ZoneTracer({
   const ref = useRef<HTMLDivElement>(null);
   const depart = useRef<{ x: number; y: number } | null>(null);
   const [courant, setCourant] = useState<DiffZoneRect | null>(null);
+  const [outil, setOutil] = useState<"rectangle" | "polygone">("rectangle");
+  const [sommets, setSommets] = useState<DiffPoint[]>([]);
+  const [ratio, setRatio] = useState<number | null>(null);
 
   const enPourcent = (clientX: number, clientY: number) => {
     const r = ref.current!.getBoundingClientRect();
@@ -130,33 +135,90 @@ export function ZoneTracer({
       y: arrondi1(Math.min(Math.max(((clientY - r.top) / r.height) * 100, 0), 100)),
     };
   };
+  const fermerPolygone = (pts: DiffPoint[]) => {
+    if (pts.length >= 3) onChange([...zones, { points: pts }]);
+    setSommets([]);
+  };
   return (
     <div className="flex flex-col gap-2">
+      {!readOnly ? (
+        <div className="flex gap-1" role="toolbar" aria-label="Outil de tracé">
+          <button
+            type="button"
+            className={`btn min-h-8 px-2.5 text-[8px] ${outil === "rectangle" ? "font-bold" : ""}`}
+            aria-pressed={outil === "rectangle"}
+            onClick={() => { setOutil("rectangle"); setSommets([]); }}
+          >
+            Rectangle
+          </button>
+          <button
+            type="button"
+            className={`btn min-h-8 px-2.5 text-[8px] ${outil === "polygone" ? "font-bold" : ""}`}
+            aria-pressed={outil === "polygone"}
+            onClick={() => { setOutil("polygone"); setCourant(null); depart.current = null; }}
+          >
+            Polygone
+          </button>
+          {outil === "polygone" && sommets.length > 0 ? (
+            <>
+              <button
+                type="button"
+                className="btn min-h-8 px-2.5 text-[8px]"
+                disabled={sommets.length < 3}
+                title={sommets.length < 3 ? "Au moins 3 sommets pour fermer" : "Fermer le polygone"}
+                onClick={() => fermerPolygone(sommets)}
+              >
+                Fermer ({sommets.length})
+              </button>
+              <button
+                type="button"
+                className="btn min-h-8 px-2.5 text-[8px]"
+                onClick={() => setSommets([])}
+              >
+                Annuler
+              </button>
+            </>
+          ) : null}
+        </div>
+      ) : null}
       <div
         ref={ref}
         className="relative select-none overflow-hidden rounded border border-line"
-        style={{ touchAction: "none", cursor: readOnly ? undefined : "crosshair" }}
-        aria-label="Traceur de zones : cliquez-glissez sur l'image"
+        style={{ touchAction: "none", cursor: readOnly ? undefined : "crosshair", aspectRatio: ratio ? `${ratio}` : "16 / 9" }}
+        aria-label={outil === "polygone" ? "Traceur de zones : cliquez pour ajouter des sommets" : "Traceur de zones : cliquez-glissez sur l'image"}
         onPointerDown={(e) => {
-          if (readOnly) return;
+          if (readOnly || outil !== "rectangle") return;
           (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
           depart.current = enPourcent(e.clientX, e.clientY);
           setCourant({ ...depart.current, w: 0, h: 0 });
         }}
         onPointerMove={(e) => {
           const dep = depart.current;
-          if (!dep || readOnly) return;
+          if (!dep || readOnly || outil !== "rectangle") return;
           const p = enPourcent(e.clientX, e.clientY);
           setCourant({ x: Math.min(dep.x, p.x), y: Math.min(dep.y, p.y), w: arrondi1(Math.abs(p.x - dep.x)), h: arrondi1(Math.abs(p.y - dep.y)) });
         }}
         onPointerUp={() => {
-          if (readOnly) return;
+          if (readOnly || outil !== "rectangle") return;
           if (courant && courant.w >= 1 && courant.h >= 1) onChange([...zones, courant]);
           depart.current = null;
           setCourant(null);
         }}
+        onClick={(e) => {
+          if (readOnly || outil !== "polygone") return;
+          setSommets((s) => [...s, enPourcent(e.clientX, e.clientY)]);
+        }}
       >
-        <img src={source} alt="Source à zoner" className="block w-full" draggable={false} />
+        <img
+          src={source}
+          alt="Source à zoner"
+          className="absolute inset-0 h-full w-full"
+          draggable={false}
+          onLoad={(e) => {
+            const img = e.target as HTMLImageElement;
+            if (img.naturalWidth > 0 && img.naturalHeight > 0) setRatio(img.naturalWidth / img.naturalHeight);
+          }}
+        />
         {zones.map((p, i) => (
           <ZoneForme key={i} zone={p} index={i} />
         ))}
@@ -165,6 +227,21 @@ export function ZoneTracer({
             className="absolute border-2 border-dashed border-white"
             style={{ left: `${courant.x}%`, top: `${courant.y}%`, width: `${courant.w}%`, height: `${courant.h}%` }}
           />
+        ) : null}
+        {sommets.length > 0 ? (
+          <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+            <polyline
+              points={sommets.map((p) => `${p.x},${p.y}`).join(" ")}
+              fill="none"
+              stroke="white"
+              strokeWidth={2}
+              strokeDasharray="2 1"
+              vectorEffect="non-scaling-stroke"
+            />
+            {sommets.map((p, i) => (
+              <circle key={i} cx={p.x} cy={p.y} r={1.2} fill="white" />
+            ))}
+          </svg>
         ) : null}
       </div>
       {zones.length > 0 ? (
@@ -188,7 +265,7 @@ export function ZoneTracer({
           ))}
         </ul>
       ) : (
-        <p className="text-[11px] text-fog">Aucune zone — cliquez-glissez sur l'image (le schéma en exige au moins 1).</p>
+        <p className="text-[11px] text-fog">Aucune zone — rectangle (cliquer-glisser) ou polygone (cliquer les sommets puis Fermer). Le schéma en exige au moins 1.</p>
       )}
     </div>
   );

@@ -1,8 +1,10 @@
 ## ADDED Requirements
 
-### Requirement: Surimpression fermable
+### Requirement: Surimpression fermable (terminal simulé)
 
-Quand la zone `overlay` d'un écran porte `fermable: true`, le Player (natif et PWA, même contrat) SHALL permettre au joueur de masquer la surimpression par clic sur son fond semi-transparent. L'écran dessous SHALL rester jouable (moteur, timers et modules continuent ; aucune transition d'état, aucun event dédié, aucune complétion implicite). Une icône « message » persistante (chrome player, glyphe fixe teinté branding) SHALL être visible tant que l'overlay est masquée ; son activation SHALL réafficher l'overlay avec son état conservé (mémoire session, non persistée : à la reprise l'overlay revient affichée). Masquer et réafficher SHALL être libres et illimités. Sans `fermable` (défaut), le clic sur le fond SHALL ne rien masquer.
+Constat de périmètre : aucun player (natif, PWA, shared Compose) ne rend aujourd'hui les `ScreenDefinition` — le terminal joueur simulé du Studio est le seul renderer d'écrans. Le contrat ci-dessous y est implémenté ; le renderer natif/PWA le reprendra dans un change dédié.
+
+Quand la zone `overlay` d'un écran porte `fermable: true`, le terminal simulé SHALL permettre au joueur de masquer la surimpression par clic sur son fond semi-transparent. L'écran dessous SHALL rester jouable (renderer déjà interactif ; aucune transition d'état, aucun event dédié, aucune complétion implicite). Une icône « message » persistante (chrome player, glyphe fixe teinté branding) SHALL être visible tant que l'overlay est masquée ; son activation SHALL réafficher l'overlay avec son état conservé (mémoire session, non persistée : à la reprise l'overlay revient affichée). Masquer et réafficher SHALL être libres et illimités. Sans `fermable` (défaut), le clic sur le fond SHALL ne rien masquer.
 
 #### Scenario: Masquage au clic-fond, écran jouable
 

@@ -24,6 +24,7 @@ import androidx.compose.ui.window.ComposeViewport
 import com.geoplay.shared.game.Sim
 import com.geoplay.shared.game.applyEffects
 import com.geoplay.shared.game.InventoryState
+import com.geoplay.shared.game.timerRemainingMs
 import com.geoplay.shared.game.drawPool
 import com.geoplay.shared.game.evaluate
 import com.geoplay.shared.game.present
@@ -688,6 +689,13 @@ private fun RunScreen(game: Game, avertissements: List<String>, onExit: () -> Un
                 onQuizComplete = { id, score -> complete(id, score) },
                 modifier = Modifier.fillMaxSize(),
                 inventory = inventory,
+                // Tableau de bord (change player-home-dashboard) : temps
+                // écoulé = horloge session, rebours lus des TIMER, tête de file.
+                elapsedMs = nowMs,
+                countdownsMs = game.nodes.associate { n ->
+                    n.id to timerRemainingMs(n, completedAt, nowMs)
+                },
+                queueHeadId = active ?: queue.firstOrNull(),
             )
         }
     }

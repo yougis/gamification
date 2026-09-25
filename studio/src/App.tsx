@@ -64,6 +64,7 @@ import { ImagePicker } from "./components/wysiwyg/ImagePicker";
 import { PropertiesPanel } from "./components/wysiwyg/PropertiesPanel";
 import { TemplatePicker } from "./components/wysiwyg/TemplatePicker";
 import { PlayerTerminal } from "./components/wysiwyg/PlayerTerminal";
+import { ZoneTracer, ZoneForme, type DiffZone } from "./components/wysiwyg/plugins/difference-game";
 import { ScreenProperties } from "./components/wysiwyg/ScreenProperties";
 import { resolveScreen } from "./game/screen-utils";
 import { donneesDefautModule, ecranDefautModule, getScreenPlugin } from "./game/module-screen-plugin";
@@ -188,7 +189,7 @@ type Onglet = "graphe" | "liste" | "detail";
 
 // Écrans du Studio (spec studio-onepage-spec) : navigation sur un état partagé,
 // sans état par écran (hors simulateur de Prévisualiser).
-type Ecran = "composer" | "importer" | "relire" | "valider" | "previsualiser" | "exporter" | "config" | "inventaire";
+type Ecran = "composer" | "importer" | "relire" | "valider" | "previsualiser" | "exporter" | "config" | "inventaire" | "modules";
 
 const ECRANS: { id: Ecran; nom: string; icone: IconName }[] = [
   { id: "composer", nom: "Composer", icone: "graphe" },
@@ -199,6 +200,7 @@ const ECRANS: { id: Ecran; nom: string; icone: IconName }[] = [
   { id: "exporter", nom: "Exporter", icone: "exporter" },
   { id: "config", nom: "Configuration", icone: "engrenage" },
   { id: "inventaire", nom: "Inventaire", icone: "package" },
+  { id: "modules", nom: "Modules", icone: "zone" },
 ];
 
 // Barre des viewports d'aperçu (change studio-control-priority) : P2 replié
@@ -3520,8 +3522,7 @@ function BlocValidation({ couches, verdicts, game, onVoir }: {
   );
 }
 
-function ReviewOverlay({ game, meta }: { game: Game; meta: StudioMeta }) {
-  const diffs = game.nodes.filter((n) => n.module.type === "DIFFERENCE_GAME");
+function ReviewOverlay({ game, meta }: { game: Game; meta: StudioMeta }) {  const diffs = game.nodes.filter((n) => n.module.type === "DIFFERENCE_GAME");
   if (!diffs.length) return null;
   return (
     <div className="carte p-3">

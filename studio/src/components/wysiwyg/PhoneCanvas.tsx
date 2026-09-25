@@ -4,7 +4,7 @@
 // overlay en calque absolu. Clic sur le fond -> selection de l'ecran (null).
 import type { ScreenDefinition, Widget, ZoneId } from "../../game/types";
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { couleurTexteDefaut, screenBackgroundStyle } from "../../game/screen-utils";
 import { ZoneRenderer } from "./ZoneRenderer";
 import { Icon } from "../icons";
@@ -74,6 +74,15 @@ export function PhoneCanvas({
   // Slot module remplaçable (change studio-player-preview), transmis aux
   // zones. Absent = aperçu éditeur.
   renderModule?: (widget: Widget) => ReactNode;
+  // Dissimulation joueur (change studio-overlay-fermable) : terminal simulé
+  // uniquement. Quand la zone overlay porte `fermable`, le clic sur le fond
+  // semi-transparent masque la surimpression et une icône « message »
+  // persistante la réaffiche (état conservé). `cleContexte` (ex. id du nœud)
+  // réinitialise le masquage quand le contexte change (reprise = affichée).
+  dissimulationJoueur?: boolean;
+  cleContexte?: string;
+  // Accent de l'icône « message » (branding résolu par l'appelant).
+  couleurMessage?: string;
 }) {
   const zones = screen.zones ?? {};
   const format = VIEWPORTS.find((v) => v.id === viewport) ?? VIEWPORTS[0];
@@ -82,6 +91,14 @@ export function PhoneCanvas({
   // (onSelectZone present) : ni miniatures ni terminal joueur.
   const [overlayMasquee, setOverlayMasquee] = useState(false);
   const oeil = onSelectZone != null;
+  // Masquage joueur : état session en mémoire, jamais persisté. Réinitialisé
+  // quand le contexte change (nœud suivant, reprise = overlay affichée).
+  const [masqueJoueur, setMasqueJoueur] = useState(false);
+  useEffect(() => {
+    setMasqueJoueur(false);
+  }, [cleContexte]);
+  const overlayFermable = zones.overlay?.fermable === true;
+  const dissimulable = dissimulationJoueur === true && overlayFermable;
   // Couleur de texte par défaut (change studio-lot-correctifs) : contraste
   // calculé sur le fond résolu, héritée par tous les descendants sans
   // couleur explicite (couleurs auteur verbatim conservées).
@@ -166,9 +183,29 @@ export function PhoneCanvas({
               <FantomeZone libelle="+ Pied de page" zoneId="footer" onCreate={onCreateZone} />
             </div>
           ) : null}
-          {zones.overlay && (!overlayMasquee || !oeil) ? (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/50 p-6">
-              <div className="relative w-full rounded bg-surface p-2" style={{ color: "var(--ink)" }}>
+          {zones.overlay && (!overlayMasquee || !oeil) && !(dissimulable && masqueJoueur) ? (
+            <div
+              className="absolute inset-0 flex items-center justify-center bg-black/50 p-6"
+              onClick={dissimulable ? () => setMasqueJoueur(true) : undefined}
+              role={dissimulable ? "button" : undefined}
+              tabIndex={dissimulable ? 0 : undefined}
+              aria-label={dissimulable ? "Masquer la surimpression" : undefined}
+              onKeyDown={
+                dissimulable
+                  ? (e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setMasqueJoueur(true);
+                      }
+                    }
+                  : undefined
+              }
+            >
+              <div
+                className="relative w-full rounded bg-surface p-2"
+                style={{ color: "var(--ink)" }}
+                onClick={dissimulable ? (e) => e.stopPropagation() : undefined}
+              >
                 {oeil ? (
                   <button
                     type="button"
@@ -215,6 +252,22 @@ export function PhoneCanvas({
                 <Icon name="oeil" size={13} /> Surimpression masquée — réafficher
               </button>
             </div>
+          ) : null}
+          {zones.overlay && dissimulable && masqueJoueur ? (
+            <button
+              type="button"
+              className="absolute right-2 top-2 z-10 rounded-full border border-line bg-surface-2 p-2 shadow-lg hover:border-neon"
+              style={{ color: couleurMessage ?? "var(--couleur-accent)" }}
+              onClick={(e) => {
+                e.stopPropagation();
+                setMasqueJoueur(false);
+              }}
+              onKeyDown={(e) => e.stopPropagation()}
+              title="Réafficher la surimpression"
+              aria-label="Réafficher la surimpression masquée"
+            >
+              <Icon name="message" size={16} />
+            </button>
           ) : null}
         </div>
   );

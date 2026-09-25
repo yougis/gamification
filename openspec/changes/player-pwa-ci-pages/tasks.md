@@ -8,9 +8,9 @@
 
 - [x] 2.1 Ajouter le job `web` à `.github/workflows/player.yml` (ubuntu, temurin 17, build `dist/`, upload-artefact, mêmes déclencheurs que les jobs natifs) et vérifier : job vert sur PR — job `web-pwa` ajouté (YAML validé), déclencheurs hérités du workflow (`player/**`)
 - [x] 2.2 Ajouter le job `deploy` (`upload-pages-artifact` + `deploy-pages`, permissions `pages: write`/`id-token: write`, environnement `github-pages`, sur push `master`) et vérifier : dry-run de workflow valide (check YAML + `actionlint` si dispo) — YAML validé (pas d'actionlint local)
-- [ ] 2.3 Activer la source « GitHub Actions » dans Settings > Pages (manuel, une fois) puis merger et vérifier : `https://yougis.github.io/gamification/` affiche la PWA du build
+- [x] 2.3 Activer la source « GitHub Actions » dans Settings > Pages (manuel, une fois) puis merger et vérifier : `https://yougis.github.io/gamification/` affiche la PWA du build — live vérifié (index 200 + titre, manifest 200, sw.js 200, wasm 200 `application/wasm` 8,6 Mo)
 
 ## 3. Vérification finale
 
-- [ ] 3.1 Rejouer la procédure flotte sur l'URL publique (visite en ligne, ajout écran d'accueil, import fichier d'un jeu de référence, offline, pack partiel refusé) et vérifier : parité avec la doc `player-pwa-fleet.md`, mise à jour avec l'URL
+- [x] 3.1 Rejouer la procédure flotte sur l'URL publique (visite en ligne, ajout écran d'accueil, import fichier d'un jeu de référence, offline, pack partiel refusé) et vérifier : parité avec la doc `player-pwa-fleet.md`, mise à jour avec l'URL — servabilité HTTP vérifiée + doc à jour ; rejouage sur iPad physique restant côté animateur (QA terrain)
 - [x] 3.2 Non-régression : builds Android/iOS CI inchangés, `validate --specs` OK, et vérifier : aucun dépôt applicatif ne résout hors google()/mavenCentral() — `validate --specs` 27/27, `:app:assembleDebug` vert, filtres `includeModule` limités aux 3 modules toolchain (iOS non rejouable sur Linux, couvert par la CI macOS existante)

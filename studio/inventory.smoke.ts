@@ -4,11 +4,11 @@
 import { strict as assert } from "node:assert";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { availableRecipes, applyRecipe, resolveInventoryHint, toolboxIconVisible } from "./src/game/inventory.ts";
+import { availableRecipes, applyRecipe, resolveInventoryHint, toolboxIconVisible, timerRemainingMs } from "./src/game/inventory.ts";
 import { evaluate } from "./src/game/evaluate.ts";
 import { createInventoryEvent, present, INVENTORY_EVENT_TYPES } from "./src/game/runtime.ts";
 import { validateGame } from "./src/game/validate.ts";
-import type { Game } from "./src/game/types.ts";
+import type { Game, GameNode } from "./src/game/types.ts";
 
 const PRECISES = [
   { event: "ITEM_SELECTED", hint: "Un objet a été sélectionné." },
@@ -279,6 +279,49 @@ const PRECISES = [
   // BASIC sans objet du tout → aucune icône.
   assert(!toolboxIconVisible({ ...poi, objects: [] }, null), "BASIC sans objet");
   console.log("toolbox 2.1 : OK (Sherlock icône, 5poi aucune, isolé masqué)");
+}
+
+// 1.2 (home-dashboard) : temps restant par POI depuis les TIMER.
+{
+  const t = (anchor: "GAME_START" | "NODE_COMPLETION", delaySeconds: number, anchorNodeId?: string) =>
+    ({ type: "TIMER", anchor, delaySeconds, ...(anchorNodeId ? { anchorNodeId } : {}) });
+  const noeud = (conds: unknown[]) =>
+    ({ id: "q", module: { type: "INFO" }, activation: { requires: conds } }) as unknown as GameNode;
+  assert(timerRemainingMs(noeud([t("GAME_START", 600)]), new Map(), 240_000) === 360_000, "600s − 240s → 360s");
+  assert(timerRemainingMs(noeud([t("GAME_START", 60)]), new Map(), 61_000) === null, "délai passé → null");
+  assert(timerRemainingMs(noeud([t("NODE_COMPLETION", 60, "a")]), new Map(), 0) === null, "ancre absente → null");
+  assert(timerRemainingMs(noeud([t("NODE_COMPLETION", 60, "a")]), new Map([["a", 100_000]]), 130_000) === 30_000, "ancre complétée → rebours");
+  assert(timerRemainingMs(noeud([t("GAME_START", 10), t("GAME_START", 600)]), new Map(), 10_000) === 590_000, "multi-TIMER → premier non satisfait");
+  console.log("home 1.2 : OK (rebours par POI, ancre absente → null)");
+}
+
+// 2.1 (home-dashboard) : Sherlock + HOME → POI avec états, sans rebours
+// fictif ; jeu à TIMER → rebours affiché ; limites d'épreuve hors tableau.
+{
+  const root = new URL(".", import.meta.url).pathname;
+  const sherlock = JSON.parse(readFileSync(`${root}src/game/game-sherlock-holmes.json`, "utf8")) as Game;
+  const avecHome = { ...sherlock, global: { ...sherlock.global, presentation: [...(sherlock.global?.presentation ?? []), "HOME"] } };
+  const sim0 = { present: new Set<string>(), dwellOk: new Set<string>(), throughOk: new Set<string>(), nowMs: 0, completedAt: new Map(), accuracyM: 5 };
+  const ev0 = evaluate(avecHome, sim0 as never, {}, new Map(), new Map(), new Set());
+  assert(ev0.unlocked.includes("start"), "start éligible à t=0");
+  // Aucun TIMER à délai dans Sherlock → aucun rebours (pas de fictif).
+  const reboursSherlock = avecHome.nodes.map((n) => timerRemainingMs(n, new Map(), 0));
+  assert(reboursSherlock.every((r) => r === null), "Sherlock : 0 rebours sans TIMER");
+  // Jeu à TIMER : le rebours du POI est exposé au tableau.
+  const jeuTimer = {
+    gameId: "attente",
+    schemaVersion: "1.0.0",
+    minEngineVersion: "1.0.0",
+    global: { presentation: ["HOME"] },
+    nodes: [
+      { id: "sas", module: { type: "INFO", data: { schemaVersion: "1.0.0", steps: [{ text: "x" }] } }, activation: { requires: [{ type: "TIMER", anchor: "GAME_START", delaySeconds: 600 }] } },
+      { id: "fin", isEnding: true, module: { type: "INFO", data: { schemaVersion: "1.0.0", steps: [{ text: "x" }] } }, activation: { requires: [{ type: "NODE_COMPLETED", nodeId: "sas" }] } },
+    ],
+  } as unknown as Game;
+  assert.deepEqual(validateGame(jeuTimer).layers.flatMap((l) => l.errors), []);
+  const sas = jeuTimer.nodes[0];
+  assert(timerRemainingMs(sas, new Map(), 240_000) === 360_000, "sas affiche dans 06:00 à 240s");
+  console.log("home 2.1 : OK (Sherlock états sans fictif, TIMER → rebours)");
 }
 
 // 1.2 (lot-correctifs) : garde-fou — aucune couleur de texte codée en dur

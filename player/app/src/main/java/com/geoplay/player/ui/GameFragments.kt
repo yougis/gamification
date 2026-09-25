@@ -333,6 +333,40 @@ class GameFragment : Fragment() {
             binding.btnComplete.setOnClickListener { completeCurrent(false) }
             binding.btnAbandon.setOnClickListener { completeCurrent(true) }
 
+            // Tableau de bord (change player-home-dashboard) : même règle
+            // et même contenu que le partagé. Ouvrir = tête de file via le
+            // même chemin que le clic file (aucun event ajouté).
+            val showHome = "HOME" in game.global.presentation
+            binding.cardHome.visibility = if (showHome) View.VISIBLE else View.GONE
+            if (showHome) {
+                val homeNow = System.currentTimeMillis() - gameStartMs
+                binding.tvHomeElapsed.text = "⏱ " + com.geoplay.shared.ui.home.formatDuration(homeNow)
+                binding.tvHomeList.text = game.nodes
+                    .filter { it.randomPool == null }
+                    .joinToString("\n") { n ->
+                        val state = when {
+                            done.containsKey(n.id) -> "Terminée"
+                            n.id == activeId -> "En cours"
+                            ev.unlocked.contains(n.id) -> "Disponible"
+                            else -> "Verrouillée"
+                        }
+                        val rest = com.geoplay.shared.game.timerRemainingMs(n, done.toMap(), homeNow)
+                        n.id + " — " + state + (if (rest != null) " — dans " + com.geoplay.shared.ui.home.formatDuration(rest) else "")
+                    }
+                val head = activeId ?: ev.queue.firstOrNull()
+                if (head != null && !done.containsKey(head)) {
+                    binding.btnHomeOpen.visibility = View.VISIBLE
+                    binding.btnHomeOpen.text = "Ouvrir : $head"
+                    binding.btnHomeOpen.setOnClickListener {
+                        activeId = head
+                        currentNodeId = head
+                        updateUI()
+                    }
+                } else {
+                    binding.btnHomeOpen.visibility = View.GONE
+                }
+            }
+
             // Boîte à outils (change player-inventory-toolbox) : règle
             // triple lue du JSON — l'overlay ne touche ni moteur ni file.
             binding.btnToolbox.visibility =
