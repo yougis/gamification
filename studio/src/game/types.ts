@@ -37,6 +37,8 @@ export interface Condition {
   consumed?: boolean;
   code?: string;
   clueId?: string;
+  apresSecondes?: number;
+  avantSecondes?: number;
   [k: string]: unknown;
 }
 
@@ -282,6 +284,8 @@ export interface Game {
     experienceStyle?: ExperienceStyle;
     gameMode?: "NORMAL" | "ANIMATEUR" | "SOIREE" | "HARDCORE";
     difficulty?: "ENFANT" | "FAMILLE" | "EXPERT";
+    dureeTotale?: number;
+    finDeTemps?: "terminer" | "continuer";
     indoorPlans?: IndoorPlan[];
     screen?: ScreenDefinition;
     minigameDefaults?: MinigameDefaults;

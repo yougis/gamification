@@ -15,7 +15,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { validateGame, deadEnds } from "./game/validate";
-import { evaluate, drawPool, type Sim } from "./game/evaluate";
+import { evaluate, drawPool, estHorsDelai, type Sim } from "./game/evaluate";
 import { composeNodes, setActivation, registerAsset, exportPackFull, canExport, addSecoursCode, importGame, addObject, setObjects, duplicateObject, setReview, removeNode, renameNode, duplicateNode, patchScreenZone, removeScreenZone, addScreenWidget, setScreenWidget as mcpSetScreenWidget, removeScreenWidget, moveScreenWidget, moveScreenWidgetAcross, setNodeScreen, setScreenBackground, setScreenStyles, setGlobalScreenStyles, setMinigameDefaults, setPresentation, type ManifestFile } from "./game/mcp";
 import { emptyMeta, type Condition, type Effect, type Game, type GameNode, type GameObject, type MinigameDefaults, type Predicate, type StudioMeta, type ExperienceStyle, type Branding, type GameMode, type Difficulty, type ZoneContent, type ZoneId } from "./game/types";
 import { buildCompatSidecar, canExportToChannel, type ChannelId } from "./game/compat";
@@ -793,7 +793,7 @@ const noeuds: Node[] = useMemo(
     setCounts((c) => ({ ...c, [id]: fois }));
     if (!abandon) {
       setDone((d) => ({ ...d, [id]: sim.dtMin * 60000 }));
-      journal(`${id} : TERMINÉE`);
+      journal(`${id} : TERMINÉE${estHorsDelai(game, sim.dtMin * 60000) ? " (hors délai)" : ""}`);
       const nextDraws = { ...draws };
       for (const p of game.nodes) {
         if (!p.randomPool || nextDraws[p.id]) continue;
@@ -2792,6 +2792,10 @@ function ChampsDecl({ game, c, upd }: { game: Game; c: Condition; upd: (p: Parti
           <option value="">—</option>{game.nodes.filter((m) => m.discovery?.mode === "ON_CLUE").map((m) => <option key={m.id} value={m.id}>{m.id}</option>)}
         </select></span>
       );
+    case "WINDOW":
+      return (
+        <span>fenêtre après <input className="champ w-16 min-h-10" type="number" value={c.apresSecondes ?? ""} onChange={(e) => upd({ apresSecondes: num(e.target.value) })} placeholder="s" /> s · avant <input className="champ w-16 min-h-10" type="number" value={c.avantSecondes ?? ""} onChange={(e) => upd({ avantSecondes: num(e.target.value) })} placeholder="s" /> s <span className="text-[8px] text-fog">(temps écoulé depuis le démarrage ; borne vide = sans limite de ce côté ; échéance = retour verrouillé)</span></span>
+      );
     default:
       return <i>Réservé (non utilisé pour l'instant)</i>;
   }
@@ -3306,6 +3310,20 @@ function ModePanel({ game, edit, lectureSeule }: {
           {[ "ENFANT", "FAMILLE", "EXPERT"].map((d) => <option key={d} value={d}>{d}</option>)}
         </select>
       </label>
+      <label className="text-[8px] flex gap-1 items-center mt-1" title="Durée totale de partie en secondes ; vide = pas de limite">
+        Durée totale (s) :
+        <input className="champ w-20 min-h-10" type="number" min={0} step={60} value={game.global?.dureeTotale ?? ""} disabled={lectureSeule} placeholder="illimitée" aria-label="Durée totale de partie en secondes"
+          onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, global: { ...s.game.global, dureeTotale: e.target.value === "" ? undefined : Number(e.target.value) } } }), "setDureeTotale")} />
+      </label>
+      {game.global?.dureeTotale != null && (
+        <label className="text-[8px] flex gap-1 items-center mt-1">
+          À l'échéance :
+          <select className="champ" value={game.global?.finDeTemps ?? "terminer"} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, global: { ...s.game.global, finDeTemps: e.target.value as "terminer" | "continuer" } } }), "setFinDeTemps")}>
+            <option value="terminer">terminer (fin imposée)</option>
+            <option value="continuer">continuer (poursuite flaggée hors délai)</option>
+          </select>
+        </label>
+      )}
     </div>
   );
 }

@@ -159,6 +159,22 @@ export function validateLayer2(game: Game): LayerReport {
     errors.push(`C2 global.map et global.indoorPlans sont mutuellement exclusifs`);
   }
 
+  // Temps global et fenêtres (change game-temps-global-fenetres) : fenêtre
+  // non vide (apres < avant quand les deux posés), condition fautive nommée.
+  // La faisabilité temporelle complète reste hors socle (pas de solveur
+  // temporel) : l'hypothèse d'environnement favorable couvre les
+  // déverrouillages, jamais le respect des échéances par le joueur.
+  for (const n of game.nodes) {
+    for (const c of n.activation.requires) {
+      if (c.type !== "WINDOW") continue;
+      const apres = (c as { apresSecondes?: unknown }).apresSecondes;
+      const avant = (c as { avantSecondes?: unknown }).avantSecondes;
+      if (typeof apres === "number" && typeof avant === "number" && !(apres < avant)) {
+        errors.push(`C2 ${n.id} : fenêtre WINDOW vide (apresSecondes=${apres} >= avantSecondes=${avant})`);
+      }
+    }
+  }
+
   // Task 4.3: planId validation — tout position.planId doit exister dans indoorPlans.
   const planIds = new Set<string>(
     Array.isArray(gAny?.indoorPlans) ? (gAny.indoorPlans as Array<{id: string}>).map((p) => p.id) : [],

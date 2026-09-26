@@ -48,6 +48,8 @@ export function WidgetRenderer({
   onCommitText,
   onDropBefore,
   renderModule,
+  contextePage,
+  hauteurMaxMedia,
 }: {
   widget: Widget;
   index: number;

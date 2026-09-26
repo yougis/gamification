@@ -20,12 +20,33 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlin.math.abs
 import kotlin.time.Clock
 
-private val ENV = setOf(ConditionType.GEOFENCE, ConditionType.TIMER, ConditionType.PROXIMITY_MASTER)
+private val ENV = setOf(ConditionType.GEOFENCE, ConditionType.TIMER, ConditionType.PROXIMITY_MASTER, ConditionType.WINDOW)
 private val ITEM_CONDITIONS = setOf(ConditionType.ITEM_REQUIRED, ConditionType.ITEM_USED)
 
 // Port Kotlin du cœur TS prouvé (studio/src/game/evaluate.ts + runtime.ts).
 // Sémantique opposable = specs 000/100 : latch, file FIFO à modale unique,
-// pools persistés, WINDOW/CONDITIONAL ignorés gracieusement, HOLD kiosque.
+// pools persistés, CONDITIONAL ignoré gracieusement, HOLD kiosque.
+// WINDOW est évalué (fenêtre relative, révocable même contre latch).
+
+// Fenêtre WINDOW expirée (change game-temps-global-fenetres) : l'échéance
+// fait retomber LOCKED même si latch (révocable, comme GEOFENCE).
+private fun windowExpiree(n: GameNode, sim: Sim): Boolean =
+    n.activation.requires.any { c ->
+        c.type == ConditionType.WINDOW && c.avantSecondes != null && sim.nowMs >= c.avantSecondes * 1000L
+    }
+
+// Durée globale (change game-temps-global-fenetres) : mêmes formules que le
+// Studio et la PWA (elapsed local, GAME_START = 0, reprise exacte).
+fun dureeTotaleMs(game: Game): Long? =
+    game.global.dureeTotale?.takeIf { it >= 0L }?.times(1000L)
+
+fun partieTermineeParTemps(game: Game, nowMs: Long): Boolean {
+    val d = dureeTotaleMs(game) ?: return false
+    return nowMs >= d
+}
+
+fun estHorsDelai(game: Game, nowMs: Long): Boolean =
+    partieTermineeParTemps(game, nowMs) && game.global.finDeTemps != "terminer"
 
 data class DiscoveryState(val discovered: Set<String> = emptySet(), val items: Map<String, Int> = emptyMap(), val variables: Map<String, Any> = emptyMap())
 
@@ -159,6 +180,13 @@ private fun condTrue(
             sim.nowMs >= anchor + (c.delaySeconds ?: 0L) * 1000L
         }
         ConditionType.POOL_DRAWN -> !draws[c.poolNodeId].isNullOrEmpty()
+        ConditionType.WINDOW -> {
+            val apres = c.apresSecondes
+            if (apres != null && sim.nowMs < apres * 1000L) return false
+            val avant = c.avantSecondes
+            if (avant != null && sim.nowMs >= avant * 1000L) return false
+            true
+        }
         ConditionType.ITEM_REQUIRED -> c.itemId?.let { inventory.items.containsKey(it) } ?: false
         ConditionType.ITEM_USED -> c.itemId?.let { inventory.items.containsKey(it) && c.consumed } ?: false
         ConditionType.CODE_INPUT -> c.code != null
@@ -201,7 +229,7 @@ fun evaluate(
         val ok = evalNode(n, sim, draws, completedAt, inventory, discoveryState)
         if (ok) {
             unlocked.add(n.id)
-        } else if (prevUnlocked.contains(n.id) && n.activation.latch) {
+        } else if (prevUnlocked.contains(n.id) && n.activation.latch && !windowExpiree(n, sim)) {
             unlocked.add(n.id)
         }
     }

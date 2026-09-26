@@ -6,6 +6,7 @@ import com.geoplay.shared.model.Condition
 import com.geoplay.shared.model.ConditionType
 import com.geoplay.shared.model.Game
 import com.geoplay.shared.model.GameNode
+import com.geoplay.shared.model.GlobalData
 import com.geoplay.shared.model.ModuleData
 import com.geoplay.shared.model.Operator
 import com.geoplay.shared.model.Predicate
@@ -128,5 +129,34 @@ class GameEngineCommonTest {
         )
         val afterRemove = applyEffects(removeNode, afterGive)
         assertTrue(afterRemove.items.isEmpty())
+    }
+
+    @Test
+    fun windowUnlocksAndRelocksDespiteLatch() {
+        val w = Condition(type = ConditionType.WINDOW, apresSecondes = 120L, avantSecondes = 600L)
+        val game = Game(gameId = "test", nodes = listOf(node("f", requires = listOf(w), latch = true)))
+        val early = evaluate(game, Sim(nowMs = 0L), emptyMap(), emptyMap(), emptyMap(), emptySet())
+        assertTrue(early.unlocked.isEmpty())
+        val open = evaluate(game, Sim(nowMs = 300_000L), emptyMap(), emptyMap(), emptyMap(), emptySet())
+        assertEquals(listOf("f"), open.unlocked)
+        // Échéance : relock même avec latch:true (pas de maintien).
+        val expired = evaluate(game, Sim(nowMs = 600_000L), emptyMap(), emptyMap(), emptyMap(), setOf("f"))
+        assertTrue(expired.unlocked.isEmpty())
+    }
+
+    @Test
+    fun dureeTotaleExpiryAndOvertime() {
+        val game = Game(
+            gameId = "test",
+            global = GlobalData(dureeTotale = 3600L, finDeTemps = "continuer"),
+            nodes = listOf(node("a")),
+        )
+        assertEquals(3_600_000L, dureeTotaleMs(game))
+        assertTrue(!partieTermineeParTemps(game, 1000L))
+        assertTrue(partieTermineeParTemps(game, 3_600_000L))
+        assertTrue(estHorsDelai(game, 3_600_000L))
+        val sansLimite = Game(gameId = "t", nodes = listOf(node("a")))
+        assertEquals(null, dureeTotaleMs(sansLimite))
+        assertTrue(!partieTermineeParTemps(sansLimite, Long.MAX_VALUE))
     }
 }

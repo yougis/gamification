@@ -28,6 +28,8 @@ export function ZoneRenderer({
   onCommitText,
   onMoveWidgetAcross,
   renderModule,
+  contextePage,
+  hauteurMaxMedia,
 }: {
   zone: ZoneContent;
   zoneId: ZoneId;

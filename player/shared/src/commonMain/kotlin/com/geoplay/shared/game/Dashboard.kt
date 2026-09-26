@@ -59,3 +59,16 @@ fun timerRemainingMs(
     }
     return null
 }
+
+// Verrouillage à venir d'un POI (change game-temps-global-fenetres) :
+// première borne `avantSecondes` non encore atteinte → ms restantes.
+// Aucune borne ou toutes atteintes → null. Zéro nouvelle donnée auteur.
+fun verrouillageDansMs(node: GameNode, nowMs: Long): Long? {
+    for (c in node.activation.requires) {
+        if (c.type != ConditionType.WINDOW) continue
+        val avant = c.avantSecondes ?: continue
+        val restant = avant * 1000L - nowMs
+        if (restant > 0L) return restant
+    }
+    return null
+}

@@ -1,6 +1,7 @@
 package com.geoplay.shared.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -30,6 +31,7 @@ import com.geoplay.shared.ui.theme.GeoPlayTheme
 import com.geoplay.shared.ui.toolbox.ToolboxDialog
 import com.geoplay.shared.ui.toolbox.ToolboxIconButton
 import com.geoplay.shared.game.toolboxIconVisible
+import com.geoplay.shared.game.noeudPrincipal
 import com.geoplay.shared.game.showHomeDashboard
 import com.geoplay.shared.ui.home.HomeDashboard
 
@@ -59,6 +61,16 @@ fun GeoPlayApp(
     countdownsMs: Map<String, Long?> = emptyMap(),
     queueHeadId: String? = null,
     onOpenNode: ((String) -> Unit)? = null,
+    // Temps global (change game-temps-global-fenetres) : ms restantes de
+    // partie, verrouillages par POI, flag hors délai. Défauts = tableau
+    // historique inchangé.
+    tempsRestantMs: Long? = null,
+    verrouillagesMs: Map<String, Long?> = emptyMap(),
+    horsDelai: Boolean = false,
+    // File d'éligibilité (change player-immersion-parcours) : sert la règle
+    // d'arrivée et l'avance auto. Défauts = pas d'ouverture auto (repli liste).
+    unlocked: List<String> = emptyList(),
+    queue: List<String> = emptyList(),
     // Contenu d'image (change parite-player) : le shell résout `src`
     // vers ses assets du pack. Défaut = rien (jamais de réseau).
     imageContent: @Composable (src: String, alt: String?) -> Unit = { _, _ -> },
@@ -82,6 +94,36 @@ fun GeoPlayApp(
         if (game.nodes.any { it.id == id }) {
             selectedNodeId = id
             navController.navigate(GeoPlayRoutes.NODE)
+        }
+    }
+    // Avance auto (change player-immersion-parcours) : après complétion
+    // enregistrée (persistance par le shell via les callbacks), naviguer
+    // vers le premier éligible non terminé ; sinon tableau (HOME) ou liste
+    // (repli, déjà affichés). Abandon/retour n'avance jamais. Aucune
+    // transition moteur, aucun event : seule la navigation bouge.
+    var advanceFrom by remember { mutableStateOf<String?>(null) }
+    fun completeAndAdvance(id: String, finish: () -> Unit) {
+        finish()
+        navController.popBackStack()
+        advanceFrom = id
+    }
+    LaunchedEffect(states, advanceFrom) {
+        val from = advanceFrom ?: return@LaunchedEffect
+        // Attendre l'état frais : le nœud doit être COMPLETED.
+        if (states[from] != NodeState.COMPLETED) return@LaunchedEffect
+        advanceFrom = null
+        val completed = states.filterValues { it == NodeState.COMPLETED }.keys
+        noeudPrincipal(game, unlocked, completed, queue)?.let { openNode(it) }
+    }
+    // Arrivée immersive (change player-immersion-parcours) : une seule fois
+    // par jeu, ouvrir l'écran du nœud principal. Avec HOME : le tableau
+    // pilote (pas d'ouverture auto). Sans éligible : repli liste.
+    // Présentation d'éligible uniquement : aucune transition, aucun event.
+    LaunchedEffect(game) {
+        val activeId = states.entries.find { it.value == NodeState.ACTIVE }?.key
+        if (!showHomeDashboard(game, activeId)) {
+            val completed = states.filterValues { it == NodeState.COMPLETED }.keys
+            noeudPrincipal(game, unlocked, completed, queue)?.let { openNode(it) }
         }
     }
     GeoPlayTheme {
@@ -132,6 +174,9 @@ fun GeoPlayApp(
                             toolboxOpen = true
                             onInventoryOpen()
                         },
+                        tempsRestantMs = tempsRestantMs,
+                        verrouillagesMs = verrouillagesMs,
+                        horsDelai = horsDelai,
                     )
                 } else {
                 GameGraphScreen(
@@ -155,8 +200,7 @@ fun GeoPlayApp(
                                 QuizScreen(
                                     questions = parseQuizQuestions(node.module.data),
                                     onComplete = { score ->
-                                        onQuizComplete(nodeId, score)
-                                        navController.popBackStack()
+                                        completeAndAdvance(nodeId) { onQuizComplete(nodeId, score) }
                                     },
                                 )
                             } else {
@@ -168,8 +212,7 @@ fun GeoPlayApp(
                                 ) {
                                     Text("Module ${node.module.type} : rendu joueur bientôt disponible.")
                                     Button(onClick = {
-                                        onModuleComplete(nodeId)
-                                        navController.popBackStack()
+                                        completeAndAdvance(nodeId) { onModuleComplete(nodeId) }
                                     }) { Text("Terminer") }
                                     Button(onClick = { navController.popBackStack() }) { Text("Retour") }
                                 }
@@ -181,8 +224,7 @@ fun GeoPlayApp(
                         // Terminer complète le nœud comme le bouton du slot.
                         sousPages = true,
                         onTerminer = {
-                            onModuleComplete(nodeId)
-                            navController.popBackStack()
+                            completeAndAdvance(nodeId) { onModuleComplete(nodeId) }
                         },
                     )
                 }

@@ -23,6 +23,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.ComposeViewport
 import com.geoplay.shared.game.Sim
 import com.geoplay.shared.game.applyEffects
+import com.geoplay.shared.game.dureeTotaleMs
+import com.geoplay.shared.game.estHorsDelai
+import com.geoplay.shared.game.partieTermineeParTemps
+import com.geoplay.shared.game.verrouillageDansMs
 import com.geoplay.shared.game.InventoryState
 import com.geoplay.shared.game.timerRemainingMs
 import com.geoplay.shared.game.drawPool
@@ -526,6 +530,7 @@ private fun RunScreen(game: Game, avertissements: List<String>, onExit: () -> Un
     var wallStart by remember(game.gameId) { mutableStateOf(0L) }
     var compassOk by remember { mutableStateOf<Boolean?>(null) }
     var finished by remember(game.gameId) { mutableStateOf<String?>(null) }
+    var finTemps by remember(game.gameId) { mutableStateOf(false) }
     // Inventaire : effets appliqués à la complétion via le moteur partagé.
     var inventory by remember(game.gameId) { mutableStateOf(resumed?.inventory ?: emptyMap()) }
     // Triche animateur (change parite-player) : simulation locale, repliée
@@ -547,6 +552,20 @@ private fun RunScreen(game: Game, avertissements: List<String>, onExit: () -> Un
         }
     }
     val nowMs = baseElapsed + if (wallStart == 0L || tickWall == 0L) 0L else tickWall - wallStart
+    // Durée globale (change game-temps-global-fenetres) : échéance évaluée
+    // sur nowMs (même formule que Studio et natif) ; fin imposée ou
+    // poursuite flaggée selon finDeTemps ; reprise exacte (tout est dérivé).
+    val expire = partieTermineeParTemps(game, nowMs)
+    val horsDelai = estHorsDelai(game, nowMs)
+    LaunchedEffect(expire) {
+        if (expire && game.global.finDeTemps == "terminer") finTemps = true
+    }
+    // Complétions hors délai (dérivées, survivent à la reprise) : flaggées
+    // comme la triche, sans type d'event nouveau.
+    val idsHorsDelai = remember(completedAt, game) {
+        val d = dureeTotaleMs(game) ?: return@remember emptySet()
+        completedAt.filterValues { it >= d }.keys
+    }
 
     // GPS réel : présence par distance, dwell suivi dans le temps.
     // Position simulée (triche) : remplace le fix quand renseignée.
@@ -701,6 +720,14 @@ private fun RunScreen(game: Game, avertissements: List<String>, onExit: () -> Un
                 Text("Activer la boussole")
             }
         }
+        if (horsDelai || idsHorsDelai.isNotEmpty()) {
+            Text(
+                text = "Hors délai" + (if (idsHorsDelai.isNotEmpty()) " : ${idsHorsDelai.joinToString(", ")}" else " : poursuite flaggée"),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            )
+        }
         if (cheatedIds.isNotEmpty() || cheatBypass || simFix != null) {
             Text(
                 text = "SIMULÉ" + (if (cheatedIds.isNotEmpty()) " : ${cheatedIds.joinToString(", ")}" else " : triche active"),
@@ -746,9 +773,12 @@ private fun RunScreen(game: Game, avertissements: List<String>, onExit: () -> Un
                 }
             }
         }
-        if (finished != null) {
+        if (finished != null || finTemps) {
             Column(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Partie terminée — bravo !", style = MaterialTheme.typography.headlineSmall)
+                Text(
+                    if (finTemps && finished == null) "Temps écoulé — partie terminée." else "Partie terminée — bravo !",
+                    style = MaterialTheme.typography.headlineSmall,
+                )
                 Button(onClick = {
                     WebStorage.remove(sessionKey(game.gameId))
                     onExit()
@@ -770,6 +800,15 @@ private fun RunScreen(game: Game, avertissements: List<String>, onExit: () -> Un
                     n.id to timerRemainingMs(n, completedAt, nowMs)
                 },
                 queueHeadId = active ?: queue.firstOrNull(),
+                // Tableau de bord temps global (change game-temps-global-fenetres).
+                tempsRestantMs = dureeTotaleMs(game)?.let { (it - nowMs).coerceAtLeast(0L) },
+                verrouillagesMs = game.nodes.associate { n ->
+                    n.id to verrouillageDansMs(n, nowMs)
+                },
+                horsDelai = horsDelai,
+                // Arrivée immersive : file d'éligibilité pour la règle.
+                unlocked = eval.unlocked,
+                queue = queue,
             )
         }
     }

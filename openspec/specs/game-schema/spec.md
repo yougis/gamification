@@ -13,9 +13,12 @@ Le schéma SHALL définir la racine : `gameId` (string non vide), `schemaVersion
 `secondaryColor`, `fontFamily`, `logo` optionnel), `global` (carte, trace
 GPX display, rayon GPS global, `holdMode` enum `"none"|"guidedAccess"|"screenPinning"|"lockTask"`,
 `holdExit` objet avec `method`, `navigationModel`, `presentation`, `experienceStyle` (objet),
-`gameMode`, `difficulty`). `global.preset` est supprimé du schéma : un jeu le
-contenant est rejeté en couche 1. `experienceStyle`, `gameMode` et `difficulty`
-sont optionnels : un jeu sans ces champs reste valide. `additionalProperties:false` à chaque niveau.
+`gameMode`, `difficulty`, `dureeTotale` (integer ≥ 0, secondes de partie, optionnel),
+`finDeTemps` (enum `"terminer"|"continuer"`, requis si `dureeTotale` posée via `if/then`)).
+`global.preset` est supprimé du schéma : un jeu le
+contenant est rejeté en couche 1. `experienceStyle`, `gameMode`, `difficulty`,
+`dureeTotale` sont optionnels : un jeu sans ces champs reste valide (pas de limite
+de temps). `additionalProperties:false` à chaque niveau.
 Le `schemaVersion` du Jeu SHALL être vérifié contre le `minEngineVersion` à
 l'ouverture : moteur trop vieux = refus explicite, jamais lecture partielle.
 `holdMode` et `holdExit` ne sont jamais une condition de graphe : ce sont des
@@ -59,6 +62,24 @@ optionnel. Si `holdMode` vaut `"guidedAccess"`, `"screenPinning"` ou `"lockTask"
 - **GIVEN** un jeu avec `global.preset: "BASIC"`
 - **WHEN** la validation Draft-07 tourne
 - **THEN** le jeu est rejeté : `global.preset` est supprimé du schema
+
+#### Scenario: Durée globale acceptée
+
+- **GIVEN** un jeu avec `global.dureeTotale: 3600` et `global.finDeTemps: "terminer"`
+- **WHEN** la validation Draft-07 tourne
+- **THEN** le jeu est accepté
+
+#### Scenario: Durée sans comportement rejetée
+
+- **GIVEN** un jeu avec `global.dureeTotale: 3600` et sans `finDeTemps`
+- **WHEN** la validation Draft-07 tourne
+- **THEN** le jeu est rejeté (comportement d'échéance requis via `if/then`)
+
+#### Scenario: Jeu sans durée inchangé
+
+- **GIVEN** un jeu sans `global.dureeTotale`
+- **WHEN** la validation Draft-07 tourne puis le moteur joue
+- **THEN** le jeu est accepté et aucune limite de temps ne s'applique
 
 ### Requirement: Objet Noeud complet
 

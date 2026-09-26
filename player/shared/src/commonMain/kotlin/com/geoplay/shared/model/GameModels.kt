@@ -123,6 +123,11 @@ data class GlobalData(
     val experienceStyle: ExperienceStyle? = null,
     val gameMode: GameMode = GameMode.NORMAL,
     val difficulty: Difficulty = Difficulty.FAMILLE,
+    // Temps global (change game-temps-global-fenetres) : durée de partie en
+    // secondes + comportement à l'échéance ("terminer"|"continuer").
+    // Absents = pas de limite (rétrocompatible).
+    val dureeTotale: Long? = null,
+    val finDeTemps: String? = null,
     // Template d'écran par défaut (change parite-player, miroir Draft-07) :
     // absent = écran par défaut. Jamais requis (compat ascendante).
     val screen: ScreenDefinition? = null
@@ -297,7 +302,11 @@ data class Condition(
     val itemId: String? = null,
     val consumed: Boolean = true,
     val code: String? = null,
-    val clueId: String? = null
+    val clueId: String? = null,
+    // Fenêtre temporelle relative (change game-temps-global-fenetres) :
+    // secondes écoulées depuis GAME_START. Au moins une borne posée (C1).
+    val apresSecondes: Long? = null,
+    val avantSecondes: Long? = null
 )
 
 @Serializable

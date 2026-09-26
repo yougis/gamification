@@ -123,10 +123,17 @@ Le mode triche (bypass GEOFENCE, forceDraw, auto-validation) SHALL fonctionner a
 
 Le runtime SHALL adapter le rendu du Player selon la configuration `global.presentation`. Les modes de présentation supportés : `MAP`, `LIST`, `STORY`, `CLUE`, `TOOLBOX`, `TIMELINE`, `HOME`. Le runtime SHALL pouvoir combiner plusieurs présentations simultanément.
 
+Quand `HOME` est présent, le runtime SHALL afficher une entrée « Accueil » permanente (tab/barre) menant au tableau de bord ; le contenu affiché SHALL être identique au tableau par défaut (temps écoulé, comptes à rebours par POI, états, proposition d'ouverture, entrée inventaire selon sa règle). Naviguer vers ou depuis l'Accueil SHALL ne produire ni transition d'état ni event.
+
 #### Scenario: Présentation combinée
 - **GIVEN** un jeu avec `presentation: ["MAP", "TOOLBOX", "CLUE"]`
 - **WHEN** le joueur ouvre le jeu
 - **THEN** la carte, la boîte à outils et la zone d'indices s'affichent simultanément
+
+#### Scenario: Onglet Accueil permanent
+- **GIVEN** un jeu avec `presentation: ["HOME", "MAP"]`
+- **WHEN** le joueur navigue entre la carte et l'onglet « Accueil »
+- **THEN** chaque vue s'affiche avec son contenu (carte d'un côté, tableau de l'autre), sans transition d'état ni event
 
 ### Requirement: Tableau de bord entre les étapes
 
@@ -224,3 +231,69 @@ La coquille PWA SHALL offrir un panneau triche regroupant bypass GEOFENCE, `forc
 
 - **WHEN** l'animateur consulte le journal après un `forceDraw`
 - **THEN** l'event porte le badge triche et est distinguable des events réels
+
+### Requirement: Arrivée immersive sur le nœud à jouer
+
+Au chargement d'une partie (pack importé, nouvelle session ou reprise), le player SHALL ouvrir directement l'écran du nœud à jouer au lieu de la liste, selon la règle : si `HOME` est présent dans `presentation`, le tableau de bord s'affiche et pilote (sa proposition d'ouverture existante fait foi) ; sinon, le player ouvre le premier nœud non terminé sans parent — aucune dépendance `NODE_COMPLETED`/`POOL_DRAWN` entrante — avec préférence au nœud nommé `start` quand il est éligible. Si aucun nœud n'est éligible, le player affiche la liste actuelle (repli inchangé). L'ouverture SHALL être une présentation d'éligible existant : aucune transition d'état, aucun event de progression.
+
+#### Scenario: Arrivée avec HOME
+
+- **GIVEN** un jeu avec `presentation: ["HOME", "TOOLBOX"]` et `baker` en tête de file
+- **WHEN** le joueur charge le pack
+- **THEN** le tableau de bord s'affiche avec « Ouvrir : baker », jamais la liste brute
+
+#### Scenario: Arrivée sans HOME sur le start
+
+- **GIVEN** un jeu sans `HOME` dont `start` (sans parent) est éligible et non terminé
+- **WHEN** le joueur charge le pack
+- **THEN** l'écran de `start` s'ouvre directement
+
+#### Scenario: Arrivée sans éligible
+
+- **GIVEN** un jeu sans `HOME` et sans nœud éligible (ex. attente géorepérage)
+- **WHEN** le joueur charge le pack
+- **THEN** la liste actuelle s'affiche (repli inchangé), sans erreur
+
+#### Scenario: Reprise au milieu du parcours
+
+- **GIVEN** une reprise (`sessionId` existant) avec `scotland` non terminé et éligible
+- **WHEN** le joueur rouvre la partie
+- **THEN** le player ouvre l'écran de `scotland` (progression relue, pas le début)
+
+### Requirement: Enchaînement des écrans après validation
+
+Valider une étape (module `onComplete`, Terminer, Abandonner exclu) SHALL avancer automatiquement vers l'écran éligible suivant de la file FIFO : même file, aucune transition ajoutée, aucun event ajouté. À défaut d'éligible, le player revient au tableau de bord (si `HOME`) ou à la liste (repli). Si un nœud `isEnding` passe `COMPLETED`, l'écran de fin existant s'affiche.
+
+#### Scenario: Validation enchaîne
+
+- **GIVEN** le joueur validant `baker` avec `scotland` éligible ensuite
+- **WHEN** la complétion est enregistrée
+- **THEN** l'écran de `scotland` s'ouvre sans repasser par la liste
+
+#### Scenario: Fin de parcours
+
+- **GIVEN** le joueur validant le nœud `fin` (`isEnding`)
+- **WHEN** la complétion est enregistrée
+- **THEN** l'écran de fin s'affiche (comportement existant, non modifié)
+
+### Requirement: Temps global et verrouillages dans le tableau de bord
+
+Quand `global.dureeTotale` est posée et que le tableau de bord s'affiche, le tableau SHALL afficher en tête le temps restant de partie (`dureeTotale − elapsed`, jamais négatif). Pour chaque POI porteur d'une condition `WINDOW` avec `avantSecondes` non encore atteint, le tableau SHALL afficher « se verrouille dans … » à côté du POI. En mode `finDeTemps: "continuer"` après échéance, le tableau SHALL signaler « hors délai » ; en mode `"terminer"`, la partie est finie (le tableau ne s'affiche plus). Aucune donnée nouvelle : tout est calculé depuis `dureeTotale` et les `WINDOW` existants.
+
+#### Scenario: Rebours global affiché
+
+- **GIVEN** `dureeTotale: 3600` et 600s écoulées, tableau affiché
+- **WHEN** le joueur consulte le tableau
+- **THEN** la tête affiche « 50:00 restantes »
+
+#### Scenario: Verrouillage annoncé
+
+- **GIVEN** un POI avec `WINDOW {avantSecondes: 900}` et 600s écoulées
+- **WHEN** le joueur consulte le tableau
+- **THEN** le POI affiche « se verrouille dans 05:00 » à côté de son état
+
+#### Scenario: Hors délai signalé sans bloquer
+
+- **GIVEN** `finDeTemps: "continuer"`, échéance dépassée
+- **WHEN** le joueur consulte le tableau
+- **THEN** « hors délai » est signalé et le jeu continue normalement

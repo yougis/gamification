@@ -51,6 +51,8 @@ Les modes de présentation SHALL inclure :
 
 Un jeu peut combiner plusieurs présentations simultanément (ex. `MAP + TOOLBOX + CLUE` pour un escape game géolocalisé, `HOME + MAP + TOOLBOX` pour un jeu d'orientation avec accueil joueur).
 
+Quand `presentation` inclut `HOME`, le player SHALL exposer en permanence une entrée « Accueil » (tab/barre) affichant le tableau de bord, y compris quand une autre vue est active ; l'affichage par défaut (tableau si aucune modale ACTIVE) est inchangé. Aller vers ou quitter l'Accueil SHALL ne produire ni transition d'état ni event de progression. Les vues restent exclusives (pas de superposition).
+
 #### Scenario: Présentation MAP pour BASIC
 - **GIVEN** un jeu BASIC avec `presentation: ["MAP"]`
 - **WHEN** le joueur ouvre l'application
@@ -70,6 +72,11 @@ Un jeu peut combiner plusieurs présentations simultanément (ex. `MAP + TOOLBOX
 - **GIVEN** un jeu avec `presentation: ["HOME", "TOOLBOX"]`
 - **WHEN** le joueur est entre deux étapes (aucune modale ACTIVE)
 - **THEN** le tableau de bord s'affiche par défaut avec le temps écoulé, les POI et l'étape à ouvrir
+
+#### Scenario: Retour à l'Accueil depuis une autre vue
+- **GIVEN** un jeu avec `presentation: ["HOME", "MAP"]`, joueur sur la carte avec une modale ACTIVE fermée
+- **WHEN** le joueur touche l'onglet « Accueil »
+- **THEN** le tableau de bord s'affiche (temps, POI, étape à ouvrir), sans transition d'état ni event
 
 ### Requirement: Préfixes de référence fonctionnels
 

@@ -42,10 +42,18 @@ fun HomeDashboard(
     onOpen: (String) -> Unit,
     onInventoryOpen: () -> Unit,
     modifier: Modifier = Modifier,
+    // Temps global (change game-temps-global-fenetres) : ms restantes de
+    // partie (null = pas de limite), verrouillages par POI, flag hors délai.
+    // Défauts = tableau historique inchangé.
+    tempsRestantMs: Long? = null,
+    verrouillagesMs: Map<String, Long?> = emptyMap(),
+    horsDelai: Boolean = false,
 ) {
     Column(modifier = modifier.padding(16.dp)) {
         Text(
-            text = "⏱ ${formatDuration(elapsedMs)}",
+            text = "⏱ ${formatDuration(elapsedMs)}" +
+                (if (tempsRestantMs != null) " — reste ${formatDuration(tempsRestantMs)}" else "") +
+                (if (horsDelai) " — HORS DÉLAI" else ""),
             style = MaterialTheme.typography.headlineSmall,
         )
         if (showInventoryEntry) {
@@ -76,6 +84,14 @@ fun HomeDashboard(
                             text = "dans ${formatDuration(remaining)}",
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                    val verrou = verrouillagesMs[node.id]
+                    if (verrou != null) {
+                        Text(
+                            text = "se verrouille dans ${formatDuration(verrou)}",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.error,
                         )
                     }
                 }

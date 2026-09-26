@@ -48,7 +48,35 @@ export function drawPool(pool: GameNode, seedStr: string, forced?: string[]): st
   return out;
 }
 
-const ENV = new Set(["GEOFENCE", "TIMER", "PROXIMITY_MASTER"]);
+const ENV = new Set(["GEOFENCE", "TIMER", "PROXIMITY_MASTER", "WINDOW"]);
+
+// Fenêtre WINDOW expirée (change game-temps-global-fenetres) : l'échéance
+// fait retomber LOCKED même si latch:true (révocable, comme GEOFENCE).
+function windowExpire(nodeId: string, n: GameNode, sim: Sim): boolean {
+  void nodeId;
+  return n.activation.requires.some(
+    (c) =>
+      c.type === "WINDOW" &&
+      typeof c.avantSecondes === "number" &&
+      sim.nowMs >= c.avantSecondes * 1000,
+  );
+}
+
+// Durée globale (change game-temps-global-fenetres) : mêmes formules que les
+// moteurs KMP/PWA (elapsed local, GAME_START = 0, reprise exacte).
+export function dureeTotaleMs(game: Game): number | null {
+  const d = game.global?.dureeTotale;
+  return typeof d === "number" && d >= 0 ? d * 1000 : null;
+}
+
+export function partieTermineeParTemps(game: Game, nowMs: number): boolean {
+  const d = dureeTotaleMs(game);
+  return d != null && nowMs >= d;
+}
+
+export function estHorsDelai(game: Game, nowMs: number): boolean {
+  return partieTermineeParTemps(game, nowMs) && game.global?.finDeTemps !== "terminer";
+}
 
 export function condTrue(
   game: Game,
@@ -82,6 +110,11 @@ export function condTrue(
     case "TIMER": {
       const anchor = c.anchor === "NODE_COMPLETION" ? (completedAt.get(c.anchorNodeId!) ?? Infinity) : 0;
       return sim.nowMs >= anchor + (c.delaySeconds ?? 0) * 1000;
+    }
+    case "WINDOW": {
+      if (typeof c.apresSecondes === "number" && sim.nowMs < c.apresSecondes * 1000) return false;
+      if (typeof c.avantSecondes === "number" && sim.nowMs >= c.avantSecondes * 1000) return false;
+      return true;
     }
     case "POOL_DRAWN":
       return (draws[c.poolNodeId!] ?? []).length > 0;
@@ -125,7 +158,7 @@ export function evaluate(
     const ok = evalNode(game, n, sim, draws, completedAt, completedCount);
     if (ok) {
       unlocked.push(n.id);
-    } else if (prevUnlocked.has(n.id) && (n.activation.latch ?? true)) {
+    } else if (prevUnlocked.has(n.id) && (n.activation.latch ?? true) && !windowExpire(n.id, n, sim)) {
       unlocked.push(n.id); // latch : reste eligible (sinon relock implicite)
     }
   }

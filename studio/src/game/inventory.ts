@@ -101,3 +101,27 @@ export function timerRemainingMs(
   }
   return null;
 }
+
+// Temps global (change game-temps-global-fenetres, miroir du shared Kotlin) :
+// ms restantes de partie (null = pas de limite), verrouillage à venir par
+// POI (première borne `avantSecondes` non atteinte), flag hors délai.
+export function dureeRestanteMs(game: Game, nowMs: number): number | null {
+  const d = game.global?.dureeTotale;
+  if (typeof d !== "number" || d < 0) return null;
+  return Math.max(0, d * 1000 - nowMs);
+}
+
+export function estHorsDelaiTs(game: Game, nowMs: number): boolean {
+  const d = game.global?.dureeTotale;
+  return typeof d === "number" && d >= 0 && nowMs >= d * 1000 && game.global?.finDeTemps !== "terminer";
+}
+
+export function verrouillageDansMs(node: GameNode, nowMs: number): number | null {
+  for (const c of node.activation.requires) {
+    if (c.type !== "WINDOW") continue;
+    if (typeof c.avantSecondes !== "number") continue;
+    const restant = c.avantSecondes * 1000 - nowMs;
+    if (restant > 0) return restant;
+  }
+  return null;
+}

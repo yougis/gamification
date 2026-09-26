@@ -92,6 +92,11 @@
           "type": "string",
           "enum": ["ENFANT", "FAMILLE", "EXPERT"]
         },
+        "dureeTotale": {"type": "integer", "minimum": 0},
+        "finDeTemps": {
+          "type": "string",
+          "enum": ["terminer", "continuer"]
+        },
         "indoorPlans": {
           "type": "array",
           "items": {
@@ -142,7 +147,8 @@
       },
       "allOf": [
         {"if": {"required": ["holdMode"], "properties": {"holdMode": {"enum": ["guidedAccess", "screenPinning", "lockTask"]}}}, "then": {"required": ["holdExit"]}},
-        {"if": {"required": ["tileStrategy"], "properties": {"tileStrategy": {"const": "radius"}}}, "then": {"required": ["tileRadiusMeters"]}}
+        {"if": {"required": ["tileStrategy"], "properties": {"tileStrategy": {"const": "radius"}}}, "then": {"required": ["tileRadiusMeters"]}},
+        {"if": {"required": ["dureeTotale"]}, "then": {"required": ["finDeTemps"]}}
       ]
     },
     "nodes": {
@@ -323,7 +329,16 @@
         },
         {
           "required": ["type"],
-          "properties": {"type": {"const": "WINDOW"}}
+          "additionalProperties": false,
+          "properties": {
+            "type": {"const": "WINDOW"},
+            "apresSecondes": {"type": "number", "minimum": 0},
+            "avantSecondes": {"type": "number", "minimum": 0}
+          },
+          "anyOf": [
+            {"required": ["apresSecondes"]},
+            {"required": ["avantSecondes"]}
+          ]
         },
         {
           "required": ["type", "itemId"],
