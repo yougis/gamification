@@ -36,6 +36,7 @@ export type IconName =
   | "engrenage"
   | "soleil"
   | "lune"
+  | "accueil"
   | "chevron-g"
   | "chevron-d"
   | "chevron-h"
@@ -265,6 +266,13 @@ const PATHS: Record<IconName, React.ReactNode> = {
   ),
   lune: (
     <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z" />
+  ),
+  // Écran global Accueil (change studio-home-apercu-simu) : maison, un trait.
+  accueil: (
+    <>
+      <path d="M3 11.5 12 3.5 21 11.5" />
+      <path d="M5.5 10v10.5h13V10" />
+    </>
   ),
   // Viewports d'aperçu (change studio-lot-correctifs) : écran vertical /
   // horizontal × petit (téléphone) / grand (tablette), un seul trait.

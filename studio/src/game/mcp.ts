@@ -362,8 +362,7 @@ export function moveScreenWidget(game: Game, nodeId: string, zoneId: ZoneId, ind
 // Deplacement inter-zones en une seule operation (change studio-screen-editor,
 // design D2) : un seul pas d'undo, contrairement a remove + add separes.
 // `toIndex` = position d'insertion (defaut : fin de la zone cible).
-export function moveScreenWidgetAcross(
-  game: Game,
+export function moveScreenWidgetAcross(  game: Game,
   nodeId: string,
   fromZone: ZoneId,
   fromIndex: number,
@@ -394,6 +393,98 @@ export function moveScreenWidgetAcross(
       return { ...n, screen: { ...(n.screen ?? {}), zones } };
     }),
   };
+}
+
+// --- Écran global (change studio-home-wysiwyg) ---
+// Variantes des ops d'écran ci-dessus appliquées à `global.screen` au lieu
+// d'un nœud. Les ops nœud restent inchangées ; la sémantique est calquée
+// (mêmes cas limites : `content` insuppressible, index bornés, patches
+// fusionnés). Chaque op = un pas d'undo via `editGame`.
+type GlobalScreen = ScreenDefinition;
+
+function lireEcranGlobal(game: Game): GlobalScreen {
+  return ((game.global ?? {}) as { screen?: ScreenDefinition }).screen ?? {};
+}
+
+export function setGlobalScreen(game: Game, screen: ScreenDefinition): Game {
+  return { ...game, global: { ...(game.global ?? {}), screen } };
+}
+
+export function setGlobalBackground(game: Game, background: ScreenDefinition["background"]): Game {
+  return setGlobalScreen(game, { ...lireEcranGlobal(game), background });
+}
+
+export function patchGlobalZone(game: Game, zoneId: ZoneId, patch: Partial<ZoneContent>): Game {
+  const s = lireEcranGlobal(game);
+  const zones = { ...(s.zones ?? {}), [zoneId]: { ...(s.zones?.[zoneId] ?? {}), ...patch } };
+  return setGlobalScreen(game, { ...s, zones });
+}
+
+export function removeGlobalZone(game: Game, zoneId: ZoneId): Game {
+  if (zoneId === "content") return game;
+  const s = lireEcranGlobal(game);
+  if (!s.zones?.[zoneId]) return game;
+  const zones = { ...(s.zones ?? {}) };
+  delete zones[zoneId];
+  return setGlobalScreen(game, { ...s, zones });
+}
+
+function mapGlobalWidgets(game: Game, zoneId: ZoneId, fn: (widgets: Widget[]) => Widget[]): Game {
+  const s = lireEcranGlobal(game);
+  const zone = s.zones?.[zoneId] ?? {};
+  const zones = { ...(s.zones ?? {}), [zoneId]: { ...zone, widgets: fn(zone.widgets ?? []) } };
+  return setGlobalScreen(game, { ...s, zones });
+}
+
+export function addGlobalWidget(game: Game, zoneId: ZoneId, widget: Widget): Game {
+  return mapGlobalWidgets(game, zoneId, (ws) => [...ws, widget]);
+}
+
+export function setGlobalWidget(game: Game, zoneId: ZoneId, index: number, widget: Widget): Game {
+  return mapGlobalWidgets(game, zoneId, (ws) => ws.map((w, i) => (i === index ? widget : w)));
+}
+
+export function removeGlobalWidget(game: Game, zoneId: ZoneId, index: number): Game {
+  return mapGlobalWidgets(game, zoneId, (ws) => ws.filter((_, i) => i !== index));
+}
+
+export function moveGlobalWidget(game: Game, zoneId: ZoneId, index: number, dir: -1 | 1): Game {
+  return mapGlobalWidgets(game, zoneId, (ws) => {
+    const j = index + dir;
+    if (index < 0 || index >= ws.length || j < 0 || j >= ws.length) return ws;
+    const next = [...ws];
+    [next[index], next[j]] = [next[j], next[index]];
+    return next;
+  });
+}
+
+export function moveGlobalWidgetAcross(
+  game: Game,
+  fromZone: ZoneId,
+  fromIndex: number,
+  toZone: ZoneId,
+  toIndex?: number | "end",
+): Game {
+  const s = lireEcranGlobal(game);
+  const from = [...(s.zones?.[fromZone]?.widgets ?? [])];
+  if (fromIndex < 0 || fromIndex >= from.length) return game;
+  const [deplace] = from.splice(fromIndex, 1);
+  let zones: NonNullable<ScreenDefinition["zones"]>;
+  if (fromZone === toZone) {
+    const at = toIndex === "end" || toIndex === undefined ? from.length : toIndex;
+    from.splice(Math.max(0, Math.min(at, from.length)), 0, deplace);
+    zones = { ...(s.zones ?? {}), [fromZone]: { ...(s.zones?.[fromZone] ?? {}), widgets: from } };
+  } else {
+    const to = [...(s.zones?.[toZone]?.widgets ?? [])];
+    const at = toIndex === "end" || toIndex === undefined ? to.length : toIndex;
+    to.splice(Math.max(0, Math.min(at, to.length)), 0, deplace);
+    zones = {
+      ...(s.zones ?? {}),
+      [fromZone]: { ...(s.zones?.[fromZone] ?? {}), widgets: from },
+      [toZone]: { ...(s.zones?.[toZone] ?? {}), widgets: to },
+    };
+  }
+  return setGlobalScreen(game, { ...s, zones });
 }
 
 // Surcharge des styles de l'ecran courant (fusion, change studio-screen-editor).

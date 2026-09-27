@@ -30,8 +30,8 @@ function champsCustoms(customs: ModuleScreenPlugin["customizableStyles"]): (keyo
 }
 
 /** Badge du gabarit courant pour la section « Modèle ». */
-function etapeLayoutBadge(node: GameNode): React.ReactNode {
-  const layout = node.screen?.layout;
+function etapeLayoutBadge(node?: GameNode): React.ReactNode {
+  const layout = node?.screen?.layout;
   return layout ? <span className="puce">{layout}</span> : undefined;
 }
 
@@ -95,7 +95,9 @@ export function PropertiesPanel({
   onPatchGlobalStyles,
   onPatchScreenStyles,
 }: {
-  node: GameNode;
+  // Écran global (change studio-home-wysiwyg) : sans nœud, les sections
+  // nœud/module sont masquées, le reste est identique.
+  node?: GameNode;
   selectedZone: ZoneId | null;
   zone: ZoneContent | null;
   selectedWidgetIndex: number | null;
@@ -142,7 +144,7 @@ export function PropertiesPanel({
       const champs = champsCustoms(customizableStyles ?? {});
       return (
         <div className="flex flex-col gap-3 p-2" aria-label="Propriétés du module">
-          <SectionStyle id="pp-module" titre={`Module — ${node.module.type}`} defaut>
+          <SectionStyle id="pp-module" titre={`Module — ${node?.module.type ?? "global"}`} defaut>
             {modulePanel ?? <p className="text-xs text-fog">Configuration du module (section 5).</p>}
           </SectionStyle>
           {champs.length > 0 && onPatchWidget ? (
@@ -249,7 +251,7 @@ export function PropertiesPanel({
         <SectionStyle
           id="pp-modele"
           titre="Modèle"
-          badge={etapeLayoutBadge(node)}
+          badge={node ? etapeLayoutBadge(node) : null}
           defaut={false}
         >
           {templatePicker}

@@ -348,6 +348,40 @@ const PRECISES = [
   console.log("home 2.2 : OK (défaut combinable, repli intact)");
 }
 
+// 2.2 (home-apercu-simu) : calculerApercu pur — t=0 et essai, jeu gelé,
+// aucun nœud créé (garde-fou graphe/export).
+{
+  const { calculerApercu } = await import("./src/game/apercu-accueil.ts");
+  const jeu = {
+    gameId: "apercu",
+    schemaVersion: "1.0.0",
+    minEngineVersion: "1.0.0",
+    nodes: [
+      { id: "start", module: { type: "INFO", data: { schemaVersion: "1.0.0", steps: [{ text: "x" }] } }, activation: { requires: [{ type: "TIMER", anchor: "GAME_START", delaySeconds: 0 }] } },
+      { id: "sas", module: { type: "INFO", data: { schemaVersion: "1.0.0", steps: [{ text: "x" }] } }, activation: { requires: [{ type: "TIMER", anchor: "GAME_START", delaySeconds: 600 }] } },
+      { id: "fin", isEnding: true, module: { type: "INFO", data: { schemaVersion: "1.0.0", steps: [{ text: "x" }] } }, activation: { requires: [{ type: "NODE_COMPLETED", nodeId: "sas" }] } },
+    ],
+  } as unknown as Game;
+  const figee = JSON.stringify(jeu);
+  const t0 = calculerApercu(jeu, 0, new Set(), ["start"], "start", null);
+  assert.deepEqual(t0.lignes.map((l) => [l.id, l.etat, l.reboursMs]), [
+    ["start", "Disponible", null],
+    ["sas", "Verrouillée", 600_000],
+    ["fin", "Verrouillée", null],
+  ]);
+  assert.equal(t0.tete, "start");
+  const essai = calculerApercu(jeu, 240_000, new Set(["start"]), ["sas"], "sas", null);
+  assert.deepEqual(essai.lignes.map((l) => [l.id, l.etat, l.reboursMs]), [
+    ["start", "Terminée", null],
+    ["sas", "Disponible", 360_000],
+    ["fin", "Verrouillée", null],
+  ]);
+  assert.equal(essai.tete, "sas");
+  assert.equal(JSON.stringify(jeu), figee, "jeu non muté");
+  assert.ok(!(jeu.nodes as unknown[]).some((n) => (n as { id: string }).id === "accueil"), "aucun id accueil dans nodes[]");
+  console.log("home-apercu 2.2 : OK (t=0 + essai, jeu intact, garde-fou nœud)");
+}
+
 // 1.2 (immersion-parcours) : nœud principal, parité des 5 cas.
 {
   const sansDep = { requires: [] as never[] };

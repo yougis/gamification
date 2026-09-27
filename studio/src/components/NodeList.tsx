@@ -9,6 +9,7 @@ import { ChevronRepli } from "./Repli";
 import { CONDITIONS_FR, ETATS_FR, MODULES_FR } from "../game/i18n-ui";
 import type { Game, Widget, ZoneId } from "../game/types";
 import { removeNode } from "../game/mcp";
+import { AccueilApercu } from "./AccueilApercu";
 
 export type FiltreListe = "tous" | "etapes" | "tirages" | "fins" | "impasses" | "brouillons";
 
@@ -73,6 +74,10 @@ export function NodeList({
   moduleCreation,
   onModuleCreation,
   typesModule,
+  homeActif,
+  onBasculerHome,
+  accueilSelectionne,
+  onChoisirAccueil,
 }: {
   game: Game;
   statuts: Record<string, { state: string }>;
@@ -100,6 +105,14 @@ export function NodeList({
   onReplier?: () => void;
   onAjouter?: (preset: "etape" | "tirage" | "fin" | "lieu") => void;
   onSupprimer?: (id: string) => void;
+  // Toggle « activer home » (change studio-home-apercu-simu) : reflète
+  // HOME dans global.presentation. Absent = pas de toggle (ex. relecture).
+  homeActif?: boolean;
+  onBasculerHome?: () => void;
+  // Pseudo-sélection de l'écran global (jamais un nœud : ni sélection
+  // multiple, ni suppression, ni arête, ignorée par validation/export).
+  accueilSelectionne?: boolean;
+  onChoisirAccueil?: () => void;
   // Mini-jeu choisi en premier à la création (change studio-module-first) :
   // détermine module, données et écran initial des étapes créées.
   moduleCreation?: string;
@@ -161,12 +174,44 @@ export function NodeList({
           <button className="btn btn-compact min-h-8 px-2 text-[8px]" onClick={() => onAjouter("fin")} title="Créer l'étape de fin du jeu" aria-label="Fin du jeu">
             <Icon name="fin" size={14} /> Fin
           </button>
+          {onBasculerHome && (
+            <button
+              className={`btn btn-compact min-h-8 px-2 text-[8px] ${homeActif ? "btn-active" : ""}`}
+              onClick={onBasculerHome}
+              disabled={lectureSeule}
+              aria-pressed={homeActif ?? false}
+              title={homeActif ? "Désactiver l'écran d'accueil (retire HOME)" : "Activer l'écran d'accueil (tableau de bord joueur)"}
+              aria-label="Activer home"
+            >
+              <Icon name="accueil" size={14} /> Home
+            </button>
+          )}
+        </div>
+      )}
+      {homeActif && onChoisirAccueil && (
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={onChoisirAccueil}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onChoisirAccueil(); } }}
+          aria-pressed={accueilSelectionne ?? false}
+          aria-label="Voir l'aperçu de l'écran global d'accueil"
+          title="Écran global — Accueil (pas une étape : rien au graphe, rien à l'export)"
+          className={`mx-2 mt-2 rounded border p-2 text-left cursor-pointer ${accueilSelectionne ? "border-neon bg-neon/5" : "border-dashed border-line hover:border-neon/40"}`}
+        >
+          <span className="flex items-center gap-1.5">
+            <Icon name="accueil" size={15} />
+            <span className="text-[9px] font-bold uppercase text-snow">Écran global — Accueil</span>
+            <span className="puce">HOME</span>
+          </span>
+          <span className="mt-1 block">
+            <AccueilApercu game={game} onOuvrir={(id) => onChoisir(id)} />
+          </span>
         </div>
       )}
       <header className="flex flex-col gap-2 border-b border-rule p-2">
         <div className="flex items-center gap-2">
-          <Icon name="liste" size={16} />
-          <h2 className="text-[9px] font-bold">Étapes ({elements.length}/{game.nodes.length})</h2>
+          <Icon name="liste" size={16} />          <h2 className="text-[9px] font-bold">Étapes ({elements.length}/{game.nodes.length})</h2>
           <span className="flex-1" />
           {onToutBasculer && (
             <button className="btn btn-compact min-h-8 px-2 text-[8px]" onClick={onToutBasculer}

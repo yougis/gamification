@@ -16,8 +16,8 @@ import {
 import "@xyflow/react/dist/style.css";
 import { validateGame, deadEnds } from "./game/validate";
 import { evaluate, drawPool, estHorsDelai, type Sim } from "./game/evaluate";
-import { composeNodes, setActivation, registerAsset, exportPackFull, canExport, addSecoursCode, importGame, addObject, setObjects, duplicateObject, setReview, removeNode, renameNode, duplicateNode, patchScreenZone, removeScreenZone, addScreenWidget, setScreenWidget as mcpSetScreenWidget, removeScreenWidget, moveScreenWidget, moveScreenWidgetAcross, setNodeScreen, setScreenBackground, setScreenStyles, setGlobalScreenStyles, setMinigameDefaults, setPresentation, type ManifestFile } from "./game/mcp";
-import { emptyMeta, type Condition, type Effect, type Game, type GameNode, type GameObject, type MinigameDefaults, type Predicate, type StudioMeta, type ExperienceStyle, type Branding, type GameMode, type Difficulty, type ZoneContent, type ZoneId } from "./game/types";
+import { composeNodes, setActivation, registerAsset, exportPackFull, canExport, addSecoursCode, importGame, addObject, setObjects, duplicateObject, setReview, removeNode, renameNode, duplicateNode, patchScreenZone, removeScreenZone, addScreenWidget, setScreenWidget as mcpSetScreenWidget, removeScreenWidget, moveScreenWidget, moveScreenWidgetAcross, setNodeScreen, setScreenBackground, setScreenStyles, setGlobalScreen, setGlobalBackground, patchGlobalZone, removeGlobalZone, addGlobalWidget, setGlobalWidget, removeGlobalWidget, moveGlobalWidget, moveGlobalWidgetAcross, setGlobalScreenStyles, setMinigameDefaults, setPresentation, type ManifestFile } from "./game/mcp";
+import { emptyMeta, type Condition, type Effect, type Game, type GameNode, type GameObject, type MinigameDefaults, type Predicate, type StudioMeta, type ExperienceStyle, type Branding, type GameMode, type Difficulty, type ScreenDefinition, type ZoneContent, type ZoneId } from "./game/types";
 import { buildCompatSidecar, canExportToChannel, type ChannelId } from "./game/compat";
 import { fetchAsset, fetchPack, getCatalogUrl, listGames, publishGame, setCatalogUrl as sauvegarderCatalogUrl, type CatalogEntry } from "./game/catalog";
 import { sha256Hex } from "./game/pack";
@@ -55,6 +55,8 @@ import { Icon, type IconName } from "./components/icons";
 import Splitter from "./components/Splitter";
 import { WorkflowStepper, type EtapeWorkflow } from "./components/WorkflowStepper";
 import { NodeList } from "./components/NodeList";
+import { AccueilApercu } from "./components/AccueilApercu";
+import { BlocsAcces } from "./components/BlocsAcces";
 import { ChevronRepli, RailReplie } from "./components/Repli";
 import { Accordeon, useAccordeon } from "./components/Accordeon";
 import MapView from "./components/MapView";
@@ -252,6 +254,10 @@ function BarreViewports({ viewport, onChoisir }: { viewport: ViewportId; onChois
 export default function App() {  const [st, dispatch] = useReducer(reduce, undefined, initDraft);
   const { game } = st.present;
   const [sel, setSel] = useState<string | null>(null);
+  // Pseudo-sélection de l'écran global Accueil (change
+  // studio-home-apercu-simu) : exclusive avec sel/selMulti, jamais un nœud
+  // (rien au graphe, rien à l'export, rien à la validation).
+  const [selAccueil, setSelAccueil] = useState(false);
   // Sélection multiple (Shift+clic, native ReactFlow) + recherche dans le graphe.
   const [selMulti, setSelMulti] = useState<string[]>([]);
   const [recherche, setRecherche] = useState("");
@@ -685,7 +691,28 @@ const noeuds: Node[] = useMemo(
   }, [game]);
 
   // Création d'étapes via l'opération MCP nommée (historique lisible).
+  // Choisir l'aperçu Accueil : vide la sélection de nœud (exclusivité),
+  // sans toucher au graphe ni au JSON (pseudo-sélection d'affichage).
+  const choisirAccueil = useCallback(() => {
+    setSel(null);
+    setSelMulti([]);
+    setScreenZone(null);
+    setScreenWidget(null);
+    setScreenBg(false);
+    setSelAccueil(true);
+  }, []);
   const composerEtapes = (nodes: GameNode[]) => editGame((g) => composeNodes(g, nodes), "composeNodes");
+  // Toggle « activer home » (change studio-home-apercu-simu) : même
+  // opération que les cases de Configuration (setPresentation, undo natif).
+  const homeActif = (game.global?.presentation ?? []).includes("HOME");
+  const basculerHome = () => {
+    if (relecture) return;
+    const actives = game.global?.presentation ?? [];
+    editGame(
+      (g) => setPresentation(g, actives.includes("HOME") ? actives.filter((x) => x !== "HOME") : [...actives, "HOME"]),
+      "setPresentation",
+    );
+  };
   // Création module-first (change studio-module-first) : le mini-jeu choisi
   // (`moduleCreation`, premier choix du flux) détermine module, données et
   // écran initial. Seul le tirage impose son type structurel.
@@ -1064,6 +1091,7 @@ const noeuds: Node[] = useMemo(
   // rester déterministes quel que soit l'ordre clic / onSelectionChange.
   const choisirNoeud = useCallback((id: string, additif = false) => {
     marquerClicNoeud();
+    setSelAccueil(false);
     if (additif) {
       const union = new Set([...selMulti, ...(sel ? [sel] : [])]);
       if (union.has(id)) {
@@ -1249,8 +1277,49 @@ const noeuds: Node[] = useMemo(
           <div className="shrink-0 px-2 py-1 border-b border-rule">
             <BarreViewports viewport={screenViewport} onChoisir={setScreenViewport} />
           </div>
-          {etape ? (
+          {selAccueil && homeActif ? (
+            <div className="shrink-0 px-2 py-1 border-b border-rule bg-neon/5" aria-label="Écran global">
+              <span className="puce">HOME</span>{" "}
+              <span className="text-[9px] font-bold uppercase">Écran global — défaut des étapes</span>
+            </div>
+          ) : null}
+          {selAccueil && homeActif ? (
+            <>
             <div ref={cadreEcranRef} className="flex min-h-0 flex-1 items-center justify-center overflow-hidden">
+              <PhoneCanvas
+                screen={game.global?.screen ?? {}}
+                cleContexte="global"
+                selectedZoneId={screenZone}
+                selectedWidgetIndex={screenWidget}
+                viewport={screenViewport}
+                scale={scaleEcran}
+              onSelectZone={(z) => { setScreenZone(z); setScreenWidget(null); setScreenBg(z === null); }}
+              onSelectWidget={(z, i) => { setScreenZone(z); setScreenWidget(i); setScreenBg(false); }}
+              onCommitText={(z, i, text) => editGame((g) => {
+                const cur = (((g.global ?? {}) as { screen?: ScreenDefinition }).screen?.zones?.[z]?.widgets?.[i]);
+                if (!cur || cur.type !== "text" || cur.text === text) return g;
+                return setGlobalWidget(g, z, i, { ...cur, text });
+              }, "setGlobalWidget")}
+              onMoveWidgetAcross={(fz, fi, tz, ti) => {
+                editGame((g) => moveGlobalWidgetAcross(g, fz, fi, tz, ti), "moveGlobalWidgetAcross");
+                const s = game.global?.screen;
+                const destLen = s?.zones?.[tz]?.widgets?.length ?? 0;
+                const at = ti === "end" ? (fz === tz ? destLen - 1 : destLen) : ti;
+                setScreenZone(tz);
+                setScreenWidget(at);
+                setScreenBg(false);
+              }}
+                            onCreateZone={(z) => {
+                editGame((g) => patchGlobalZone(g, z, { widgets: [] }), "patchGlobalZone");
+                setScreenZone(z);
+                setScreenWidget(null);
+                setScreenBg(false);
+              }}
+              />
+            </div>
+            <BlocsAcces game={game} />
+            </>
+          ) : etape ? (            <div ref={cadreEcranRef} className="flex min-h-0 flex-1 items-center justify-center overflow-hidden">
               <PhoneCanvas
                 screen={resolveScreen(etape, game.global?.screen)}
                 moduleType={etape.module.type}
@@ -1364,7 +1433,55 @@ const noeuds: Node[] = useMemo(
 
   const detail = useMemo(() => (
     <aside className="carte min-h-0 flex-1 overflow-auto p-2 min-w-0" aria-label="Détail de l'étape">
-      {etape ? (
+      {selAccueil && homeActif ? (
+        vueCentrale === "screen" ? (
+          <PropertiesPanel
+            selectedZone={screenZone}
+            zone={screenZone ? (game.global?.screen?.zones?.[screenZone] ?? {}) : null}
+            selectedWidgetIndex={screenWidget}
+            widget={screenZone && screenWidget != null ? (game.global?.screen?.zones?.[screenZone]?.widgets?.[screenWidget] ?? null) : null}
+            screenSelected={screenBg}
+            screenBackground={game.global?.screen?.background}
+            globalStyles={game.global?.screen?.styles}
+            onPickFile={prendreImage}
+            templatePicker={
+              <TemplatePicker
+                currentLayout={game.global?.screen?.layout}
+                hasCustomizations={Object.values(game.global?.screen?.zones ?? {}).some((z) => (z?.widgets?.length ?? 0) > 0)}
+                screenCourant={game.global?.screen}
+                onSelectTemplate={(layoutId) => {
+                  const t = getScreenTemplate(layoutId);
+                  if (!t) return;
+                  editGame((g) => setGlobalScreen(g, structuredClone(t.screen)), "setGlobalScreen");
+                  setScreenZone(null);
+                  setScreenWidget(null);
+                  setScreenBg(false);
+                }}
+              />
+            }
+            onPatchBackground={(bg) => editGame((g) => setGlobalBackground(g, bg), "setGlobalBackground")}
+            nodePanel={
+              <div className="p-2" aria-label="Écran global">
+                <p className="text-[11px] font-bold">Écran global — défaut des étapes</p>
+                <p className="text-[11px] text-fog">Les étapes sans screen propre héritent de cet écran. Styles ci-dessous = base du jeu (badge Global).</p>
+              </div>
+            }
+            onPatchZone={(z, patch) => editGame((g) => patchGlobalZone(g, z, patch), "patchGlobalZone")}
+            onSelectWidget={(z, i) => { setScreenZone(z); setScreenWidget(i); }}
+            onAddWidget={(z, w) => editGame((g) => addGlobalWidget(g, z, w), "addGlobalWidget")}
+            onRemoveWidget={(z, i) => { editGame((g) => removeGlobalWidget(g, z, i), "removeGlobalWidget"); setScreenWidget(null); }}
+            onMoveWidget={(z, i, dir) => { editGame((g) => moveGlobalWidget(g, z, i, dir), "moveGlobalWidget"); setScreenWidget(i + dir); }}
+            onRemoveZone={(z) => { editGame((g) => removeGlobalZone(g, z), "removeGlobalZone"); setScreenZone(null); setScreenWidget(null); }}
+            onPatchWidget={(z, i, w) => editGame((g) => setGlobalWidget(g, z, i, w), "setGlobalWidget")}
+            onPatchScreenStyles={(s) => editGame((g) => setGlobalScreenStyles(g, s), "setGlobalScreenStyles")}
+          />
+        ) : (
+          <div className="p-3 text-[9px]">
+            <p className="font-bold">Écran global — Accueil.</p>
+            <p className="text-fog">Bascule en vue Screen pour l'éditer. Les étapes sans screen propre en héritent.</p>
+          </div>
+        )
+      ) : etape ? (
         vueCentrale === "screen" ? (
           <PropertiesPanel
             node={etape}
@@ -1430,18 +1547,18 @@ const noeuds: Node[] = useMemo(
         </div>
       )}
     </aside>
-  ), [etape, game, st.present.meta, edit, editGame, nouveauType, relecture, vueCentrale, screenZone, screenWidget, screenBg, prendreImage, activeFamille]);
+  ), [etape, game, st.present.meta, edit, editGame, nouveauType, relecture, vueCentrale, screenZone, screenWidget, screenBg, prendreImage, activeFamille, selAccueil, homeActif]);
 
   // Listes mémoïsées (change studio-graph-selection) : mêmes dépendances de données
   // que le détail, pour ne pas re-rendre à chaque frame de drag.
   const liste = useMemo(() => (
     <div className="flex flex-col min-h-0">
-      <NodeList game={game} statuts={st.present.meta.status} impasses={impasses} sel={sel} selMulti={selMulti} onChoisir={choisirNoeud} onChoisirZone={(id, z) => { choisirNoeud(id); setScreenZone(z); setScreenWidget(null); setScreenBg(false); setMep((m) => (m.repliees.detail ? { ...m, repliees: { ...m.repliees, detail: false } } : m)); }} onChoisirWidget={(id, z, i) => { choisirNoeud(id); setScreenZone(z); setScreenWidget(i); setScreenBg(false); setMep((m) => (m.repliees.detail ? { ...m, repliees: { ...m.repliees, detail: false } } : m)); }} selZoneId={screenZone} selWidgetIndex={screenWidget} onBasculer={(id) => choisirNoeud(id, true)} onToutBasculer={basculerTout} toutSelectionne={toutEstSelectionne} erreursParNoeud={erreursParNoeud} lectureSeule={relecture} onReplier={() => basculerSection("liste")} onAjouter={(preset) => ajouterEtape(preset)} onSupprimer={!relecture ? (id) => editGame((g) => removeNode(g, id), "removeNode") : undefined} moduleCreation={moduleCreation} onModuleCreation={setModuleCreation} typesModule={TYPES_MODULE} />
+      <NodeList game={game} statuts={st.present.meta.status} impasses={impasses} sel={sel} selMulti={selMulti} onChoisir={choisirNoeud} onChoisirZone={(id, z) => { choisirNoeud(id); setScreenZone(z); setScreenWidget(null); setScreenBg(false); setMep((m) => (m.repliees.detail ? { ...m, repliees: { ...m.repliees, detail: false } } : m)); }} onChoisirWidget={(id, z, i) => { choisirNoeud(id); setScreenZone(z); setScreenWidget(i); setScreenBg(false); setMep((m) => (m.repliees.detail ? { ...m, repliees: { ...m.repliees, detail: false } } : m)); }} selZoneId={screenZone} selWidgetIndex={screenWidget} onBasculer={(id) => choisirNoeud(id, true)} onToutBasculer={basculerTout} toutSelectionne={toutEstSelectionne} erreursParNoeud={erreursParNoeud} lectureSeule={relecture} onReplier={() => basculerSection("liste")} onAjouter={(preset) => ajouterEtape(preset)} onSupprimer={!relecture ? (id) => editGame((g) => removeNode(g, id), "removeNode") : undefined} moduleCreation={moduleCreation} onModuleCreation={setModuleCreation} typesModule={TYPES_MODULE} homeActif={homeActif} onBasculerHome={basculerHome} accueilSelectionne={selAccueil} onChoisirAccueil={choisirAccueil} />
     </div>
   ), [game, st.present.meta.status, impasses, sel, selMulti, erreursParNoeud, relecture, choisirNoeud, basculerTout, toutEstSelectionne, ajouterEtape, moduleCreation, screenZone, screenWidget]);
   const listeSimple = useMemo(() => (
     <div className="flex flex-col min-h-0">
-      <NodeList game={game} statuts={st.present.meta.status} impasses={impasses} sel={sel} selMulti={selMulti} onChoisir={choisirNoeud} onBasculer={(id) => choisirNoeud(id, true)} onToutBasculer={basculerTout} toutSelectionne={toutEstSelectionne} erreursParNoeud={erreursParNoeud} lectureSeule={relecture} onAjouter={(preset) => ajouterEtape(preset)} onSupprimer={!relecture ? (id) => editGame((g) => removeNode(g, id), "removeNode") : undefined} moduleCreation={moduleCreation} onModuleCreation={setModuleCreation} typesModule={TYPES_MODULE} />
+      <NodeList game={game} statuts={st.present.meta.status} impasses={impasses} sel={sel} selMulti={selMulti} onChoisir={choisirNoeud} onBasculer={(id) => choisirNoeud(id, true)} onToutBasculer={basculerTout} toutSelectionne={toutEstSelectionne} erreursParNoeud={erreursParNoeud} lectureSeule={relecture} onAjouter={(preset) => ajouterEtape(preset)} onSupprimer={!relecture ? (id) => editGame((g) => removeNode(g, id), "removeNode") : undefined} moduleCreation={moduleCreation} onModuleCreation={setModuleCreation} typesModule={TYPES_MODULE} homeActif={homeActif} onBasculerHome={basculerHome} accueilSelectionne={selAccueil} onChoisirAccueil={choisirAccueil} />
     </div>
   ), [game, st.present.meta.status, impasses, sel, selMulti, erreursParNoeud, relecture, choisirNoeud, basculerTout, toutEstSelectionne, ajouterEtape, moduleCreation]);
 
@@ -1592,6 +1709,17 @@ const noeuds: Node[] = useMemo(
             reculer={reculerSim} nbTermines={Object.keys(done).length}
             holdSim={holdSim} onHoldLock={forcerHoldLock} onHoldExit={forcerHoldExit}
           />
+          {homeActif && (
+            <ApercuAccueil
+              game={game}
+              nowMs={sim.dtMin * 60000}
+              terminees={new Set(Object.keys(done))}
+              elus={ev.unlocked}
+              teteFile={file[0] ?? null}
+              actif={activeId}
+              onOuvrir={ouvrir}
+            />
+          )}
           {modeJeux && activeId && game.nodes.some((n) => n.id === activeId) && (
             <PlayerTerminal
               node={game.nodes.find((n) => n.id === activeId)!}
