@@ -8,6 +8,7 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
 import type { Game, Widget, ZoneContent, ZoneId } from "../../game/types";
+import type { LigneApercu } from "../../game/apercu-accueil";
 import { WidgetRenderer, lireDragSource } from "./WidgetRenderer";
 
 const LAYOUT_CLASSE: Record<string, string> = {
@@ -53,6 +54,8 @@ export function ZoneRenderer({
   // Jeu courant (change widget-cartographie) : contexte de lecture pour les
   // widgets lies (carte). Absent = apercu sans donnees.
   game?: Game;
+  // Snapshot d'essai (change home-phonecanvas-unique) : transmis à la carte.
+  lignesApercu?: LigneApercu[];
 }) {
   const widgets = zone.widgets ?? [];
   const [survol, setSurvol] = useState(false);

@@ -10,6 +10,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { Game, Widget, ZoneId } from "../../game/types";
+import type { LigneApercu } from "../../game/apercu-accueil";
 import { TextWidgetRenderer } from "./widgets/TextWidgetRenderer";
 import { ImageWidgetRenderer } from "./widgets/ImageWidgetRenderer";
 import { ButtonWidgetRenderer } from "./widgets/ButtonWidgetRenderer";
@@ -52,6 +53,7 @@ export function WidgetRenderer({
   contextePage,
   hauteurMaxMedia,
   game,
+  lignesApercu,
 }: {
   widget: Widget;
   index: number;
@@ -79,6 +81,9 @@ export function WidgetRenderer({
   // Jeu courant (change widget-cartographie) : contexte de lecture pour les
   // widgets lies (carte). Absent = apercu sans donnees.
   game?: Game;
+  // Snapshot d'essai (change home-phonecanvas-unique) : lignes lues par la
+  // carte (pastille d'état), jamais simulées ici. Absent = aperçu statique.
+  lignesApercu?: LigneApercu[];
 }) {
   const [edition, setEdition] = useState(false);
   const [survol, setSurvol] = useState(false);
@@ -170,7 +175,7 @@ export function WidgetRenderer({
       {widget.type === "progress" ? <ProgressBarWidgetRenderer widget={widget} contextePage={contextePage} /> : null}
       {widget.type === "module" ? (renderModule ? renderModule(widget) : <ModuleWidgetRenderer widget={widget} moduleType={moduleType} moduleData={moduleData} hauteurMax={hauteurMaxMedia} />) : null}
       {widget.type === "spacer" ? <SpacerWidgetRenderer widget={widget} /> : null}
-      {widget.type === "map" ? <MapWidgetRenderer widget={widget} game={game} /> : null}
+      {widget.type === "map" ? <MapWidgetRenderer widget={widget} game={game} lignes={lignesApercu} /> : null}
     </div>
   );
 }

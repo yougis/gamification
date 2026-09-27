@@ -5,6 +5,6 @@
 
 ## 2. Écrans et corrections
 
-- [ ] 2.1 Écran Valider en 3 blocs (erreurs/avertissements/infos) avec boutons « Corriger » et navigation existante, et vérifier : pastille, catégories et surlignage inchangés pour les erreurs
-- [ ] 2.2 Export « quand même » après confirmation journalisée (session-only, invalidée à chaque édition) + nouvelles opérations MCP de correction (undo natif), et vérifier : export bloqué avec erreur, réussi avec avertissement confirmé, chaque correction annulable
-- [ ] 2.3 Supprimer `erreurFR` une fois la couverture structurée totale, et vérifier : `tsc`, smokes, C1+C2 des jeux de référence à 0
+- [x] 2.1 Écran Valider en 3 blocs (erreurs/avertissements/infos) avec boutons « Corriger » et navigation existante, et vérifier : pastille, catégories et surlignage inchangés pour les erreurs
+- [x] 2.2 Export « quand même » après confirmation journalisée (session-only, invalidée à chaque édition) + nouvelles opérations MCP de correction (undo natif), et vérifier : export bloqué avec erreur, réussi avec avertissement confirmé, chaque correction annulable
+- [x] 2.3 Supprimer `erreurFR` une fois la couverture structurée totale, et vérifier : `tsc`, smokes, C1+C2 des jeux de référence à 0

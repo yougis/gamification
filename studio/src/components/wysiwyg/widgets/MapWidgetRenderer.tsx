@@ -6,12 +6,22 @@
 // Mini-rendus locaux pour le volet (pas de WidgetRenderer : evite tout cycle).
 import { Icon, type IconName } from "../../icons";
 import { aFondCarte, iconePoiDefaut, marqueursCarte, widgetsVoletApercu } from "../../../game/map-widget";
+import { mmss } from "../../../game/apercu-accueil";
+import type { LigneApercu } from "../../../game/apercu-accueil";
 import type { Game, MapWidget, Widget } from "../../../game/types";
 
 const ICONES_CONNUES = new Set(["etape", "lieu", "tirage", "fin", "valider", "ok", "recherche", "fermer", "ajouter", "choix", "oeil", "message", "package", "accueil", "alerte", "statut"]);
 
 function glyphe(nom: string | undefined, defaut: IconName): IconName {
   return nom && ICONES_CONNUES.has(nom) ? (nom as IconName) : defaut;
+}
+
+// Snapshot d'essai (change home-phonecanvas-unique) : pastille d'état lue,
+// jamais simulée ici (aucune écriture, aucun tick).
+function titreMarqueur(id: string, ligne: LigneApercu | undefined): string {
+  if (!ligne) return id;
+  const rebours = ligne.reboursMs != null ? ` — dans ${mmss(ligne.reboursMs)}` : "";
+  return `${id} — ${ligne.etat}${rebours}`;
 }
 
 function ApercuVolet({ widgets }: { widgets: Widget[] | undefined }) {
@@ -39,9 +49,10 @@ function ApercuVolet({ widgets }: { widgets: Widget[] | undefined }) {
   );
 }
 
-export function MapWidgetRenderer({ widget, game }: { widget: MapWidget; game?: Game }) {
+export function MapWidgetRenderer({ widget, game, lignes }: { widget: MapWidget; game?: Game; lignes?: LigneApercu[] }) {
   const fond = widget.background ?? "pack-tiles";
   const marqueurs = game ? marqueursCarte(game) : [];
+  const etats = new Map((lignes ?? []).map((l) => [l.id, l]));
   const iconeNeutre = glyphe(widget.poiStyle?.unlocked, iconePoiDefaut("unlocked") as IconName);
   const sansFond = game != null && !aFondCarte(game);
   return (
@@ -52,7 +63,7 @@ export function MapWidgetRenderer({ widget, game }: { widget: MapWidget; game?: 
         title={fond === "indoor-plan" ? "Plan indoor (aperçu schématique)" : fond === "solid" ? "Fond uni" : "Tuiles du pack (aperçu schématique)"}
       >
         {marqueurs.map((m) => (
-          <span key={m.id} className="absolute" style={{ left: `${m.x}%`, top: `${m.y}%`, transform: "translate(-50%,-100%)" }} title={m.id}>
+          <span key={m.id} className="absolute" style={{ left: `${m.x}%`, top: `${m.y}%`, transform: "translate(-50%,-100%)" }} title={titreMarqueur(m.id, etats.get(m.id))}>
             {m.rayon > 0 ? (
               <span
                 className="absolute rounded-full border border-neon"
@@ -62,6 +73,11 @@ export function MapWidgetRenderer({ widget, game }: { widget: MapWidget; game?: 
             <span className="text-snow">
               <Icon name={iconeNeutre} size={16} />
             </span>
+            {etats.get(m.id) ? (
+              <span className="absolute left-1/2 top-full -translate-x-1/2 whitespace-nowrap rounded bg-surface px-1 text-[9px] text-snow">
+                {etats.get(m.id)!.etat}
+              </span>
+            ) : null}
           </span>
         ))}
         {marqueurs.length === 0 ? (

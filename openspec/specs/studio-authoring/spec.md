@@ -562,9 +562,9 @@ Le message de blocage affiché dans Relire SHALL nommer la règle applicable : �
 
 ### Requirement: Verdicts séparés et actionnables
 
-L'écran Valider SHALL présenter les verdicts C1 (Draft-07) et C2 (applicative) dans deux blocs visuellement séparés, jamais fusionnés en un statut global unique.
+L'écran Valider SHALL présenter les verdicts C1 (Draft-07) et C2 (applicative) dans deux blocs visuellement séparés, jamais fusionnés en un statut global unique, plus un troisième bloc non bloquant regroupant avertissements et infos.
 
-Les erreurs C2 SHALL être groupées par catégorie (cycle, atteignabilité, pools, HOLD, références, consumable), et chaque erreur SHALL être cliquable pour naviguer vers le nœud fautif dans Composer avec surlignage temporaire.
+Les erreurs C2 SHALL être groupées par catégorie (cycle, atteignabilité, pools, HOLD, références, consumable), et chaque erreur SHALL être cliquable pour naviguer vers le nœud fautif dans Composer avec surlignage temporaire. Chaque constat corrigeable SHALL afficher son bouton « Corriger » (correction proposée, jamais silencieuse) ; les constats non corrigeables affichent l'explication et la navigation seules.
 
 La règle de dérivation "export possible" (C1 ∧ C2 ∧ pas de nœud `draft` hors mode animateur) SHALL être visible dans l'UI (aide contextuelle), jamais appliquée silencieusement.
 
@@ -572,6 +572,11 @@ La règle de dérivation "export possible" (C1 ∧ C2 ∧ pas de nœud `draft` h
 - **GIVEN** un jeu avec une erreur C2 de cycle entre les nœuds A et B
 - **WHEN** l'auteur clique l'erreur dans la catégorie cycle
 - **THEN** Composer s'ouvre sur les nœuds A et B surlignés temporairement
+
+#### Scenario: Avertissement visible sans bloquer
+- **GIVEN** un jeu valide sauf un objet `consumable` jamais utilisé
+- **WHEN** l'auteur consulte l'écran Valider
+- **THEN** le constat apparaît dans le bloc avertissements (pas dans erreurs), avec navigation vers l'objet et sans bouton Corriger
 
 ### Requirement: Prévisualisation traçée
 
@@ -628,7 +633,7 @@ Le mode « Jeux » plein écran SHALL afficher le terminal joueur simulé : l'é
 
 ### Requirement: Export à porte unique
 
-Le bouton d'export SHALL être désactivé (jamais caché) tant que la validation échoue ou qu'un nœud est `draft` hors mode animateur, avec un message indiquant laquelle des deux conditions bloque.
+Le bouton d'export SHALL être désactivé (jamais caché) tant que la validation échoue ou qu'un nœud est `draft` hors mode animateur, avec un message indiquant laquelle des deux conditions bloque. En présence d'avertissements (et d'eux seuls), le bouton SHALL proposer « Exporter quand même » après confirmation explicite, journalisée dans l'historique.
 
 La checklist « Contrôle pré-export » de l'écran Exporter SHALL être calculée depuis l'état réel du jeu et SHALL afficher au minimum : le verdict C1 (Draft-07), le verdict C2 (applicative), le décompte et les noms des nœuds encore `draft`, et les verdicts par canal d'export (NATIVE, PWA). Aucune ligne de la checklist SHALL être un texte statique : chaque ligne reflète le jeu courant et se met à jour à chaque modification.
 
