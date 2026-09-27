@@ -90,38 +90,6 @@ export const OPERATEURS_FR: Record<string, string> = {
 
 export const IMPORTER = { nom: "Importer", aide: "Charger un fichier JSON de jeu" };
 
-// Erreurs de validation traduites (cartographie des verdicts C1/C2).
-// Les messages C1 portent l'id du nœud (« C1 <id> (nodes/<i>/…) : … ») : on le
-// reprend dans le texte pour que la navigation « Voir » le retrouve.
-/**
- * @deprecated Gelée (change studio-validation-actionnable) : ne plus ajouter
- * de motif. Les constats structurés se rendent via `rendreDiagnostic`
- * (glossaire fermé, `game/diagnostics.ts`). Suppression quand la couverture
- * structurée est totale (tâche 2.3).
- */
-function etapeDe(msg: string): string {
-  const id = /C1 (\S+) \(nodes\/\d+/.exec(msg)?.[1];
-  return id ? `Étape « ${id} » : ` : "";
-}
-export function erreurFR(msg: string): string {
-  const refusDraft = /export refuse : noeud (\S+) en draft/.exec(msg);
-  if (refusDraft) return `Étape « ${refusDraft[1]} » en brouillon (hors mode animateur) : passe-la en relu dans Relire.`;
-  if (msg.includes("operator manquant"))
-    return `${etapeDe(msg)}il manque la logique « Tous / Au moins un » (2 déclencheurs ou plus exigent AND ou OR — famille « Déclenchement »).`;
-  if (msg.includes("operator interdit"))
-    return `${etapeDe(msg)}logique « Tous / Au moins un » interdite ici (un seul déclencheur : retire operator — famille « Déclenchement »).`;
-  if (msg.includes("'operator' is a required property"))
-    return `${etapeDe(msg)}il manque la logique « Tous / Au moins un » (au moins 2 déclencheurs).`;
-  if (msg.includes("'maxReentries' is a required property"))
-    return "« Rejouable » exige un nombre de rejouées.";
-  if (msg.includes("is not valid under any of the given schemas"))
-    return "Un déclencheur mélange des champs incompatibles (ex. rayon dans un délai).";
-  if (msg.startsWith("C2 cycle")) return `Boucle interdite : ${msg.slice(9)}. Autorise-la explicitement ou casse-la.`;
-  if (msg.includes("AND sur candidats exclusifs"))
-    return "Fin impossible : elle exige 2 étapes dont une seule peut être tirée.";
-  if (msg.includes("sans chemin vers FIN")) return `${msg} — relie-la à une fin.`;
-  if (msg.includes("aucun isEnding")) return "Le jeu n'a pas de fin : désigne une étape « Fin du jeu ».";
-  if (msg.includes("drawCount")) return "Le tirage demande plus d'étapes qu'il n'y a de candidates.";
-  if (msg.includes("deux pools")) return "Une étape ne peut appartenir qu'à un seul tirage.";
-  return msg;
-}
+// NOTE (change studio-validation-actionnable) : `erreurFR`/`etapeDe`
+// supprimées — constats structurés rendus via `rendreDiagnostic`
+// (game/diagnostics.ts, glossaire fermé).

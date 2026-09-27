@@ -861,6 +861,7 @@ export async function exportPackFull(
           pushRefus("MEDIA_ABSENT_MANIFEST", message, { noeud: n.id, champ: v });
         }
       }
+    }
   }
   const diagnostics = [...result.diagnostics, ...sig.diagnostics];
   if (errors.length) return { ok: false, errors, diagnostics };
