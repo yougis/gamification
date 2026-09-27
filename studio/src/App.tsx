@@ -56,6 +56,7 @@ import Splitter from "./components/Splitter";
 import { WorkflowStepper, type EtapeWorkflow } from "./components/WorkflowStepper";
 import { NodeList } from "./components/NodeList";
 import { AccueilApercu } from "./components/AccueilApercu";
+import { ApercuAccueil } from "./components/ApercuAccueil";
 import { BlocsAcces } from "./components/BlocsAcces";
 import { ChevronRepli, RailReplie } from "./components/Repli";
 import { Accordeon, useAccordeon } from "./components/Accordeon";
@@ -802,6 +803,11 @@ const noeuds: Node[] = useMemo(
   // salle d'attente inchangée. L'enchaînement reste l'avance auto existante.
   const entrerModeJeux = () => {
     if (!activeId && file.length) ouvrir(file[0]);
+    // Mention session sans fin (change player-home-solo) : jeu vide sous
+    // HOME = pas de terminaison attendue, sortie par Quitter.
+    if (game.nodes.length === 0 && (game.global?.presentation ?? []).includes("HOME")) {
+      journal("session sans fin (HOME seul) — sortie par Quitter");
+    }
     setModeJeux(true);
   };
   const terminer = (id: string, abandon: boolean) => {
@@ -1697,7 +1703,7 @@ const noeuds: Node[] = useMemo(
           <div className="flex items-center justify-between mb-6">
             <h2 className="font-display font-extrabold text-2xl tracking-widest uppercase text-snow">Prévisualiser</h2>
             <span className="flex gap-1">
-              <button onClick={() => entrerModeJeux()} disabled={!activeId && !file.length} className="text-[8px] font-mono uppercase tracking-wider px-3 py-1.5 border border-rule rounded text-fog hover:border-neon/40 hover:text-neon transition-colors disabled:opacity-40">▶ Mode Jeux</button>
+              <button onClick={() => entrerModeJeux()} disabled={!activeId && !file.length && !homeActif} className="text-[8px] font-mono uppercase tracking-wider px-3 py-1.5 border border-rule rounded text-fog hover:border-neon/40 hover:text-neon transition-colors disabled:opacity-40">▶ Mode Jeux</button>
               <button onClick={testerBranches} className="text-[8px] font-mono uppercase tracking-wider px-3 py-1.5 border border-rule rounded text-fog hover:border-neon/40 hover:text-neon transition-colors">↺ Rejouer fixture</button>
             </span>
           </div>
@@ -1736,7 +1742,21 @@ const noeuds: Node[] = useMemo(
           {modeJeux && !activeId && (
             <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-2 bg-canvas" role="dialog" aria-label="Terminal joueur simulé — en attente" tabIndex={0} onKeyDown={(e) => { if (e.key === "Escape") setModeJeux(false); }}>
               <span className="puce">SIMULÉ</span>
-              <p className="text-[11px] text-fog">En attente — aucun nœud ouvert.</p>
+              {homeActif ? (
+                <div className="max-w-md w-full px-4">
+                  <ApercuAccueil
+                    game={game}
+                    nowMs={sim.dtMin * 60000}
+                    terminees={new Set(Object.keys(done))}
+                    elus={ev.unlocked}
+                    teteFile={file[0] ?? null}
+                    actif={activeId}
+                    onOuvrir={ouvrir}
+                  />
+                </div>
+              ) : (
+                <p className="text-[11px] text-fog">En attente — aucun nœud ouvert.</p>
+              )}
               <div className="flex gap-1 flex-wrap justify-center">
                 {file.map((id) => (
                   <button key={id} className="btn min-h-9" onClick={() => ouvrir(id)}>Ouvrir {id}</button>
@@ -2562,7 +2582,11 @@ function Inspecteur({ game, node, meta, editGame, edit, nouveauType, setNouveauT
                       const msg = refs.length > 0
                         ? `Supprimer « ${node.id} » ?\n\nRéférencé par :\n${refs.map((r) => `• ${r}`).join("\n")}`
                         : `Supprimer le nœud « ${node.id} » ?`;
-                      if (window.confirm(msg)) {
+                      // Rappel HOME-seul (change player-home-solo) : vider le
+                      // jeu n'est valide que sous HOME actif.
+                      const dernierSousHome =
+                        game.nodes.length <= 1 && (game.global?.presentation ?? []).includes("HOME");
+                      if (window.confirm(msg + (dernierSousHome ? "\n\nDernier nœud : le jeu sera vide (valide uniquement avec HOME actif)." : ""))) {
                         editGame(
                           (g) => removeNode(g, node.id),
                           "removeNode"

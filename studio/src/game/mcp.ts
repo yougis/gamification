@@ -57,6 +57,11 @@ export async function importGame(file: File): Promise<Game> {
   }
   const game = parsed as Game;
   if (game.nodes.length === 0) {
+    // Cas HOME-seul (change player-home-solo) : le vide est valide sous
+    // HOME, on le conserve tel quel (ni nœud imposé, ni écran imposé).
+    if (((game.global ?? {}) as { presentation?: string[] }).presentation?.includes("HOME")) {
+      return game;
+    }
     return {
       ...game,
       nodes: [
@@ -163,10 +168,14 @@ export function addSecoursCode(game: Game, nodeId: string): Game {
 export function removeNode(game: Game, nodeId: string): Game {
   const target = game.nodes.find((n) => n.id === nodeId);
   if (!target) return game;
-  // Refus si c'est le seul isEnding
+  // Refus si c'est le seul isEnding — sauf cas HOME-seul (change
+  // player-home-solo) : sous HOME, vider le jeu est autorisé (le vide
+  // n'est valide que sous HOME, le validateur arbitrant à l'export).
+  const homeVide =
+    (game.global?.presentation ?? []).includes("HOME") && game.nodes.length <= 1;
   if (target.isEnding) {
     const endings = game.nodes.filter((n) => n.isEnding);
-    if (endings.length <= 1) {
+    if (endings.length <= 1 && !homeVide) {
       throw new Error("Impossible de supprimer le seul noeud de fin du jeu");
     }
   }

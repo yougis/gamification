@@ -1,0 +1,86 @@
+{
+  "gameId": "demo-home",
+  "schemaVersion": "1.0.0",
+  "minEngineVersion": "1.0.0",
+  "branding": {
+    "name": "Démo Accueil",
+    "primaryColor": "#1a7f37",
+    "secondaryColor": "#5f3dc4",
+    "fontFamily": "system-ui"
+  },
+  "global": {
+    "gpsRadiusMeters": 30,
+    "navigationModel": "BASIC",
+    "presentation": [
+      "HOME"
+    ],
+    "gameMode": "NORMAL",
+    "difficulty": "FAMILLE",
+    "experienceStyle": {
+      "preset": "BASIC"
+    }
+  },
+  "nodes": [
+    {
+      "id": "etape1",
+      "module": {
+        "type": "INFO",
+        "data": {
+          "schemaVersion": "1.0.0",
+          "steps": [
+            {
+              "text": "Bienvenue dans la démo Accueil. Ce premier écran se lit puis se termine."
+            },
+            {
+              "text": "Termine cette étape : la dernière étape apparaîtra dans l'accueil."
+            }
+          ]
+        }
+      },
+      "activation": {
+        "requires": [
+          {
+            "type": "TIMER",
+            "anchor": "GAME_START",
+            "delaySeconds": 0
+          }
+        ]
+      },
+      "discovery": {
+        "mode": "VISIBLE_NOW"
+      }
+    },
+    {
+      "id": "etape2",
+      "isEnding": true,
+      "module": {
+        "type": "QUIZ",
+        "data": {
+          "schemaVersion": "1.0.0",
+          "questions": [
+            {
+              "q": "Que viens-tu de terminer ?",
+              "options": [
+                "La première étape",
+                "Rien du tout"
+              ],
+              "correctIndex": 0,
+              "explanation": "Bravo, partie terminée !"
+            }
+          ]
+        }
+      },
+      "activation": {
+        "requires": [
+          {
+            "type": "NODE_COMPLETED",
+            "nodeId": "etape1"
+          }
+        ]
+      },
+      "discovery": {
+        "mode": "VISIBLE_NOW"
+      }
+    }
+  ]
+}

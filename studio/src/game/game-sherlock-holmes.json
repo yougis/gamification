@@ -4,8 +4,8 @@
   "minEngineVersion": "1.0.0",
   "branding": {
     "name": "L'Affaire Moriarty",
-    "primaryColor": "#8B0000",
-    "secondaryColor": "#DAA520",
+    "primaryColor": "#6B0D0D",
+    "secondaryColor": "#5C4013",
     "fontFamily": "Georgia, serif"
   },
   "global": {
@@ -27,7 +27,7 @@
       "layout": "basic-story",
       "background": {
         "type": "color",
-        "value": "#1a1214"
+        "value": "#f3e9d2"
       },
       "zones": {
         "header": {
@@ -40,7 +40,8 @@
               "align": "center",
               "styles": {
                 "fontFamily": "Georgia, serif",
-                "color": "#DAA520"
+                "fontWeight": "bold",
+                "color": "#6B0D0D"
               }
             }
           ]
@@ -53,7 +54,7 @@
       "styles": {
         "fontFamily": "Georgia, serif",
         "fontSize": 16,
-        "color": "#f5efe0",
+        "color": "#2b2118",
         "align": "left"
       }
     }
@@ -158,7 +159,9 @@
                 "style": "heading",
                 "align": "center",
                 "styles": {
-                  "color": "#DAA520"
+                  "fontFamily": "Georgia, serif",
+                  "fontWeight": "bold",
+                  "color": "#f3e9d2"
                 }
               }
             ]
@@ -277,7 +280,7 @@
         "layout": "quiz-focus",
         "background": {
           "type": "color",
-          "value": "#14141f"
+          "value": "#f3e9d2"
         },
         "zones": {
           "header": {
@@ -289,7 +292,9 @@
                 "style": "heading",
                 "align": "center",
                 "styles": {
-                  "color": "#DAA520"
+                  "fontFamily": "Georgia, serif",
+                  "fontWeight": "bold",
+                  "color": "#6B0D0D"
                 }
               },
               {
@@ -364,7 +369,7 @@
         "layout": "clue-focus",
         "background": {
           "type": "color",
-          "value": "#14141f"
+          "value": "#efe3c8"
         },
         "zones": {
           "header": {
@@ -376,7 +381,9 @@
                 "style": "heading",
                 "align": "center",
                 "styles": {
-                  "color": "#DAA520"
+                  "fontFamily": "Georgia, serif",
+                  "fontWeight": "bold",
+                  "color": "#6B0D0D"
                 }
               }
             ]
@@ -444,7 +451,7 @@
         "layout": "clue-focus",
         "background": {
           "type": "color",
-          "value": "#14141f"
+          "value": "#efe3c8"
         },
         "zones": {
           "header": {
@@ -456,7 +463,9 @@
                 "style": "heading",
                 "align": "center",
                 "styles": {
-                  "color": "#DAA520"
+                  "fontFamily": "Georgia, serif",
+                  "fontWeight": "bold",
+                  "color": "#6B0D0D"
                 }
               }
             ]
@@ -519,7 +528,7 @@
         "layout": "map-fullscreen",
         "background": {
           "type": "color",
-          "value": "#14141f"
+          "value": "#e8dcc0"
         },
         "zones": {
           "content": {
@@ -531,7 +540,9 @@
                 "style": "heading",
                 "align": "center",
                 "styles": {
-                  "color": "#DAA520"
+                  "fontFamily": "Georgia, serif",
+                  "fontWeight": "bold",
+                  "color": "#6B0D0D"
                 }
               },
               {
@@ -599,7 +610,7 @@
         "layout": "basic-story",
         "background": {
           "type": "color",
-          "value": "#1a1214"
+          "value": "#f5efe0"
         },
         "zones": {
           "header": {
@@ -611,7 +622,9 @@
                 "style": "heading",
                 "align": "center",
                 "styles": {
-                  "color": "#DAA520"
+                  "fontFamily": "Georgia, serif",
+                  "fontWeight": "bold",
+                  "color": "#6B0D0D"
                 }
               }
             ]
@@ -698,7 +711,7 @@
         "layout": "clue-focus",
         "background": {
           "type": "color",
-          "value": "#14141f"
+          "value": "#efe3c8"
         },
         "zones": {
           "header": {
@@ -710,7 +723,9 @@
                 "style": "heading",
                 "align": "center",
                 "styles": {
-                  "color": "#DAA520"
+                  "fontFamily": "Georgia, serif",
+                  "fontWeight": "bold",
+                  "color": "#6B0D0D"
                 }
               }
             ]
@@ -788,7 +803,7 @@
         "layout": "quiz-focus",
         "background": {
           "type": "color",
-          "value": "#14141f"
+          "value": "#f3e9d2"
         },
         "zones": {
           "header": {
@@ -800,7 +815,9 @@
                 "style": "heading",
                 "align": "center",
                 "styles": {
-                  "color": "#DAA520"
+                  "fontFamily": "Georgia, serif",
+                  "fontWeight": "bold",
+                  "color": "#6B0D0D"
                 }
               },
               {

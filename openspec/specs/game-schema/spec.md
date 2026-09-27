@@ -9,7 +9,7 @@ Donne au framework son document JSON opposable : structure, champs, enums et exe
 ### Requirement: Racine Jeu versionnée
 
 Le schéma SHALL définir la racine : `gameId` (string non vide), `schemaVersion`
-(semver du schéma), `nodes[]` (>=1), `branding` (objet typé : `name`, `primaryColor`,
+(semver du schéma), `nodes[]` (>=1, sauf cas HOME-seul ci-dessous), `branding` (objet typé : `name`, `primaryColor`,
 `secondaryColor`, `fontFamily`, `logo` optionnel), `global` (carte, trace
 GPX display, rayon GPS global, `holdMode` enum `"none"|"guidedAccess"|"screenPinning"|"lockTask"`,
 `holdExit` objet avec `method`, `navigationModel`, `presentation`, `experienceStyle` (objet),
@@ -25,6 +25,9 @@ l'ouverture : moteur trop vieux = refus explicite, jamais lecture partielle.
 meta-états du runtime. Si `holdMode` vaut `"none"` ou est absent, `holdExit` est
 optionnel. Si `holdMode` vaut `"guidedAccess"`, `"screenPinning"` ou `"lockTask"`,
 `holdExit` est requis avec `method` (Draft-07 `if/then`).
+Cas HOME-seul : `nodes: []` est accepté **si et seulement si** `HOME` figure dans
+`global.presentation` (Draft-07 `if/then`) ; dans ce cas l'exigence d'un nœud
+`isEnding` est levée. Sans `HOME`, `nodes[] >= 1` avec un `isEnding` reste exigé.
 
 #### Scenario: Vieux moteur refuse nouveau Jeu
 
@@ -80,6 +83,16 @@ optionnel. Si `holdMode` vaut `"guidedAccess"`, `"screenPinning"` ou `"lockTask"
 - **GIVEN** un jeu sans `global.dureeTotale`
 - **WHEN** la validation Draft-07 tourne puis le moteur joue
 - **THEN** le jeu est accepté et aucune limite de temps ne s'applique
+
+#### Scenario: Jeu HOME-seul accepté sans nœud
+- **GIVEN** un jeu avec `global.presentation: ["HOME"]` et `nodes: []`
+- **WHEN** la validation Draft-07 tourne
+- **THEN** le jeu est accepté (aucun `isEnding` exigé)
+
+#### Scenario: Jeu vide sans HOME rejeté
+- **GIVEN** un jeu avec `global.presentation: ["MAP"]` et `nodes: []`
+- **WHEN** la validation Draft-07 tourne
+- **THEN** le jeu est rejeté (`nodes >= 1` et `isEnding` requis)
 
 ### Requirement: Objet Noeud complet
 

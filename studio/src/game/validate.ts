@@ -268,8 +268,14 @@ export function validateLayer2(game: Game): LayerReport {
   const activable = (n: GameNode, done: Set<string>, visiting: Set<string>): boolean =>
     estActivable(byId, poolOf, n, done, visiting);
   const endings = game.nodes.filter((n) => n.isEnding);
-  if (endings.length === 0) errors.push("C2 : aucun noeud isEnding");
-  else {
+  // Exemption HOME-seul (change player-home-solo) : jeu vide avec HOME =
+  // session sans fin assumée (sortie par Quitter, mention au journal) ;
+  // seuls les contrôles isEnding/atteignabilité sont sautés, tout le reste
+  // reste applicable (y compris aux jeux non vides avec HOME).
+  const homeSoloVide =
+    (game.global?.presentation ?? []).includes("HOME") && game.nodes.length === 0;
+  if (!homeSoloVide && endings.length === 0) errors.push("C2 : aucun noeud isEnding");
+  else if (!homeSoloVide) {
     if (!endings.some((e) => activable(e, new Set(), new Set()))) {
       errors.push("C2 : aucun isEnding atteignable depuis le depart");
     }
