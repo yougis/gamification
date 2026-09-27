@@ -4,6 +4,7 @@
 // unicite candidats, cohérence holdMode/holdExit/needsLock. Verdicts separes
 // par couche, comme exige.
 import Ajv from "ajv";
+import { Collecteur, type Diagnostic } from "./diagnostics";
 import schema from "./schema/game-schema.json";
 import quiz from "./schema/quiz.json";
 import differenceGame from "./schema/difference-game.json";
@@ -16,7 +17,7 @@ import inventoryHints from "./schema/inventory-hints.json";
 import type { Game, GameNode, Condition, ExperienceStyle, Branding, GameMode, Difficulty } from "./types";
 import { MODULE_REGISTRY } from "./modules";
 
-type LayerReport = { layer: number; errors: string[] };
+type LayerReport = { layer: number; errors: string[]; diagnostics: Diagnostic[] };
 
 // Collect all item IDs and clue IDs from the game
 function collectItems(game: Game): Set<string> {
@@ -100,33 +101,34 @@ export function deadEnds(game: Game): string[] {
 }
 
 export function validateLayer2(game: Game): LayerReport {
-  const errors: string[] = [];
+  const sig = new Collecteur(2);
+  const errors = sig.errors;
   const byId = new Map(game.nodes.map((n) => [n.id, n]));
 
   // ExperienceStyle validation.
   const exStyle = game.experienceStyle;
   if (exStyle?.preset && !["BASIC", "GUIDED", "TREASURE_HUNT", "ESCAPE_GAME", "OPEN_EXPLORATION"].includes(exStyle.preset)) {
-    errors.push(`C2 experienceStyle.preset invalide: ${exStyle.preset}`);
+    sig.signaler("PRESET_EXPERIENCE_INVALIDE", `C2 experienceStyle.preset invalide: ${exStyle.preset}`, { champ: "experienceStyle.preset", attendu: "BASIC, GUIDED, TREASURE_HUNT, ESCAPE_GAME, OPEN_EXPLORATION" });
   }
   if (exStyle?.identity?.name && exStyle.identity.name.length === 0) {
-    errors.push(`C2 experienceStyle.identity.name ne peut pas etre vide`);
+    sig.signaler("IDENTITY_NAME_VIDE", `C2 experienceStyle.identity.name ne peut pas etre vide`, { champ: "experienceStyle.identity.name" });
   }
 
   // GameMode et Difficulty validation.
   if (game.gameMode && !["NORMAL", "ANIMATEUR", "SOIREE", "HARDCORE"].includes(game.gameMode)) {
-    errors.push(`C2 gameMode invalide: ${game.gameMode}`);
+    sig.signaler("GAMEMODE_INVALIDE", `C2 gameMode invalide: ${game.gameMode}`, { champ: "gameMode", attendu: "NORMAL, ANIMATEUR, SOIREE, HARDCORE" });
   }
   if (game.difficulty && !["ENFANT", "FAMILLE", "EXPERT"].includes(game.difficulty)) {
-    errors.push(`C2 difficulty invalide: ${game.difficulty}`);
+    sig.signaler("DIFFICULTY_INVALIDE", `C2 difficulty invalide: ${game.difficulty}`, { champ: "difficulty", attendu: "ENFANT, FAMILLE, EXPERT" });
   }
 
   // Branding validation.
   if (game.branding) {
     if (game.branding.primaryColor && !/^#[0-9a-fA-F]{6}$/.test(game.branding.primaryColor)) {
-      errors.push(`C2 branding.primaryColor invalide: ${game.branding.primaryColor}`);
+      sig.signaler("BRANDING_PRIMARY_INVALIDE", `C2 branding.primaryColor invalide: ${game.branding.primaryColor}`, { champ: "branding.primaryColor", attendu: "#RRGGBB" });
     }
     if (game.branding.secondaryColor && !/^#[0-9a-fA-F]{6}$/.test(game.branding.secondaryColor)) {
-      errors.push(`C2 branding.secondaryColor invalide: ${game.branding.secondaryColor}`);
+      sig.signaler("BRANDING_SECONDARY_INVALIDE", `C2 branding.secondaryColor invalide: ${game.branding.secondaryColor}`, { champ: "branding.secondaryColor", attendu: "#RRGGBB" });
     }
   }
 
@@ -135,13 +137,13 @@ export function validateLayer2(game: Game): LayerReport {
   const holdExit = (game.global as Record<string, unknown>)?.holdExit as Record<string, unknown> | undefined;
   if (holdMode && holdMode !== "none") {
     if (!holdExit || !holdExit.method) {
-      errors.push(`C2 holdExit requis quand holdMode=${holdMode}`);
+      sig.signaler("HOLD_EXIT_MANQUANT", `C2 holdExit requis quand holdMode=${holdMode}`, { champ: "global.holdExit.method" });
     }
     // Check modules with needsLock require holdMode != none.
     for (const n of game.nodes) {
       const needsLock = (n.module.data as Record<string, unknown>)?.needsLock === true;
       if (needsLock && holdMode === "none") {
-        errors.push(`C2 Module ${n.id} (needsLock) nécessite holdMode != none`);
+        sig.signaler("NEEDSLOCK_SANS_HOLD", `C2 Module ${n.id} (needsLock) nécessite holdMode != none`, { noeud: n.id, champ: "global.holdMode" });
       }
     }
   }
@@ -149,14 +151,14 @@ export function validateLayer2(game: Game): LayerReport {
   // Task 4.1: global.preset obsolète.
   const gAny = game.global as Record<string, unknown> | undefined;
   if (gAny?.preset !== undefined) {
-    errors.push(`C2 global.preset est obsolète, utilisez global.experienceStyle.preset`);
+    sig.signaler("PRESET_OBSOLETE", `C2 global.preset est obsolète, utilisez global.experienceStyle.preset`, { champ: "global.preset", attendu: "global.experienceStyle.preset" });
   }
 
   // Task 4.2: Exclusion mutuelle map ↔ indoorPlans.
   const hasMap = gAny?.map && typeof gAny.map === "object" && Object.keys(gAny.map).length > 0;
   const hasIndoor = Array.isArray(gAny?.indoorPlans) && gAny.indoorPlans.length > 0;
   if (hasMap && hasIndoor) {
-    errors.push(`C2 global.map et global.indoorPlans sont mutuellement exclusifs`);
+    sig.signaler("MAP_INDOOR_EXCLUSIFS", `C2 global.map et global.indoorPlans sont mutuellement exclusifs`, { champ: "global.map / global.indoorPlans" });
   }
 
   // Temps global et fenêtres (change game-temps-global-fenetres) : fenêtre
@@ -170,7 +172,7 @@ export function validateLayer2(game: Game): LayerReport {
       const apres = (c as { apresSecondes?: unknown }).apresSecondes;
       const avant = (c as { avantSecondes?: unknown }).avantSecondes;
       if (typeof apres === "number" && typeof avant === "number" && !(apres < avant)) {
-        errors.push(`C2 ${n.id} : fenêtre WINDOW vide (apresSecondes=${apres} >= avantSecondes=${avant})`);
+        sig.signaler("FENETRE_VIDE", `C2 ${n.id} : fenêtre WINDOW vide (apresSecondes=${apres} >= avantSecondes=${avant})`, { noeud: n.id, champ: "apresSecondes / avantSecondes", attendu: "apres < avant" });
       }
     }
   }
@@ -181,7 +183,7 @@ export function validateLayer2(game: Game): LayerReport {
   );
   for (const n of game.nodes) {
     if (n.position?.planId && !planIds.has(n.position.planId)) {
-      errors.push(`C2 ${n.id} : position.planId "${n.position.planId}" inexistant dans indoorPlans`);
+      sig.signaler("PLANID_INCONNU", `C2 ${n.id} : position.planId "${n.position.planId}" inexistant dans indoorPlans`, { noeud: n.id, champ: "position.planId" });
     }
   }
 
@@ -190,14 +192,14 @@ export function validateLayer2(game: Game): LayerReport {
     if (n.position) {
       const hasGEOFENCE = n.activation.requires.some((c) => c.type === "GEOFENCE");
       if (hasGEOFENCE) {
-        errors.push(`C2 ${n.id} : nœud indoor avec condition GEOFENCE (incohérent, GPS indisponible en intérieur)`);
+        sig.signaler("INDOOR_GEOFENCE", `C2 ${n.id} : nœud indoor avec condition GEOFENCE (incohérent, GPS indisponible en intérieur)`, { noeud: n.id });
       }
     }
   }
 
   // Task 4.7: Warning tileStrategy:none avec global.map présent.
   if (gAny?.tileStrategy === "none" && hasMap) {
-    errors.push(`C2 global.tileStrategy "none" avec global.map configuré (pas de tuiles affichées)`);
+    sig.signaler("TILESTRATEGY_NONE_MAP", `C2 global.tileStrategy "none" avec global.map configuré (pas de tuiles affichées)`, { champ: "global.tileStrategy" });
   }
 
   // Cycles (aretes allowCycle:true ignorees).
@@ -207,12 +209,12 @@ export function validateLayer2(game: Game): LayerReport {
     color.set(id, GRAY);
     for (const dep of nodeRefs(byId.get(id)!)) {
       if (!byId.has(dep)) {
-        errors.push(`C2 ${id} : reference inconnue ${dep}`);
+        sig.signaler("REF_INCONNUE", `C2 ${id} : reference inconnue ${dep}`, { noeud: id, champ: "activation", attendu: "identifiant d'étape existante" });
         continue;
       }
       const c = color.get(dep) ?? WHITE;
       if (c === GRAY) {
-        errors.push(`C2 cycle : ${[...stack, id, dep].join(" -> ")}`);
+        sig.signaler("CYCLE", `C2 cycle : ${[...stack, id, dep].join(" -> ")}`, { noeud: id });
         return true;
       }
       if (c === WHITE && visit(dep, [...stack, id])) return true;
