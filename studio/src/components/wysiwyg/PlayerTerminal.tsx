@@ -10,10 +10,11 @@ import { PhoneCanvas } from "./PhoneCanvas";
 import { PlayerFallback } from "./PlayerFallback";
 import { getPlayer } from "../../game/module-screen-plugin";
 import { resolveScreen } from "../../game/screen-utils";
-import type { Branding, ExperienceStyle, GameNode, HoldMode, ScreenDefinition } from "../../game/types";
+import type { Branding, ExperienceStyle, Game, GameNode, HoldMode, ScreenDefinition } from "../../game/types";
 
 export function PlayerTerminal({
   node,
+  game,
   globalScreen,
   branding,
   experienceStyle,
@@ -24,6 +25,9 @@ export function PlayerTerminal({
   onQuitter,
 }: {
   node: GameNode;
+  // Jeu courant (change widget-cartographie) : contexte de lecture pour les
+  // widgets lies (carte : positions, fonds). Absent = apercu sans donnees.
+  game?: Game;
   globalScreen?: ScreenDefinition;
   branding?: Branding;
   experienceStyle?: ExperienceStyle;
@@ -61,6 +65,7 @@ export function PlayerTerminal({
       <div className="min-h-0 flex-1 overflow-auto">
         <PhoneCanvas
           screen={screen}
+          game={game}
           moduleType={node.module.type}
           moduleData={data}
           viewport="phone-portrait"

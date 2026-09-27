@@ -114,6 +114,10 @@ export interface ButtonWidget {
   type: "button";
   label: string;
   action?: string;
+  // Bouton à état lié (change widget-cartographie) : dans le volet d'un
+  // widget carte, "open-step" lie le bouton au POI sélectionné (label et
+  // activation dérivés de l'éligibilité : Ouvrir / Verrouillé).
+  poiAction?: "open-step";
   icon?: string;
   variant?: "primary" | "secondary" | "ghost";
   styles?: WidgetStyles;
@@ -155,13 +159,49 @@ export interface SpacerWidget {
   styles?: WidgetStyles;
 }
 
+// --- Widget cartographie strate 2 (change widget-cartographie) ---
+// Présentation pure, strictement passive : lit positions/états/éligibilité,
+// ne produit ni transition ni event. Champ `source` ouvert par construction
+// pour les futurs widgets liés (tableau, messages, timer).
+
+export interface MapSource {
+  kind: "steps";
+  filter?: "discovered" | "all";
+}
+
+export type MapBackground = "pack-tiles" | "indoor-plan" | "solid";
+
+export type PoiState = "locked" | "unlocked" | "active" | "completed";
+
+export interface PoiStyle {
+  locked?: string;
+  unlocked?: string;
+  active?: string;
+  completed?: string;
+}
+
+export interface MapVolet {
+  widgets?: Widget[];
+}
+
+export interface MapWidget {
+  type: "map";
+  source: MapSource;
+  background?: MapBackground;
+  poiStyle?: PoiStyle;
+  volet?: MapVolet;
+  icon?: string;
+  styles?: WidgetStyles;
+}
+
 export type Widget =
   | TextWidget
   | ImageWidget
   | ButtonWidget
   | ProgressBarWidget
   | ModuleWidget
-  | SpacerWidget;
+  | SpacerWidget
+  | MapWidget;
 
 export type ZoneLayout = "stack" | "grid" | "free";
 

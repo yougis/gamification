@@ -1,5 +1,6 @@
 // Outils MCP du Studio (spike) : meme schema des deux cotes, rien ne sort sans validation.
 import { validateGame } from "./validate";
+import { Collecteur, messagesBloquants, type Diagnostic } from "./diagnostics";
 import { sha256Hex, type ManifestFile } from "./pack";
 import type { Game, GameNode, ReviewStatus, StudioMeta, HoldMode, HoldExit, NavigationModel, Discovery, Effect, GameObject, ExperienceStyle, Branding, GameMode, Difficulty, NodePosition, ScreenDefinition, ZoneContent, ZoneId, Widget, WidgetStyles, MinigameDefaults } from "./types";
 
@@ -30,6 +31,180 @@ export function composeNodes(game: Game, nodes: GameNode[]): Game {
 
 export function setActivation(game: Game, nodeId: string, activation: GameNode["activation"]): Game {
   return { ...game, nodes: game.nodes.map((n) => (n.id === nodeId ? { ...n, activation } : n)) };
+}
+
+// Corrections proposées du validateur (change studio-validation-actionnable) :
+// opérations pures nommées, annulables via l'historique (editGame), jamais
+// silencieuses (l'entrée d'historique nomme l'opération).
+export function migrerPreset(game: Game): Game {
+  const g = { ...(game.global ?? {}) } as Record<string, unknown>;
+  const preset = g.preset;
+  const exp = (g.experienceStyle ?? {}) as Record<string, unknown>;
+  delete g.preset;
+  return {
+    ...game,
+    global: {
+      ...g,
+      ...(typeof preset === "string" && exp.preset == null ? { experienceStyle: { ...exp, preset } } : {}),
+    },
+  };
+}
+
+export function retirerOperator(game: Game, nodeId: string): Game {
+  return {
+    ...game,
+    nodes: game.nodes.map((n) =>
+      n.id === nodeId ? { ...n, activation: { ...n.activation, operator: undefined } } : n,
+    ),
+  };
+}
+
+export function setOperator(game: Game, nodeId: string, operator: "AND" | "OR"): Game {
+  return {
+    ...game,
+    nodes: game.nodes.map((n) =>
+      n.id === nodeId ? { ...n, activation: { ...n.activation, operator } } : n,
+    ),
+  };
+}
+
+export function setMaxReentries(game: Game, nodeId: string, n: number): Game {
+  return {
+    ...game,
+    nodes: game.nodes.map((x) => (x.id === nodeId ? { ...x, maxReentries: n } : x)),
+  };
+}
+
+export function clampDrawCount(game: Game, nodeId: string): Game {
+  return {
+    ...game,
+    nodes: game.nodes.map((n) => {
+      if (n.id !== nodeId || !n.randomPool) return n;
+      return { ...n, randomPool: { ...n.randomPool, drawCount: n.randomPool.candidates.length } };
+    }),
+  };
+}
+
+export function retirerDoublonPool(game: Game, nodeId: string): Game {
+  const premiers = new Map<string, string>();
+  for (const n of game.nodes) {
+    if (!n.randomPool) continue;
+    for (const c of n.randomPool.candidates) {
+      if (!premiers.has(c)) premiers.set(c, n.id);
+    }
+  }
+  return {
+    ...game,
+    nodes: game.nodes.map((n) => {
+      if (n.id !== nodeId || !n.randomPool) return n;
+      const gardes = n.randomPool.candidates.filter((c) => premiers.get(c) === n.id);
+      return { ...n, randomPool: { ...n.randomPool, candidates: gardes } };
+    }),
+  };
+}
+
+export function fixEnumDefaut(game: Game, kind: "gameMode" | "difficulty" | "experienceStyle.preset"): Game {
+  if (kind === "gameMode") return { ...game, gameMode: "NORMAL" as Game["gameMode"] };
+  if (kind === "difficulty") return { ...game, difficulty: "FAMILLE" as Game["difficulty"] };
+  const exp = ((game.global ?? {}) as Record<string, unknown>).experienceStyle as Record<string, unknown> | undefined;
+  return {
+    ...game,
+    global: { ...(game.global ?? {}), experienceStyle: { ...(exp ?? {}), preset: "BASIC" } },
+  };
+}
+
+// Le correctif est-il applicable (change studio-validation-actionnable) ?
+// Évite les boutons qui ne changeraient rien (ex. supprimer l'unique
+// condition) : l'UI masque « Corriger » quand c'est faux (reste « Voir »).
+export function correctifApplicable(game: Game, correctifId: string, noeud?: string): boolean {
+  const n = game.nodes.find((x) => x.id === noeud);
+  const byId = new Set(game.nodes.map((x) => x.id));
+  const items = new Set((game.objects ?? []).map((o) => o.id));
+  switch (correctifId) {
+    case "migrer-preset":
+      return ((game.global ?? {}) as Record<string, unknown>).preset !== undefined;
+    case "retirer-operator":
+      return !!n && (n.activation.requires.length <= 1) && n.activation.operator != null;
+    case "fix-operator":
+      return !!n && n.activation.requires.length >= 2 && n.activation.operator == null;
+    case "fix-maxreentries":
+      return !!n && n.onReentry === "replay" && n.maxReentries == null;
+    case "fix-drawcount":
+      return !!n?.randomPool && n.randomPool.drawCount > n.randomPool.candidates.length;
+    case "fix-double-pool": {
+      if (!n?.randomPool) return false;
+      const vus = new Set<string>();
+      const doublonLocal = n.randomPool.candidates.some((c) => vus.size === vus.add(c).size);
+      const ailleurs = n.randomPool.candidates.some((c) =>
+        game.nodes.some((m) => m.id !== n.id && m.randomPool?.candidates.includes(c)),
+      );
+      return doublonLocal || ailleurs;
+    }
+    case "fix-enum-defaut":
+      return true;
+    case "supprimer-reference": {
+      if (!n) return false;
+      if (n.activation.requires.length > 1) return true;
+      if ((n.inventoryRef ?? []).some((r) => !items.has(r))) return true;
+      const hints = (n.module.data as { inventoryHints?: { itemId?: unknown }[] } | undefined)?.inventoryHints;
+      if (Array.isArray(hints) && hints.some((h) => typeof h?.itemId === "string" && h.itemId && !items.has(h.itemId))) return true;
+      if (n.discovery?.mode === "ON_ITEM" && n.discovery.itemId && !items.has(n.discovery.itemId)) return true;
+      if (n.discovery?.sourceNode && !byId.has(n.discovery.sourceNode)) return true;
+      if (n.randomPool && n.randomPool.candidates.some((c) => !byId.has(c))) return true;
+      return false;
+    }
+    default:
+      return false;
+  }
+}
+
+// Supprime les références orphelines d'un nœud : conditions d'activation
+// (en gardant au moins une condition et un operator cohérent), candidats de
+// tirage inconnus, champs discovery orphelins (réinitialisés), inventoryRef
+// et inventoryHints orphelins. Ne touche jamais aux autres nœuds.
+export function nettoyerReferencesOrphelines(game: Game, nodeId: string): Game {
+  const byId = new Set(game.nodes.map((n) => n.id));
+  const items = new Set((game.objects ?? []).map((o) => o.id));
+  const clues = new Set<string>();
+  for (const m of game.nodes) {
+    if (m.discovery?.mode === "ON_CLUE" && m.discovery.clueId) clues.add(m.discovery.clueId);
+    for (const c of m.activation.requires) {
+      if (c.type === "CLUE_RESOLVED" && c.clueId) clues.add(c.clueId);
+    }
+  }
+  return {
+    ...game,
+    nodes: game.nodes.map((n) => {
+      if (n.id !== nodeId) return n;
+      let requires = n.activation.requires.filter((c) => {
+        if (c.type === "NODE_COMPLETED") return !!(c.nodeId && byId.has(c.nodeId));
+        if (c.type === "POOL_DRAWN") return !!(c.poolNodeId && game.nodes.some((m) => m.id === c.poolNodeId && m.randomPool));
+        if (c.type === "TIMER" && c.anchor === "NODE_COMPLETION") return !!(c.anchorNodeId && byId.has(c.anchorNodeId));
+        if ((c.type === "ITEM_REQUIRED" || c.type === "ITEM_USED") && c.itemId) return items.has(c.itemId);
+        if (c.type === "CLUE_RESOLVED") return true;
+        return true;
+      });
+      if (requires.length === 0) requires = n.activation.requires;
+      const operator = requires.length > 1 ? n.activation.operator : undefined;
+      const discovery = n.discovery && (
+        (n.discovery.mode === "ON_ITEM" && n.discovery.itemId && !items.has(n.discovery.itemId)) ||
+        (n.discovery.mode === "ON_CLUE" && n.discovery.clueId && !clues.has(n.discovery.clueId)) ||
+        (n.discovery.mode === "ON_COMPLETED" && n.discovery.sourceNode && !byId.has(n.discovery.sourceNode)) ||
+        (n.discovery.mode === "ON_PUZZLE" && n.discovery.sourceNode && !byId.has(n.discovery.sourceNode)) ||
+        (n.discovery.mode === "ON_PROXIMITY" && n.discovery.sourceNode && !byId.has(n.discovery.sourceNode))
+      ) ? undefined : n.discovery;
+      const inventoryRef = n.inventoryRef?.filter((r) => items.has(r));
+      const hints = (n.module.data as { inventoryHints?: { itemId?: unknown }[] } | undefined)?.inventoryHints;
+      const module =
+        Array.isArray(hints)
+          ? { ...n.module, data: { ...(n.module.data as object), inventoryHints: hints.filter((h) => typeof h?.itemId !== "string" || !h.itemId || items.has(h.itemId)) } }
+          : n.module;
+      const randomPool = n.randomPool
+        ? { ...n.randomPool, candidates: n.randomPool.candidates.filter((c) => byId.has(c)) }
+        : undefined;
+      return { ...n, activation: { ...n.activation, requires, operator }, discovery, inventoryRef, module, randomPool };
+    }),
+  };
 }
 
 export function registerAsset(
@@ -82,6 +257,8 @@ export interface ExportResult {
   errors: string[];
   gameJson?: string;
   manifest?: { files: ManifestFile[] };
+  /** Constats structurés des refus (change studio-validation-actionnable). */
+  diagnostics: Diagnostic[];
 }
 
 /**
@@ -91,7 +268,9 @@ export interface ExportResult {
  */
 export function canExport(game: Game, meta: StudioMeta, animatorMode: boolean): { ok: boolean; raisons: string[] } {
   const v = validateGameFull(game);
-  const raisons = v.layers.flatMap((l) => l.errors).concat(v.extraErrors ?? []);
+  // Seules les erreurs bloquent (change studio-validation-actionnable) :
+  // avertissements/info n'empêchent jamais l'export (confirmation à part).
+  const raisons = messagesBloquants(v.diagnostics);
   if (!animatorMode) {
     for (const n of game.nodes) {
       if ((meta.status[n.id]?.state ?? "draft") === "draft") {
@@ -132,7 +311,7 @@ export async function exportPack(
   const withGame = files.some((m) => m.path === "game.json")
     ? files
     : [...files, { path: "game.json", version: game.schemaVersion, size: gameJson.length, sha256: await sha256hex(gameJson) }];
-  return { ok: true, errors: [], gameJson, manifest: { files: withGame } };
+  return { ok: true, errors: [], gameJson, manifest: { files: withGame }, diagnostics: [] };
 }
 
 export function setReview(  meta: StudioMeta,
@@ -576,13 +755,15 @@ export function duplicateObject(game: Game, id: string): Game {
 // --- Updated validateGame wrapper (tache 5.5) ---
 export interface ValidationResult {
   ok: boolean;
-  layers: { layer: number; errors: string[] }[];
+  layers: { layer: number; errors: string[]; diagnostics: Diagnostic[] }[];
   extraErrors?: string[];
+  diagnostics: Diagnostic[];
 }
 
 export function validateGameFull(game: Game): ValidationResult {
   const v = validateGame(game);
-  const extraErrors: string[] = [];
+  const sig = new Collecteur(2);
+  const extraErrors = sig.errors;
 
   // Check object references in discovery and activation
   const itemIds = new Set((game.objects ?? []).map((o) => o.id));
@@ -596,22 +777,22 @@ export function validateGameFull(game: Game): ValidationResult {
 
   for (const n of game.nodes) {
     if (n.discovery?.mode === "ON_ITEM" && n.discovery.itemId && !itemIds.has(n.discovery.itemId)) {
-      extraErrors.push(`Objet discovery ${n.discovery.itemId} inexistant dans le noeud ${n.id}`);
+      sig.signaler("DISCOVERY_ITEM_ORPHELIN", `Objet discovery ${n.discovery.itemId} inexistant dans le noeud ${n.id}`, { noeud: n.id, champ: "discovery.itemId" });
     }
     if (n.discovery?.mode === "ON_CLUE" && n.discovery.clueId && !clueIds.has(n.discovery.clueId)) {
-      extraErrors.push(`Indice discovery ${n.discovery.clueId} inexistant dans le noeud ${n.id}`);
+      sig.signaler("DISCOVERY_CLUE_ORPHELIN", `Indice discovery ${n.discovery.clueId} inexistant dans le noeud ${n.id}`, { noeud: n.id, champ: "discovery.clueId" });
     }
     for (const c of n.activation.requires) {
       if (c.type === "ITEM_REQUIRED" && c.itemId && !itemIds.has(c.itemId)) {
-        extraErrors.push(`Item ITEM_REQUIRED ${c.itemId} inexistant dans le noeud ${n.id}`);
+        sig.signaler("ITEM_REQUIRED_ORPHELIN", `Item ITEM_REQUIRED ${c.itemId} inexistant dans le noeud ${n.id}`, { noeud: n.id, champ: "itemId" });
       }
       if (c.type === "CLUE_RESOLVED" && c.clueId && !clueIds.has(c.clueId)) {
-        extraErrors.push(`Clue CLUE_RESOLVED ${c.clueId} inexistante dans le noeud ${n.id}`);
+        sig.signaler("CLUE_ORPHELINE", `Clue CLUE_RESOLVED ${c.clueId} inexistante dans le noeud ${n.id}`, { noeud: n.id, champ: "clueId" });
       }
     }
     if (n.inventoryRef) {
       for (const ref of n.inventoryRef) {
-        if (!itemIds.has(ref)) extraErrors.push(`inventoryRef ${ref} inexistant dans le noeud ${n.id}`);
+        if (!itemIds.has(ref)) sig.signaler("INVENTORYREF_ORPHELIN", `inventoryRef ${ref} inexistant dans le noeud ${n.id}`, { noeud: n.id, champ: "inventoryRef" });
       }
     }
   }
@@ -623,15 +804,17 @@ export function validateGameFull(game: Game): ValidationResult {
         const used = game.nodes.some((n) =>
           n.activation.requires.some((c) => c.type === "ITEM_USED" && c.itemId === o.id)
         );
-        if (!used) extraErrors.push(`Objet ${o.id} est consumable mais jamais utilise par ITEM_USED`);
+        if (!used) sig.signaler("CONSUMABLE_INUTILISE", `Objet ${o.id} est consumable mais jamais utilise par ITEM_USED`, { noeud: o.id, champ: "consumable" });
       }
     }
   }
 
+  const diagnostics = [...v.layers.flatMap((l) => l.diagnostics), ...sig.diagnostics];
   return {
     ok: v.ok && extraErrors.length === 0,
     layers: v.layers,
-    extraErrors: extraErrors.length > 0 ? extraErrors : undefined
+    extraErrors: extraErrors.length > 0 ? extraErrors : undefined,
+    diagnostics,
   };
 }
 
@@ -643,11 +826,16 @@ export async function exportPackFull(
   animatorMode: boolean,
 ): Promise<ExportResult> {
   const result = validateGameFull(game);
-  const errors = result.layers.flatMap((l) => l.errors).concat(result.extraErrors ?? []);
+  const errors = messagesBloquants(result.diagnostics);
+  const sig = new Collecteur(2);
+  const pushRefus = (code: string, message: string, extra?: { noeud?: string; champ?: string }) =>
+    sig.signaler(code, message, extra);
   if (!animatorMode) {
     for (const n of game.nodes) {
       if ((meta.status[n.id]?.state ?? "draft") === "draft") {
-        errors.push(`export refuse : noeud ${n.id} en draft (hors mode animateur)`);
+        const message = `export refuse : noeud ${n.id} en draft (hors mode animateur)`;
+        errors.push(message);
+        pushRefus("DRAFT_BLOQUE", message, { noeud: n.id });
       }
     }
   }
@@ -664,14 +852,18 @@ export async function exportPackFull(
         const v = (s as Record<string, unknown>)[champ];
         if (typeof v !== "string" || v === "") continue;
         if (/^https?:\/\//i.test(v)) {
-          errors.push(`export refuse : média INFO hors-pack (URL réseau) ${n.id} : ${v}`);
+          const message = `export refuse : média INFO hors-pack (URL réseau) ${n.id} : ${v}`;
+          errors.push(message);
+          pushRefus("MEDIA_HORS_PACK", message, { noeud: n.id, champ: v });
         } else if (!manifest.some((m) => m.path === v)) {
-          errors.push(`export refuse : média INFO absent du manifest ${n.id} : ${v}`);
+          const message = `export refuse : média INFO absent du manifest ${n.id} : ${v}`;
+          errors.push(message);
+          pushRefus("MEDIA_ABSENT_MANIFEST", message, { noeud: n.id, champ: v });
         }
       }
-    }
   }
-  if (errors.length) return { ok: false, errors };
+  const diagnostics = [...result.diagnostics, ...sig.diagnostics];
+  if (errors.length) return { ok: false, errors, diagnostics };
   const gameJson = JSON.stringify(game, null, 2);
   const files = await Promise.all(
     manifest.map(async (m) =>

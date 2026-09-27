@@ -15,6 +15,7 @@ import { ImageWidgetProperties } from "./ImageWidgetProperties";
 import { ButtonWidgetProperties } from "./ButtonWidgetProperties";
 import { ProgressBarProperties } from "./ProgressBarProperties";
 import { SpacerWidgetProperties } from "./SpacerWidgetProperties";
+import { MapWidgetProperties } from "./MapWidgetProperties";
 import { ScreenProperties } from "./ScreenProperties";
 import { StyleToolbar } from "./StyleToolbar";
 
@@ -179,6 +180,9 @@ export function PropertiesPanel({
           ) : null}
           {widget.type === "spacer" ? (
             <SpacerWidgetProperties widget={widget} onChange={(w) => onPatchWidget(selectedZone, selectedWidgetIndex, w)} />
+          ) : null}
+          {widget.type === "map" ? (
+            <MapWidgetProperties widget={widget} onChange={(w) => onPatchWidget(selectedZone, selectedWidgetIndex, w)} />
           ) : null}
         </SectionStyle>
         <SectionStyle id="pp-style-contenu" titre="Style — Contenu" badge={<BadgeHeritage local={widget.styles} />} defaut={false}>

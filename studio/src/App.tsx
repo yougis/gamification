@@ -15,8 +15,9 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { validateGame, deadEnds } from "./game/validate";
+import { rendreDiagnostic, type Diagnostic } from "./game/diagnostics";
 import { evaluate, drawPool, estHorsDelai, type Sim } from "./game/evaluate";
-import { composeNodes, setActivation, registerAsset, exportPackFull, canExport, addSecoursCode, importGame, addObject, setObjects, duplicateObject, setReview, removeNode, renameNode, duplicateNode, patchScreenZone, removeScreenZone, addScreenWidget, setScreenWidget as mcpSetScreenWidget, removeScreenWidget, moveScreenWidget, moveScreenWidgetAcross, setNodeScreen, setScreenBackground, setScreenStyles, setGlobalScreen, setGlobalBackground, patchGlobalZone, removeGlobalZone, addGlobalWidget, setGlobalWidget, removeGlobalWidget, moveGlobalWidget, moveGlobalWidgetAcross, setGlobalScreenStyles, setMinigameDefaults, setPresentation, type ManifestFile } from "./game/mcp";
+import { composeNodes, setActivation, registerAsset, exportPackFull, validateGameFull, canExport, addSecoursCode, importGame, addObject, setObjects, duplicateObject, setReview, removeNode, renameNode, duplicateNode, patchScreenZone, removeScreenZone, addScreenWidget, setScreenWidget as mcpSetScreenWidget, removeScreenWidget, moveScreenWidget, moveScreenWidgetAcross, setNodeScreen, setScreenBackground, setScreenStyles, setGlobalScreen, setGlobalBackground, patchGlobalZone, removeGlobalZone, addGlobalWidget, setGlobalWidget, removeGlobalWidget, moveGlobalWidget, moveGlobalWidgetAcross, setGlobalScreenStyles, setMinigameDefaults, setPresentation, migrerPreset, retirerOperator, setOperator, setMaxReentries, clampDrawCount, retirerDoublonPool, fixEnumDefaut, nettoyerReferencesOrphelines, correctifApplicable, type ManifestFile } from "./game/mcp";
 import { emptyMeta, type Condition, type Effect, type Game, type GameNode, type GameObject, type MinigameDefaults, type Predicate, type StudioMeta, type ExperienceStyle, type Branding, type GameMode, type Difficulty, type ScreenDefinition, type ZoneContent, type ZoneId } from "./game/types";
 import { buildCompatSidecar, canExportToChannel, type ChannelId } from "./game/compat";
 import { fetchAsset, fetchPack, getCatalogUrl, listGames, publishGame, setCatalogUrl as sauvegarderCatalogUrl, type CatalogEntry } from "./game/catalog";
@@ -24,7 +25,7 @@ import { sha256Hex } from "./game/pack";
 import { FONT_OPTIONS, estPoliceConnue } from "./game/fonts";
 import {
   MODULES_FR, CONDITIONS_FR, FAMILLES, PRESETS_RAYON, MILIEUX, ETATS_FR,
-  OPERATEURS_FR, erreurFR, IMPORTER, type Milieu,
+  OPERATEURS_FR, IMPORTER, type Milieu,
 } from "./game/i18n-ui";
 import { MODULE_REGISTRY } from "./game/modules";
 import { typesCreation } from "./game/module-registry";
@@ -264,7 +265,6 @@ export default function App() {  const [st, dispatch] = useReducer(reduce, undef
   const [recherche, setRecherche] = useState("");
   const [positions, setPositions] = useState<Record<string, { x: number; y: number }>>({});
   const [rapport, setRapport] = useState<string[]>([]);
-  const [brut, setBrut] = useState<string[]>([]);
   const [animateur, setAnimateur] = useState(false);
   const [manifest, setManifest] = useState<ManifestFile[]>([]);
   // Catalogue des jeux (change studio-game-catalog) : URL du service
@@ -330,6 +330,12 @@ export default function App() {  const [st, dispatch] = useReducer(reduce, undef
   const [couches, setCouches] = useState<{ c1: boolean; c2: boolean | null }>({ c1: true, c2: true });
   // Détail par couche pour l'écran Valider (erreurs brutes, groupées au rendu).
   const [detailCouches, setDetailCouches] = useState<{ layer: number; errors: string[] }[]>([]);
+  // Diagnostics structurés (change studio-validation-actionnable) : alimentent
+  // l'écran Valider (3 blocs + Corriger) et la confirmation d'export.
+  const [diagnostics, setDiagnostics] = useState<Diagnostic[]>([]);
+  // Confirmation « exporter quand même » (avertissements seuls) : session-only,
+  // invalidée à chaque édition (comme `rapport`).
+  const [exportConfirme, setExportConfirme] = useState(false);
   // Calque transverse superposé (null = fermé) : i18n ou difficultés/modes.
   const [calque, setCalque] = useState<null | "i18n" | "modes">(null);
   // Vue centrale : graphe ReactFlow, carte MapView (geo/indoor) ou ecran WYSIWYG du noeud selectionne
@@ -532,20 +538,54 @@ export default function App() {  const [st, dispatch] = useReducer(reduce, undef
     setExportOk(false);
   }, [relecture, st.present]);
   const editGame = useCallback((fn: (g: Game) => Game, op = "modifier") => edit((s) => ({ ...s, game: fn(s.game) }), op), [edit]);
+  // Dispatcher des corrections proposées (change studio-validation-actionnable) :
+  // chaque correctif = opération MCP nommée annulable. `choix` porte la décision
+  // d'auteur pour fix-operator (AND/OR, jamais deviné).
+  const corriger = useCallback((d: Diagnostic, correctifId: string, choix?: string) => {
+    const id = d.noeud;
+    switch (correctifId) {
+      case "migrer-preset":
+        editGame(migrerPreset, "migrerPreset : global.preset → experienceStyle.preset");
+        break;
+      case "retirer-operator":
+        if (id) editGame((g) => retirerOperator(g, id), `retirerOperator ${id} (déclencheur unique)`);
+        break;
+      case "fix-operator":
+        if (id && (choix === "AND" || choix === "OR")) {
+          editGame((g) => setOperator(g, id, choix), `setOperator ${id} ${choix} (choix auteur)`);
+        }
+        break;
+      case "fix-maxreentries":
+        if (id) editGame((g) => setMaxReentries(g, id, 1), `setMaxReentries ${id} 1`);
+        break;
+      case "fix-drawcount":
+        if (id) editGame((g) => clampDrawCount(g, id), `clampDrawCount ${id} (drawCount = candidates)`);
+        break;
+      case "fix-double-pool":
+        if (id) editGame((g) => retirerDoublonPool(g, id), `retirerDoublonPool ${id}`);
+        break;
+      case "fix-enum-defaut":
+        if (d.code === "GAMEMODE_INVALIDE") editGame((g) => fixEnumDefaut(g, "gameMode"), "fixEnumDefaut gameMode NORMAL");
+        else if (d.code === "DIFFICULTY_INVALIDE") editGame((g) => fixEnumDefaut(g, "difficulty"), "fixEnumDefaut difficulty FAMILLE");
+        else editGame((g) => fixEnumDefaut(g, "experienceStyle.preset"), "fixEnumDefaut experienceStyle.preset BASIC");
+        break;
+      case "supprimer-reference":
+        if (id) editGame((g) => nettoyerReferencesOrphelines(g, id), `nettoyerReferencesOrphelines ${id}`);
+        break;
+      default:
+        break;
+    }
+  }, [editGame]);
   const etape: GameNode | undefined = game.nodes.find((n) => n.id === sel);
   const impasses = useMemo(() => new Set(deadEnds(game)), [game]);
 
   const erreursParNoeud = useMemo(() => {
     const m = new Map<string, string[]>();
-    const ids = new Set(game.nodes.map((n) => n.id));
-    for (const e of brut) {
-      for (const id of ids) {
-        if (e.includes(id)) {
-          const l = m.get(id) ?? [];
-          l.push(e);
-          m.set(id, l);
-        }
-      }
+    for (const d of diagnostics) {
+      if (!d.noeud || !game.nodes.some((n) => n.id === d.noeud)) continue;
+      const l = m.get(d.noeud) ?? [];
+      l.push(rendreDiagnostic(d));
+      m.set(d.noeud, l);
     }
     for (const id of impasses) {
       const l = m.get(id) ?? [];
@@ -553,7 +593,7 @@ export default function App() {  const [st, dispatch] = useReducer(reduce, undef
       m.set(id, l);
     }
     return m;
-  }, [brut, game.nodes, impasses]);
+  }, [diagnostics, game.nodes, impasses]);
 
 // Nœuds au rendu par défaut ReactFlow (change studio-graph-selection, option base pure) :
 // boîtes de largeur uniforme, libellés concis, liens bas→haut. `measured` est préservé
@@ -669,9 +709,7 @@ const noeuds: Node[] = useMemo(
 
   const actualiserRapport = (g: Game) => {
     const v = validateGame(g);
-    const brutes = v.layers.flatMap((l) => l.errors);
-    setBrut(brutes);
-    setRapport(v.layers.flatMap((l) => (l.errors.length ? l.errors.map(erreurFR) : [`Couche ${l.layer} : OK`])));
+    setRapport(v.layers.flatMap((l) => (l.diagnostics.length ? l.diagnostics.map(rendreDiagnostic) : [`Couche ${l.layer} : OK`])));
     return v;
   };
   const valider = () => {
@@ -681,13 +719,14 @@ const noeuds: Node[] = useMemo(
   };
   useEffect(() => {
     const v = validateGame(game);
-    setBrut(v.layers.flatMap((l) => l.errors));
-    setRapport(v.layers.flatMap((l) => (l.errors.length ? l.errors.map(erreurFR) : [`Couche ${l.layer} : OK`])));
+    setRapport(v.layers.flatMap((l) => (l.diagnostics.length ? l.diagnostics.map(rendreDiagnostic) : [`Couche ${l.layer} : OK`])));
     setCouches({
       c1: (v.layers[0]?.errors.length ?? 1) === 0,
       c2: v.layers[1] ? v.layers[1].errors.length === 0 : null,
     });
     setDetailCouches(v.layers.map((l) => ({ layer: l.layer, errors: [...l.errors] })));
+    setDiagnostics(validateGameFull(game).diagnostics);
+    setExportConfirme(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [game]);
 
@@ -923,8 +962,7 @@ const noeuds: Node[] = useMemo(
     if (bloqueExport && !animateur) return;
     const r = await exportPackFull(game, st.present.meta, manifest, animateur);
     if (!r.ok) {
-      setBrut(r.errors);
-      setRapport(r.errors.map(erreurFR));
+      setRapport(r.diagnostics.length ? r.diagnostics.map(rendreDiagnostic) : r.errors);
       setEtapeWorkflow(4);
       return;
     }
@@ -965,9 +1003,7 @@ const noeuds: Node[] = useMemo(
       const g = await importGame(file);
       const v = validateGame(g);
       if (!v.ok) {
-        const premier = v.layers.flatMap((l) => l.errors)[0] ?? "validation échouée";
-        setBrut(v.layers.flatMap((l) => l.errors));
-        setRapport(v.layers.flatMap((l) => (l.errors.length ? l.errors.map(erreurFR) : [`Couche ${l.layer} : OK`])));
+        setRapport(v.layers.flatMap((l) => (l.diagnostics.length ? l.diagnostics.map(rendreDiagnostic) : [`Couche ${l.layer} : OK`])));
         setImportEchoue(file.name);
         return;
       }
@@ -979,7 +1015,6 @@ const noeuds: Node[] = useMemo(
       setImportEchoue(null);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      setBrut([msg]);
       setRapport([msg]);
       setImportEchoue(file.name);
     }
@@ -995,9 +1030,8 @@ const noeuds: Node[] = useMemo(
     try {
       const r = await exportPackFull(game, st.present.meta, manifest, animateur);
       if (!r.ok) {
-        setBrut(r.errors);
-        setRapport(r.errors.map(erreurFR));
-        setPublication({ erreur: r.errors.map(erreurFR).join(" ; ") });
+        setRapport(r.diagnostics.length ? r.diagnostics.map(rendreDiagnostic) : r.errors);
+        setPublication({ erreur: (r.diagnostics.length ? r.diagnostics.map(rendreDiagnostic) : r.errors).join(" ; ") });
         return;
       }
       const assets = [...assetsSession.current]
@@ -1039,7 +1073,6 @@ const noeuds: Node[] = useMemo(
       await importerFichier(new File([pack.gameJson], `${pack.gameId}.json`, { type: "application/json" }));
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      setBrut([msg]);
       setRapport([msg]);
       setImportEchoue(entry.code);
     }
@@ -1074,7 +1107,15 @@ const noeuds: Node[] = useMemo(
   // consommée par la barre globale, Relire et Exporter.
   const blocage = useMemo(() => canExport(game, st.present.meta, animateur), [game, st.present.meta, animateur]);
   const bloqueExport = !blocage.ok;
-  const raisonsBlocage = blocage.raisons;
+  // Causes affichées via le glossaire (change studio-validation-actionnable) :
+  // diagnostics bloquants rendus, plus les brouillons (porte d'export).
+  const raisonsBlocage = useMemo(() => {
+    const diags = diagnostics.filter((d) => d.niveau === "erreur").map(rendreDiagnostic);
+    const brouillons = game.nodes
+      .filter((n) => (st.present.meta.status[n.id]?.state ?? "draft") === "draft")
+      .map((n) => `Étape « ${n.id} » en brouillon (hors mode animateur) : passe-la en relu dans Relire.`);
+    return [...diags, ...brouillons];
+  }, [diagnostics, game, st.present.meta]);
   const [dernierExport, setDernierExport] = useState<{ date: string; files: ManifestFile[] } | null>(null);
   // Statut global du jeu pour la barre globale (spec studio-onepage-spec).
   const statutJeu = nbEtapes === 0 || nbBrouillons > 0 ? "draft" : "reviewed";
@@ -1294,6 +1335,7 @@ const noeuds: Node[] = useMemo(
             <div ref={cadreEcranRef} className="flex min-h-0 flex-1 items-center justify-center overflow-hidden">
               <PhoneCanvas
                 screen={game.global?.screen ?? {}}
+                game={game}
                 cleContexte="global"
                 selectedZoneId={screenZone}
                 selectedWidgetIndex={screenWidget}
@@ -1328,6 +1370,7 @@ const noeuds: Node[] = useMemo(
           ) : etape ? (            <div ref={cadreEcranRef} className="flex min-h-0 flex-1 items-center justify-center overflow-hidden">
               <PhoneCanvas
                 screen={resolveScreen(etape, game.global?.screen)}
+                game={game}
                 moduleType={etape.module.type}
                 moduleData={etape.module.data}
                 cleContexte={etape.id}
@@ -1415,17 +1458,17 @@ const noeuds: Node[] = useMemo(
     </footer>
   ), [erreurs, nbEtapes, finPresente, impasses, manifest, nbBrouillons, choisirNoeud]);
 
-  const listeErreurs = useMemo(() => erreurs.length > 0 && (
+  const listeErreurs = useMemo(() => {
+    const items = diagnostics.filter((d) => d.niveau === "erreur");
+    return items.length > 0 && (
     <ul className="max-h-28 overflow-auto border-t border-rule bg-surface px-3 py-2 text-[8px]" aria-label="Problèmes à corriger">
-      {erreurs.map((r, i) => {
-        const fautif = game.nodes.find((n) => brut.join(" ").includes(n.id) && r.length > 0 && brut.some((b) => b.includes(n.id) && erreurFR(b) === r));
-        void fautif;
-        // Retrouve un nœud cité dans l'erreur brute correspondante pour surligner au clic.
-        const cible = game.nodes.find((n) => brut[i] && brut[i].includes(n.id)) ?? game.nodes.find((n) => r.includes(n.id));
+      {items.map((d, i) => {
+        // Cible directe depuis le diagnostic (plus de réconciliation texte).
+        const cible = d.noeud ? game.nodes.find((n) => n.id === d.noeud) : undefined;
         return (
           <li key={i} className="flex gap-2 items-center py-1">
             <Icon name="alerte" size={14} />
-            <span className="flex-1">{r}</span>
+            <span className="flex-1">{rendreDiagnostic(d)}</span>
             {cible && (
               <button className="btn min-h-8 px-2.5 text-[8px]" onClick={() => { choisirNoeud(cible.id); setEcran("composer"); }} title={`Aller à ${cible.id}`}>
                 Voir {cible.id}
@@ -1435,7 +1478,8 @@ const noeuds: Node[] = useMemo(
         );
       })}
     </ul>
-  ), [erreurs, game, brut, choisirNoeud]);
+    );
+  }, [diagnostics, game, choisirNoeud]);
 
   const detail = useMemo(() => (
     <aside className="carte min-h-0 flex-1 overflow-auto p-2 min-w-0" aria-label="Détail de l'étape">
@@ -1694,7 +1738,10 @@ const noeuds: Node[] = useMemo(
             <h2 className="font-display font-extrabold text-2xl tracking-widest uppercase text-snow mb-6">Validation</h2>
             {pied}
             {listeErreurs}
-            <BlocValidation couches={detailCouches} verdicts={couches} game={game} onVoir={(id) => { choisirNoeud(id); setEcran("composer"); }} />
+            <BlocValidation couches={detailCouches} diagnostics={diagnostics} verdicts={(() => {
+              const c1 = !diagnostics.some((d) => d.couche === 1 && d.niveau === "erreur");
+              return { c1, c2: c1 ? !diagnostics.some((d) => d.couche === 2 && d.niveau === "erreur") : null };
+            })()} game={game} onVoir={(id) => { choisirNoeud(id); setEcran("composer"); }} onCorriger={(d, id, choix) => corriger(d, id, choix)} />
           </div>
         </div>
       )}
@@ -1729,6 +1776,7 @@ const noeuds: Node[] = useMemo(
           {modeJeux && activeId && game.nodes.some((n) => n.id === activeId) && (
             <PlayerTerminal
               node={game.nodes.find((n) => n.id === activeId)!}
+              game={game}
               globalScreen={game.global?.screen}
               branding={game.branding}
               experienceStyle={game.global?.experienceStyle}
@@ -1866,16 +1914,25 @@ const noeuds: Node[] = useMemo(
             </div>
             {(() => {
               const bloque = bloqueExport && !animateur;
+              const avts = diagnostics.filter((d) => d.niveau === "avertissement");
+              const confirmer = () => {
+                setExportConfirme(true);
+                setRapport((r) => [...r, `Export avec avertissement(s) confirmé : ${avts.map((d) => d.code).join(", ")}`]);
+              };
+              const pretQuandMeme = !bloque && avts.length > 0 && !exportConfirme;
               return (
                 <>
-                  <button disabled={bloque} onClick={genererPack} title={bloque ? raisonsBlocage.join("\n") : "Générer le pack offline"}
-                    className={`w-full py-3 rounded font-display font-bold text-[9px] uppercase tracking-widest transition-all ${bloque ? 'bg-fail/8 border border-fail/20 text-fail/50 cursor-not-allowed' : 'bg-neon text-canvas hover:brightness-110'}`}>
-                    {bloque ? "Export bloqué — corriger les erreurs" : "Générer le pack"}
+                  <button
+                    disabled={bloque}
+                    onClick={() => { if (pretQuandMeme) confirmer(); else void genererPack(); }}
+                    title={bloque ? raisonsBlocage.join("\n") : pretQuandMeme ? "Confirmer l'export malgré les avertissements (journalisé)" : "Générer le pack offline"}
+                    className={`w-full py-3 rounded font-display font-bold text-[9px] uppercase tracking-widest transition-all ${bloque ? 'bg-fail/8 border border-fail/20 text-fail/50 cursor-not-allowed' : pretQuandMeme ? 'bg-caution text-canvas hover:brightness-110' : 'bg-neon text-canvas hover:brightness-110'}`}>
+                    {bloque ? "Export bloqué — corriger les erreurs" : pretQuandMeme ? `Exporter quand même (${avts.length} avertissement${avts.length > 1 ? "s" : ""})` : exportConfirme && avts.length > 0 ? "Générer le pack (avertissements assumés)" : "Générer le pack"}
                   </button>
                   {bloque && (
                     <ul className="mt-2 font-mono text-[8px] text-fail space-y-1" aria-label="Causes du blocage">
                       {raisonsBlocage.map((r, i) => (
-                        <li key={i}>• {erreurFR(r)}</li>
+                        <li key={i}>• {r}</li>
                       ))}
                     </ul>
                   )}
@@ -1981,7 +2038,6 @@ const noeuds: Node[] = useMemo(
         const file = e.dataTransfer.files?.[0];
         if (!file) return;
         if (file.type !== "application/json" && !file.name.endsWith(".json")) {
-          setBrut([`Fichier refusé : ${file.name} n'est pas un JSON (.json attendu)`]);
           setRapport([`Fichier refusé : ${file.name} n'est pas un JSON (.json attendu)`]);
           return;
         }
@@ -3677,22 +3733,75 @@ function categorieC2(e: string): string {
   return "Autres";
 }
 
-function BlocValidation({ couches, verdicts, game, onVoir }: {
+function BlocValidation({ couches, diagnostics, verdicts, game, onVoir, onCorriger }: {
   couches: { layer: number; errors: string[] }[];
+  diagnostics: Diagnostic[];
   verdicts: { c1: boolean; c2: boolean | null };
   game: Game;
   onVoir: (id: string) => void;
+  onCorriger: (d: Diagnostic, correctifId: string, choix?: string) => void;
 }) {
   const c1 = couches.find((l) => l.layer === 1);
   const c2 = couches.find((l) => l.layer === 2);
-  // Pile unique C1 + C2 : chaque carte porte sa couche, sa catégorie, son texte
-  // clair, la règle brute et — quand un nœud est identifié — un bouton Voir.
-  const pile: { couche: number; cat: string; brut: string }[] = [
-    ...(c1?.errors ?? []).map((e) => ({ couche: 1, cat: "Schéma", brut: e })),
-    ...(c2?.errors ?? []).map((e) => ({ couche: 2, cat: categorieC2(e), brut: e })),
-  ];
-  const groupes = new Map<string, number>();
-  for (const p of pile) groupes.set(`${p.couche} · ${p.cat}`, (groupes.get(`${p.couche} · ${p.cat}`) ?? 0) + 1);
+  const [choixOpPour, setChoixOpPour] = useState<number>(-1);
+  // Trois blocs par niveau (change studio-validation-actionnable) : les
+  // cartes portent le texte clair (glossaire), la règle brute, Voir et —
+  // quand un correctif est applicable — Corriger (jamais silencieux).
+  const parNiveau = (niveau: Diagnostic["niveau"]) => diagnostics.filter((d) => d.niveau === niveau);
+  const nb = (couche: number, niveau: Diagnostic["niveau"]) =>
+    diagnostics.filter((d) => d.couche === couche && d.niveau === niveau).length;
+  const carte = (d: Diagnostic, i: number) => {
+    const cible = d.noeud ? game.nodes.find((n) => n.id === d.noeud) : undefined;
+    const correctifs = d.correctifs.filter((c) => correctifApplicable(game, c.id, d.noeud));
+    return (
+      <div key={`${d.code}-${i}`} className="flex items-start gap-3 bg-panel border border-rule rounded px-4 py-3 mb-2">
+        <div className={`mt-1 w-1.5 h-1.5 rounded-full shrink-0 ${d.niveau === "erreur" ? "bg-fail" : d.niveau === "avertissement" ? "bg-caution" : "bg-fog"}`} />
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-0.5">
+            <span className="font-mono text-[8px] text-fog">C{d.couche} — {categorieC2(d.message)}</span>
+            <span className={`font-mono text-[8px] uppercase ${d.niveau === "erreur" ? "text-fail" : d.niveau === "avertissement" ? "text-caution" : "text-fog"}`}>{d.niveau}</span>
+            {cible && <span className="font-mono text-[8px] text-neon">→ {cible.id}</span>}
+          </div>
+          <span className="text-[11px] text-snow block">{rendreDiagnostic(d)}</span>
+          <span className="font-mono text-[8px] text-fog block">Règle : {d.message}</span>
+          <div className="flex flex-wrap gap-1 mt-1">
+            {cible && (
+              <button className="btn min-h-8 px-2.5 text-[8px]" onClick={() => onVoir(cible.id)} title={`Aller à ${cible.id}`}>
+                Voir {cible.id}
+              </button>
+            )}
+            {correctifs.map((c) => c.id === "fix-operator" ? (
+              choixOpPour === i ? (
+                <span key={c.id} className="inline-flex gap-1 items-center">
+                  <button className="btn min-h-8 px-2.5 text-[8px]" title="Toutes les conditions doivent être vraies" onClick={() => { onCorriger(d, c.id, "AND"); setChoixOpPour(-1); }}>AND (toutes)</button>
+                  <button className="btn min-h-8 px-2.5 text-[8px]" title="Au moins une condition doit être vraie" onClick={() => { onCorriger(d, c.id, "OR"); setChoixOpPour(-1); }}>OR (au moins une)</button>
+                </span>
+              ) : (
+                <button key={c.id} className="btn min-h-8 px-2.5 text-[8px]" title="Choisir AND ou OR (aucun défaut pré-coché)" onClick={() => setChoixOpPour(i)}>
+                  Corriger : {c.label}
+                </button>
+              )
+            ) : (
+              <button key={c.id} className="btn min-h-8 px-2.5 text-[8px]" title={`${c.label} (annulable via undo)`} onClick={() => onCorriger(d, c.id)}>
+                Corriger : {c.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  };
+  const bloc = (titre: string, niveau: Diagnostic["niveau"], vide: string) => {
+    const items = parNiveau(niveau);
+    return (
+      <div className="mb-4" aria-label={titre}>
+        <div className="text-[8px] font-mono uppercase tracking-widest text-fog mb-2">{titre} ({items.length})</div>
+        {items.length === 0
+          ? <p className="text-[11px] text-fog">{vide}</p>
+          : items.map((d, i) => carte(d, i))}
+      </div>
+    );
+  };
   const puce = (ok: boolean | null) =>
     ok == null ? (
       <>
@@ -3719,7 +3828,7 @@ function BlocValidation({ couches, verdicts, game, onVoir }: {
               <div className="flex items-center gap-1.5">{puce(verdicts.c1)}</div>
             </div>
             <p className="text-[11px] text-fog leading-relaxed">Draft-07 conforme. Tous les champs requis présents.</p>
-            <div className="mt-3 font-mono text-[8px] text-fog bg-canvas rounded px-2 py-1.5">{c1?.errors.length ?? 0} erreur · 0 avertissement</div>
+            <div className="mt-3 font-mono text-[8px] text-fog bg-canvas rounded px-2 py-1.5">{nb(1, "erreur")} erreur(s) · {nb(1, "avertissement")} avertissement(s)</div>
           </div>
           <div className={`bg-panel border rounded-md p-4 ${verdicts.c2 === false ? "border-fail/20" : "border-rule"}`}>
             <div className="flex items-center justify-between mb-3">
@@ -3727,38 +3836,13 @@ function BlocValidation({ couches, verdicts, game, onVoir }: {
               <div className="flex items-center gap-1.5">{puce(verdicts.c2)}</div>
             </div>
             <p className="text-[11px] text-fog leading-relaxed">Cycles, atteignabilité, pools, HOLD, références.</p>
-            <div className="mt-3 font-mono text-[8px] text-fog bg-canvas rounded px-2 py-1.5">{c2?.errors.length ?? 0} erreur(s)</div>
+            <div className="mt-3 font-mono text-[8px] text-fog bg-canvas rounded px-2 py-1.5">{nb(2, "erreur")} erreur(s) · {nb(2, "avertissement")} avertissement(s)</div>
           </div>
         </div>
         <div className="flex flex-col gap-2 mb-5">
-          {[...(groupes.entries())].map(([cat, n]) => (
-            <div key={cat} className="text-[8px] font-mono uppercase tracking-widest text-fog mb-2">{cat} ({n})</div>
-          ))}
-          {pile.map((p, i) => {
-            const cible = game.nodes.find((n) => p.brut.includes(n.id));
-            return (
-              <div key={i} className="flex items-start gap-3 bg-panel border border-rule rounded px-4 py-3 mb-2">
-                <div className="mt-1 w-1.5 h-1.5 rounded-full shrink-0 bg-fail" />
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <span className="font-mono text-[8px] text-fog">C{p.couche} — {p.cat}</span>
-                    <span className="font-mono text-[8px] uppercase text-fail">erreur</span>
-                    <span className="font-mono text-[8px] text-neon">→ {cible?.id ?? "?"}</span>
-                  </div>
-                  <span className="text-[11px] text-snow block">{erreurFR(p.brut)}</span>
-                  <span className="font-mono text-[8px] text-fog block">Règle : {p.brut}</span>
-                  {cible && (
-                    <button className="btn min-h-8 px-2.5 text-[8px] mt-1" onClick={() => onVoir(cible.id)} title={`Aller à ${cible.id}`}>
-                      Voir {cible.id}
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-          {pile.length === 0 && (
-            <p className="text-[11px] text-fog">Aucune erreur : schéma conforme et graphe structurellement valide (sous hypothèse d'environnement favorable).</p>
-          )}
+          {bloc("Erreurs — bloquent l'export", "erreur", "Aucune erreur : schéma conforme et graphe structurellement valide (sous hypothèse d'environnement favorable).")}
+          {bloc("Avertissements — export possible avec confirmation", "avertissement", "Aucun avertissement.")}
+          {bloc("Conseils — jamais bloquants", "info", "Aucun conseil.")}
         </div>
         <p className="text-[8px] text-fog">Export possible = C1 OK ∧ C2 OK ∧ aucun brouillon (hors animateur).</p>
         {(!verdicts.c1 || verdicts.c2 === false) && (

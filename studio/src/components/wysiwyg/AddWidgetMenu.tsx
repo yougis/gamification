@@ -1,11 +1,12 @@
 // Menu d'ajout de widget dans une zone : bouton + liste deroulante des types
-// disponibles (text, image, button, progress, spacer). Le widget module est
-// gere par le noeud lui-meme (auto-ajout), jamais depuis ce menu.
+// disponibles (text, image, button, progress, spacer, map). Le widget module
+// est gere par le noeud lui-meme (auto-ajout), jamais depuis ce menu.
 import { useState } from "react";
 import { Icon } from "../icons";
+import { carteWidgetDefaut } from "../../game/map-widget";
 import type { Widget } from "../../game/types";
 
-export type AddableWidgetType = "text" | "image" | "button" | "progress" | "spacer";
+export type AddableWidgetType = "text" | "image" | "button" | "progress" | "spacer" | "map";
 
 const ENTREES: { type: AddableWidgetType; libelle: string }[] = [
   { type: "text", libelle: "Texte" },
@@ -13,6 +14,7 @@ const ENTREES: { type: AddableWidgetType; libelle: string }[] = [
   { type: "button", libelle: "Bouton" },
   { type: "progress", libelle: "Progression" },
   { type: "spacer", libelle: "Espaceur" },
+  { type: "map", libelle: "Carte" },
 ];
 
 export function defaultWidget(type: AddableWidgetType): Widget {
@@ -27,6 +29,11 @@ export function defaultWidget(type: AddableWidgetType): Widget {
       return { type: "progress", progressType: "steps", showLabel: true };
     case "spacer":
       return { type: "spacer", height: 16 };
+    case "map":
+      // Volet par defaut cree a la pose (change widget-cartographie) : texte
+      // + bouton d'acces a etat lie. Jamais reapplique ensuite : l'auteur le
+      // modifie librement comme tout contenu.
+      return carteWidgetDefaut();
   }
 }
 

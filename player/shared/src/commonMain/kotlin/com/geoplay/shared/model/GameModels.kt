@@ -194,7 +194,7 @@ data class GameNode(
 // sous-schéma Draft-07 `screen`. Types plats + champs optionnels (même
 // pattern que `Condition`) : aucune variante inconnue ne casse le parse
 // (GeoPlayJson ignoreUnknownKeys). Les widgets sont discriminés par `type`
-// (text|image|button|progress|module|spacer), chaque variante ne lisant
+// (text|image|button|progress|module|spacer|map), chaque variante ne lisant
 // que ses champs.
 @Serializable
 data class WidgetStyles(
@@ -227,11 +227,38 @@ data class ScreenWidget(
     val alt: String? = null,
     val label: String? = null,
     val action: String? = null,
+    // Bouton à état lié (change widget-cartographie) : dans le volet d'une
+    // carte, "open-step" lie le bouton au POI sélectionné (Ouvrir/Verrouillé).
+    val poiAction: String? = null,
     val icon: String? = null,
     val variant: String? = null,
     val progressType: String? = null,
     val showLabel: Boolean? = null,
+    // Carte strate 2 (change widget-cartographie) : source dérivée, fond
+    // pack-only, icônes par état, volet composé. Absents = pas de carte.
+    val source: WidgetSource? = null,
+    val background: String? = null,
+    val poiStyle: MapPoiStyle? = null,
+    val volet: ZoneContent? = null,
     val styles: WidgetStyles? = null
+)
+
+// Source d'un widget lié (change widget-cartographie) : enum ouverte par
+// construction ("steps" au périmètre carte ; futurs liés par change dédié).
+@Serializable
+data class WidgetSource(
+    val kind: String = "steps",
+    val filter: String? = null
+)
+
+// Icônes par état moteur (change widget-cartographie) : noms d'icônes ou
+// glyphes, jamais d'URL. Absent = jeu d'icônes par défaut du renderer.
+@Serializable
+data class MapPoiStyle(
+    val locked: String? = null,
+    val unlocked: String? = null,
+    val active: String? = null,
+    val completed: String? = null
 )
 
 @Serializable

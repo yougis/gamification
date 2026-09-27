@@ -21,11 +21,15 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.geoplay.shared.game.resolveScreen
 import com.geoplay.shared.game.resolveWidgetStyle
+import com.geoplay.shared.game.widgetsCarteEcran
 import com.geoplay.shared.model.Game
 import com.geoplay.shared.model.NodeState
+import com.geoplay.shared.model.ScreenWidget
 import com.geoplay.shared.ui.graph.GameGraphScreen
 import com.geoplay.shared.ui.quiz.QuizScreen
 import com.geoplay.shared.ui.quiz.parseQuizQuestions
+import com.geoplay.shared.ui.map.MapWidgetBlock
+import com.geoplay.shared.ui.screen.CarteContexte
 import com.geoplay.shared.ui.screen.ScreenRenderer
 import com.geoplay.shared.ui.theme.GeoPlayTheme
 import com.geoplay.shared.ui.toolbox.ToolboxDialog
@@ -83,6 +87,14 @@ fun GeoPlayApp(
     // n'existe pas en commonMain navigation-compose).
     var selectedNodeId by remember { mutableStateOf<String?>(null) }
     var toolboxOpen by remember { mutableStateOf(false) }
+    // Carte plein écran (change widget-cartographie) : remplace HOME (pas un
+    // overlay), un seul à la fois, inaccessible pendant une modale ACTIVE.
+    // Retour via l'entrée Accueil : ni transition ni event.
+    var cartePleinEcran by remember { mutableStateOf<ScreenWidget?>(null) }
+    val modaleActive = states.values.any { it == NodeState.ACTIVE }
+    fun ouvrirCartePleinEcran(w: ScreenWidget) {
+        if (!modaleActive) cartePleinEcran = w
+    }
     fun openNode(id: String) {
         if (onOpenNode != null) {
             onOpenNode(id)
@@ -144,6 +156,22 @@ fun GeoPlayApp(
                     onClose = { toolboxOpen = false },
                 )
             }
+        val carteActive = cartePleinEcran
+        if (carteActive != null && !modaleActive) {
+            // Plein écran carte (change widget-cartographie) : remplace HOME,
+            // retour via l'entrée Accueil. Navigation pure : ni transition
+            // ni event. Un seul à la fois (remplacement, pas de file).
+            Column(modifier = Modifier.weight(1f)) {
+                TextButton(onClick = { cartePleinEcran = null }) { Text("← Accueil") }
+                MapWidgetBlock(
+                    widget = carteActive,
+                    game = game,
+                    states = states,
+                    onOpenNode = ::openNode,
+                    onPleinEcran = null,
+                )
+            }
+        } else {
         NavHost(navController = navController, startDestination = GeoPlayRoutes.GRAPH, modifier = Modifier.weight(1f)) {
             composable(GeoPlayRoutes.GRAPH) {
                 val activeId = states.entries.find { it.value == NodeState.ACTIVE }?.key
@@ -177,6 +205,8 @@ fun GeoPlayApp(
                         tempsRestantMs = tempsRestantMs,
                         verrouillagesMs = verrouillagesMs,
                         horsDelai = horsDelai,
+                        iconesCarte = widgetsCarteEcran(game.global.screen),
+                        onOuvrirCarte = ::ouvrirCartePleinEcran,
                     )
                 } else {
                 GameGraphScreen(
@@ -226,9 +256,18 @@ fun GeoPlayApp(
                         onTerminer = {
                             completeAndAdvance(nodeId) { onModuleComplete(nodeId) }
                         },
+                        // Carte strate 2 (change widget-cartographie) : lecture
+                        // passive + plein écran (refusé pendant une modale).
+                        carte = CarteContexte(
+                            game = game,
+                            states = states,
+                            onOpenNode = ::openNode,
+                            onPleinEcran = ::ouvrirCartePleinEcran,
+                        ),
                     )
                 }
             }
+        }
         }
         }
     }

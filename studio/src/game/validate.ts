@@ -202,6 +202,48 @@ export function validateLayer2(game: Game): LayerReport {
     sig.signaler("TILESTRATEGY_NONE_MAP", `C2 global.tileStrategy "none" avec global.map configuré (pas de tuiles affichées)`, { champ: "global.tileStrategy" });
   }
 
+  // Widget cartographie (change widget-cartographie) : collecte des widgets
+  // map des écrans (nœuds + global) pour les règles de cohérence source.
+  const ecrans: { proprietaire: string; def: unknown }[] = [];
+  for (const n of game.nodes) {
+    if (n.screen) ecrans.push({ proprietaire: n.id, def: n.screen });
+  }
+  const ecranGlobal = (game.global as { screen?: unknown } | undefined)?.screen;
+  if (ecranGlobal) ecrans.push({ proprietaire: "global", def: ecranGlobal });
+  const widgetsCarte: { proprietaire: string; widget: Record<string, unknown> }[] = [];
+  const collecter = (prop: string, valeur: unknown) => {
+    if (Array.isArray(valeur)) {
+      for (const w of valeur) {
+        if (w && typeof w === "object" && (w as { type?: unknown }).type === "map") {
+          widgetsCarte.push({ proprietaire: prop, widget: w as Record<string, unknown> });
+        }
+      }
+      return;
+    }
+    if (valeur && typeof valeur === "object") {
+      for (const v of Object.values(valeur as Record<string, unknown>)) collecter(prop, v);
+    }
+  };
+  for (const e of ecrans) collecter(e.proprietaire, e.def);
+
+  // 2.1 : filter "all" + discovery non-VISIBLE_NOW = avertissement (éventement).
+  const aDecouverteMasquee = game.nodes.some(
+    (n) => n.discovery && n.discovery.mode !== "VISIBLE_NOW",
+  );
+  if (aDecouverteMasquee) {
+    for (const { proprietaire, widget } of widgetsCarte) {
+      const source = widget.source as { filter?: unknown } | undefined;
+      if (source?.filter === "all") {
+        sig.signaler("CARTE_ALL_EVENTE", `C2 ${proprietaire} : widget carte en filter "all" éventant des étapes à découverte masquée`, { noeud: proprietaire === "global" ? undefined : proprietaire, champ: "source.filter", attendu: "discovered" });
+      }
+    }
+  }
+
+  // 2.2 : source steps sur jeu sans nœud (HOME-seul) = avertissement, sans rejet.
+  if (game.nodes.length === 0 && widgetsCarte.length > 0) {
+    sig.signaler("CARTE_SANS_ETAPE", `C2 widget carte sans aucune étape dans le jeu (carte vide)`, { champ: "source" });
+  }
+
   // Cycles (aretes allowCycle:true ignorees).
   const WHITE = 0, GRAY = 1, BLACK = 2;
   const color = new Map<string, number>();
@@ -231,17 +273,17 @@ export function validateLayer2(game: Game): LayerReport {
     if (!n.randomPool) continue;
     poolOf.set(n.id, n);
     if (n.randomPool.drawCount > n.randomPool.candidates.length) {
-      errors.push(`C2 ${n.id} : drawCount > candidates.length`);
+      sig.signaler("DRAWCOUNT_TROP_GRAND", `C2 ${n.id} : drawCount > candidates.length`, { noeud: n.id, champ: "randomPool.drawCount", attendu: `≤ ${n.randomPool.candidates.length}` });
     }
     for (const c of n.randomPool.candidates) {
-      if (inPool.has(c)) errors.push(`C2 ${c} : candidat de deux pools (${inPool.get(c)}, ${n.id})`);
+      if (inPool.has(c)) sig.signaler("CANDIDAT_DOUBLE_POOL", `C2 ${c} : candidat de deux pools (${inPool.get(c)}, ${n.id})`, { noeud: n.id, champ: "randomPool.candidates", attendu: "chaque étape dans un seul tirage" });
       else inPool.set(c, n.id);
-      if (!byId.has(c)) errors.push(`C2 ${n.id} : candidat inconnu ${c}`);
+      if (!byId.has(c)) sig.signaler("CANDIDAT_INCONNU", `C2 ${n.id} : candidat inconnu ${c}`, { noeud: n.id, champ: "randomPool.candidates" });
     }
   }
   const boot = (id: string, seen: string[]): boolean => {
     if (seen.includes(id)) {
-      errors.push(`C2 cycle inter-pools : ${[...seen, id].join(" -> ")}`);
+      sig.signaler("CYCLE_INTERPOOLS", `C2 cycle inter-pools : ${[...seen, id].join(" -> ")}`, { noeud: id });
       return false;
     }
     const n = byId.get(id);
@@ -257,7 +299,7 @@ export function validateLayer2(game: Game): LayerReport {
       if (c.type === "NODE_COMPLETED" && c.nodeId && inPool.has(c.nodeId)) {
         const owner = poolOf.get(inPool.get(c.nodeId)!);
         if (owner?.randomPool?.drawTiming === "ON_POOL_ACTIVATION") {
-          errors.push(`C2 ${id} : pool ON_GAME_START depend du candidat ${c.nodeId} d'un pool ON_POOL_ACTIVATION`);
+          sig.signaler("POOL_BOOT_DEPENDANCE", `C2 ${id} : pool ON_GAME_START depend du candidat ${c.nodeId} d'un pool ON_POOL_ACTIVATION`, { noeud: id });
         }
       }
     }
@@ -276,16 +318,16 @@ export function validateLayer2(game: Game): LayerReport {
   // reste applicable (y compris aux jeux non vides avec HOME).
   const homeSoloVide =
     (game.global?.presentation ?? []).includes("HOME") && game.nodes.length === 0;
-  if (!homeSoloVide && endings.length === 0) errors.push("C2 : aucun noeud isEnding");
+  if (!homeSoloVide && endings.length === 0) sig.signaler("AUCUN_ISENDING", "C2 : aucun noeud isEnding", { attendu: "désigner une étape Fin du jeu" });
   else if (!homeSoloVide) {
     if (!endings.some((e) => activable(e, new Set(), new Set()))) {
-      errors.push("C2 : aucun isEnding atteignable depuis le depart");
+      sig.signaler("ISENDING_INATTEIGNABLE", "C2 : aucun isEnding atteignable depuis le depart", {});
     }
     for (const [pid, p] of poolOf) {
       for (const c of p.randomPool!.candidates) {
         const done = new Set([c]);
         if (!endings.some((e) => activable(e, done, new Set()))) {
-          errors.push(`C2 : candidat ${c} du pool ${pid} sans chemin vers FIN`);
+          sig.signaler("CANDIDAT_SANS_FIN", `C2 : candidat ${c} du pool ${pid} sans chemin vers FIN`, { noeud: c, attendu: "relier à une fin" });
         }
       }
     }
@@ -302,7 +344,7 @@ export function validateLayer2(game: Game): LayerReport {
         if (a && a === b) {
           const p = poolOf.get(a)!;
           if (p.randomPool!.drawCount === 1) {
-            errors.push(`C2 ${m.id} : AND sur candidats exclusifs du pool ${a}`);
+            sig.signaler("AND_EXCLUSIF", `C2 ${m.id} : AND sur candidats exclusifs du pool ${a}`, { noeud: m.id, attendu: "OR ou candidats compatibles" });
           }
         }
       }
@@ -317,26 +359,26 @@ export function validateLayer2(game: Game): LayerReport {
   for (const n of game.nodes) {
     for (const c of n.activation.requires) {
       if (c.type === "ITEM_REQUIRED" && c.itemId && !items.has(c.itemId)) {
-        errors.push(`C2 ${n.id} : ITEM_REQUIRED itemId=${c.itemId} inexistant`);
+        sig.signaler("ITEM_REQUIRED_ORPHELIN", `C2 ${n.id} : ITEM_REQUIRED itemId=${c.itemId} inexistant`, { noeud: n.id, champ: "itemId", attendu: "objet existant" });
       }
       if (c.type === "ITEM_USED" && c.itemId && !items.has(c.itemId)) {
-        errors.push(`C2 ${n.id} : ITEM_USED itemId=${c.itemId} inexistant`);
+        sig.signaler("ITEM_USED_ORPHELIN", `C2 ${n.id} : ITEM_USED itemId=${c.itemId} inexistant`, { noeud: n.id, champ: "itemId", attendu: "objet existant" });
       }
       if (c.type === "CODE_INPUT" && !c.code) {
-        errors.push(`C2 ${n.id} : CODE_INPUT requiert un code`);
+        sig.signaler("CONDITION_CODE_MANQUANT", `C2 ${n.id} : CODE_INPUT requiert un code`, { noeud: n.id, champ: "code" });
       }
       if (c.type === "CLUE_RESOLVED" && c.clueId && !clues.has(c.clueId)) {
-        errors.push(`C2 ${n.id} : CLUE_RESOLVED clueId=${c.clueId} inexistant`);
+        sig.signaler("CLUE_ORPHELINE", `C2 ${n.id} : CLUE_RESOLVED clueId=${c.clueId} inexistant`, { noeud: n.id, champ: "clueId", attendu: "indice existant" });
       }
       if (c.type === "TIMER" && c.anchor === "NODE_COMPLETION" && c.anchorNodeId && !byId.has(c.anchorNodeId)) {
-        errors.push(`C2 ${n.id} : TIMER anchorNodeId=${c.anchorNodeId} inexistant`);
+        sig.signaler("TIMER_ANCRE_ORPHELINE", `C2 ${n.id} : TIMER anchorNodeId=${c.anchorNodeId} inexistant`, { noeud: n.id, champ: "anchorNodeId" });
       }
     }
     // Module CODE_INPUT : code attendu requis (symetrique de la condition).
     if (n.module.type === "CODE_INPUT") {
       const code = (n.module.data as { code?: unknown } | undefined)?.code;
       if (typeof code !== "string" || code.length === 0) {
-        errors.push(`C2 ${n.id} : module CODE_INPUT requiert un code attendu (module.data.code)`);
+        sig.signaler("MODULE_CODE_MANQUANT", `C2 ${n.id} : module CODE_INPUT requiert un code attendu (module.data.code)`, { noeud: n.id, champ: "module.data.code" });
       }
     }
     // Indices sur événements d'inventaire : tout itemId écouté doit exister.
@@ -344,30 +386,30 @@ export function validateLayer2(game: Game): LayerReport {
     if (Array.isArray(hints)) {
       for (const h of hints) {
         if (typeof h?.itemId === "string" && h.itemId && !items.has(h.itemId)) {
-          errors.push(`C2 ${n.id} : inventoryHints itemId=${h.itemId} inexistant`);
+          sig.signaler("HINT_ITEM_ORPHELIN", `C2 ${n.id} : inventoryHints itemId=${h.itemId} inexistant`, { noeud: n.id, champ: "inventoryHints.itemId" });
         }
       }
     }
     if (n.discovery) {
       if (n.discovery.mode === "ON_ITEM" && n.discovery.itemId && !items.has(n.discovery.itemId)) {
-        errors.push(`C2 ${n.id} : discovery ON_ITEM itemId=${n.discovery.itemId} inexistant`);
+        sig.signaler("DISCOVERY_ITEM_ORPHELIN", `C2 ${n.id} : discovery ON_ITEM itemId=${n.discovery.itemId} inexistant`, { noeud: n.id, champ: "discovery.itemId" });
       }
       if (n.discovery.mode === "ON_CLUE" && n.discovery.clueId && !clues.has(n.discovery.clueId)) {
-        errors.push(`C2 ${n.id} : discovery ON_CLUE clueId=${n.discovery.clueId} inexistant`);
+        sig.signaler("DISCOVERY_CLUE_ORPHELIN", `C2 ${n.id} : discovery ON_CLUE clueId=${n.discovery.clueId} inexistant`, { noeud: n.id, champ: "discovery.clueId" });
       }
       if (n.discovery.mode === "ON_COMPLETED" && n.discovery.sourceNode && !byId.has(n.discovery.sourceNode)) {
-        errors.push(`C2 ${n.id} : discovery ON_COMPLETED sourceNode=${n.discovery.sourceNode} inexistant`);
+        sig.signaler("DISCOVERY_SOURCE_ORPHELINE", `C2 ${n.id} : discovery ON_COMPLETED sourceNode=${n.discovery.sourceNode} inexistant`, { noeud: n.id, champ: "discovery.sourceNode" });
       }
       if (n.discovery.mode === "ON_PUZZLE" && n.discovery.sourceNode && !byId.has(n.discovery.sourceNode)) {
-        errors.push(`C2 ${n.id} : discovery ON_PUZZLE sourceNode=${n.discovery.sourceNode} inexistant`);
+        sig.signaler("DISCOVERY_PUZZLE_ORPHELINE", `C2 ${n.id} : discovery ON_PUZZLE sourceNode=${n.discovery.sourceNode} inexistant`, { noeud: n.id, champ: "discovery.sourceNode" });
       }
       if (n.discovery.mode === "ON_PROXIMITY" && n.discovery.sourceNode && !byId.has(n.discovery.sourceNode)) {
-        errors.push(`C2 ${n.id} : discovery ON_PROXIMITY sourceNode=${n.discovery.sourceNode} inexistant`);
+        sig.signaler("DISCOVERY_PROXIMITY_ORPHELINE", `C2 ${n.id} : discovery ON_PROXIMITY sourceNode=${n.discovery.sourceNode} inexistant`, { noeud: n.id, champ: "discovery.sourceNode" });
       }
     }
     if (n.inventoryRef) {
       for (const ref of n.inventoryRef) {
-        if (!items.has(ref)) errors.push(`C2 ${n.id} : inventoryRef itemId=${ref} inexistant`);
+        if (!items.has(ref)) sig.signaler("INVENTORYREF_ORPHELIN", `C2 ${n.id} : inventoryRef itemId=${ref} inexistant`, { noeud: n.id, champ: "inventoryRef" });
       }
     }
   }
@@ -383,20 +425,20 @@ export function validateLayer2(game: Game): LayerReport {
     for (const inp of inputs) {
       const iid = typeof inp?.itemId === "string" ? inp.itemId : "";
       if (!iid || !items.has(iid)) {
-        errors.push(`C2 recette ${rid} : entrée itemId=${iid || "?"} inexistante`);
+        sig.signaler("RECETTE_ENTREE_ORPHELINE", `C2 recette ${rid} : entrée itemId=${iid || "?"} inexistante`, { noeud: rid, champ: "inputs[].itemId" });
         continue;
       }
       const consume = inp?.consume ?? true;
       if (consume && byObjId.get(iid)?.consumable !== true) {
-        errors.push(`C2 recette ${rid} : entrée ${iid} consommée mais objet non consumable`);
+        sig.signaler("RECETTE_CONSOMMABLE", `C2 recette ${rid} : entrée ${iid} consommée mais objet non consumable`, { noeud: rid, champ: "inputs[].consume" });
       }
     }
     if (typeof r?.output === "string" && r.output) {
       if (!items.has(r.output)) {
-        errors.push(`C2 recette ${rid} : sortie output=${r.output} inexistante`);
+        sig.signaler("RECETTE_SORTIE_ORPHELINE", `C2 recette ${rid} : sortie output=${r.output} inexistante`, { noeud: rid, champ: "output" });
       }
       if (inputs.some((inp) => inp?.itemId === r.output)) {
-        errors.push(`C2 recette ${rid} : sortie ${r.output} parmi les entrées (auto-production)`);
+        sig.signaler("RECETTE_AUTOPRODUCTION", `C2 recette ${rid} : sortie ${r.output} parmi les entrées (auto-production)`, { noeud: rid });
       }
     }
   }
@@ -419,12 +461,12 @@ export function validateLayer2(game: Game): LayerReport {
             }
           }
         }
-        if (!used) errors.push(`C2 Objet ${o.id} est consumable mais jamais utilise par ITEM_USED`);
+        if (!used) sig.signaler("CONSUMABLE_INUTILISE", `C2 Objet ${o.id} est consumable mais jamais utilise par ITEM_USED`, { noeud: o.id, champ: "consumable" });
       }
     }
   }
 
-  return { layer: 2, errors };
+  return { layer: 2, errors, diagnostics: sig.diagnostics };
 }
 
 const ajv = new Ajv({allErrors: true, strict: false});
@@ -439,7 +481,8 @@ ajv.addSchema(inventoryHints, "modules/inventory-hints.json");
 const validateSchema = ajv.compile(schema);
 
 function validateLayer1(game: unknown): LayerReport {
-  const errors: string[] = [];
+  const sig = new Collecteur(1);
+  const errors = sig.errors;
   const valid = validateSchema(game);
   const g = game as { nodes?: { id?: string; activation?: { requires?: unknown[]; operator?: string } }[] };
   if (!valid && validateSchema.errors) {
@@ -450,13 +493,21 @@ function validateLayer1(game: unknown): LayerReport {
       const m = /^nodes\/(\d+)(?=\/|$)/.exec(loc);
       const node = m ? g.nodes?.[Number(m[1])] : undefined;
       const locId = node?.id ? `${node.id} (${loc})` : loc;
+      const champ = loc.split("/").pop() || undefined;
+      let code = "C1_FORME_INVALIDE";
+      if (e.keyword === "required") code = "C1_CHAMP_REQUIS";
+      else if (e.keyword === "additionalProperties") code = "C1_CHAMP_INCONNU";
+      else if (e.keyword === "enum") code = "C1_ENUM_INVALIDE";
       // Règle operator (if/then) : AJV ne dit que « must match "then" schema » /
       // « must NOT be valid » — précise le sens avec les données du nœud.
       if (node && /\/activation$/.test(loc) && (msg.includes('must match "then" schema') || msg.includes("must NOT be valid"))) {
         const k = node.activation?.requires?.length ?? 0;
         const hasOp = node.activation?.operator != null;
-        if (k >= 2 && !hasOp) msg = "operator manquant (2 déclencheurs ou plus exigent AND/OR)";
-        else if (k <= 1 && hasOp) msg = "operator interdit (un seul déclencheur : retire operator)";
+        if (k >= 2 && !hasOp) { msg = "operator manquant (2 déclencheurs ou plus exigent AND/OR)"; code = "OPERATOR_MANQUANT"; }
+        else if (k <= 1 && hasOp) { msg = "operator interdit (un seul déclencheur : retire operator)"; code = "OPERATOR_INTERDIT"; }
+      }
+      if (/maxReentries.*required|required.*maxReentries/.test(msg) || (e.keyword === "required" && (e.params as { missingProperty?: string })?.missingProperty === "maxReentries")) {
+        code = "C1_MAXREENTRIES";
       }
       // Type d'événement hors vocabulaire : nomme la valeur reçue.
       if (node && /\/inventoryHints\/\d+\/event$/.test(loc) && e.keyword === "enum") {
@@ -464,11 +515,12 @@ function validateLayer1(game: unknown): LayerReport {
         const data = (node as { module?: { data?: { inventoryHints?: { event?: unknown }[] } } }).module?.data;
         const recu = m2 ? data?.inventoryHints?.[Number(m2[1])]?.event : undefined;
         msg = `type d'événement hors vocabulaire (reçu : ${JSON.stringify(recu)})`;
+        code = "C1_ENUM_INVALIDE";
       }
-      errors.push(`C1 ${locId ? locId + " : " : ""}${msg}`);
+      sig.signaler(code, `C1 ${locId ? locId + " : " : ""}${msg}`, { noeud: node?.id, champ });
     }
   }
-  return { layer: 1, errors };
+  return { layer: 1, errors, diagnostics: sig.diagnostics };
 }
 
 export function validateGame(game: unknown): { ok: boolean; layers: LayerReport[] } {

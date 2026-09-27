@@ -528,6 +528,7 @@
             "type": {"const": "button"},
             "label": {"type": "string"},
             "action": {"type": "string"},
+            "poiAction": {"enum": ["open-step"]},
             "icon": {"type": "string"},
             "variant": {"enum": ["primary", "secondary", "ghost"]},
             "styles": {"$ref": "#/definitions/widgetStyles"}
@@ -558,6 +559,42 @@
           "properties": {
             "type": {"const": "spacer"},
             "height": {"type": ["number", "string"]},
+            "styles": {"$ref": "#/definitions/widgetStyles"}
+          }
+        },
+        {
+          "required": ["type", "source"],
+          "additionalProperties": false,
+          "properties": {
+            "type": {"const": "map"},
+            "source": {
+              "type": "object",
+              "required": ["kind"],
+              "additionalProperties": false,
+              "properties": {
+                "kind": {"enum": ["steps"]},
+                "filter": {"enum": ["discovered", "all"], "default": "discovered"}
+              }
+            },
+            "background": {"enum": ["pack-tiles", "indoor-plan", "solid"], "default": "pack-tiles"},
+            "poiStyle": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "locked": {"type": "string"},
+                "unlocked": {"type": "string"},
+                "active": {"type": "string"},
+                "completed": {"type": "string"}
+              }
+            },
+            "volet": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "widgets": {"type": "array", "items": {"$ref": "#/definitions/widget"}}
+              }
+            },
+            "icon": {"type": "string"},
             "styles": {"$ref": "#/definitions/widgetStyles"}
           }
         }

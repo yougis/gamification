@@ -7,7 +7,7 @@
 // insertion avant lui (props traversees depuis PhoneCanvas).
 import { useState } from "react";
 import type { ReactNode } from "react";
-import type { Widget, ZoneContent, ZoneId } from "../../game/types";
+import type { Game, Widget, ZoneContent, ZoneId } from "../../game/types";
 import { WidgetRenderer, lireDragSource } from "./WidgetRenderer";
 
 const LAYOUT_CLASSE: Record<string, string> = {
@@ -30,6 +30,7 @@ export function ZoneRenderer({
   renderModule,
   contextePage,
   hauteurMaxMedia,
+  game,
 }: {
   zone: ZoneContent;
   zoneId: ZoneId;
@@ -49,6 +50,9 @@ export function ZoneRenderer({
   contextePage?: { index: number; total: number };
   // Borne viewport pour le fit (change screen-subpages).
   hauteurMaxMedia?: number;
+  // Jeu courant (change widget-cartographie) : contexte de lecture pour les
+  // widgets lies (carte). Absent = apercu sans donnees.
+  game?: Game;
 }) {
   const widgets = zone.widgets ?? [];
   const [survol, setSurvol] = useState(false);
@@ -109,6 +113,7 @@ export function ZoneRenderer({
               renderModule={renderModule}
               contextePage={contextePage}
               hauteurMaxMedia={hauteurMaxMedia}
+              game={game}
               onDropBefore={
                 dndActif
                   ? (fromZone, fromIndex, toZone, toIndex) => onMoveWidgetAcross?.(fromZone, fromIndex, toZone, toIndex)

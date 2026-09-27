@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.geoplay.shared.model.Game
 import com.geoplay.shared.model.NodeState
+import com.geoplay.shared.model.ScreenWidget
 import com.geoplay.shared.ui.graph.nodeStateLabel
 
 // Tableau de bord joueur (change player-home-dashboard) : vue par défaut
@@ -48,6 +49,10 @@ fun HomeDashboard(
     tempsRestantMs: Long? = null,
     verrouillagesMs: Map<String, Long?> = emptyMap(),
     horsDelai: Boolean = false,
+    // Dock carte (change widget-cartographie) : icônes des widgets carte de
+    // l'écran global ouvrant le plein écran. Vide = pas de dock.
+    iconesCarte: List<ScreenWidget> = emptyList(),
+    onOuvrirCarte: (ScreenWidget) -> Unit = {},
 ) {
     Column(modifier = modifier.padding(16.dp)) {
         Text(
@@ -59,6 +64,15 @@ fun HomeDashboard(
         if (showInventoryEntry) {
             TextButton(onClick = onInventoryOpen) {
                 Text(text = "🎒 Boîte à outils ($inventoryCount)")
+            }
+        }
+        if (iconesCarte.isNotEmpty()) {
+            Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                for (w in iconesCarte) {
+                    TextButton(onClick = { onOuvrirCarte(w) }) {
+                        Text(text = "⤢ ${w.icon ?: "Carte"}")
+                    }
+                }
             }
         }
         for (node in game.nodes) {

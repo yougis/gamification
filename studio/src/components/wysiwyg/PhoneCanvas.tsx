@@ -2,7 +2,7 @@
 // Simple <div> stylise, pas d'iframe : meme contexte React, transform scale pour ajuster.
 // Disposition : header en haut, content scrollable au centre, footer en bas,
 // overlay en calque absolu. Clic sur le fond -> selection de l'ecran (null).
-import type { ScreenDefinition, Widget, ZoneId } from "../../game/types";
+import type { Game, ScreenDefinition, Widget, ZoneId } from "../../game/types";
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { couleurTexteDefaut, paginateContent, screenBackgroundStyle } from "../../game/screen-utils";
@@ -41,6 +41,7 @@ function FantomeZone({ libelle, zoneId, onCreate }: { libelle: string; zoneId: Z
 
 export function PhoneCanvas({
   screen,
+  game,
   moduleType,
   moduleData,
   selectedZoneId,
@@ -60,6 +61,9 @@ export function PhoneCanvas({
   afficherPagination = true,
 }: {
   screen: ScreenDefinition;
+  // Jeu courant (change widget-cartographie) : contexte de lecture pour les
+  // widgets lies (carte : positions, fonds). Absent = apercu sans donnees.
+  game?: Game;
   moduleType?: string;
   moduleData?: Record<string, unknown>;
   selectedZoneId?: ZoneId | null;
@@ -180,6 +184,7 @@ export function PhoneCanvas({
                 renderModule={renderModule}
                 contextePage={contextePage}
                 hauteurMaxMedia={hauteurMaxMedia}
+                game={game}
               />
             </div>
           ) : showGhosts && onCreateZone ? (
@@ -246,9 +251,10 @@ export function PhoneCanvas({
                   tz === "content" ? (ti === "end" ? widgetsContenu.length : ti + decalage) : ti,
                 )
               }
-              renderModule={renderModule}
-              contextePage={contextePage}
+                renderModule={renderModule}
+                contextePage={contextePage}
                 hauteurMaxMedia={hauteurMaxMedia}
+                game={game}
             />
           </div>
           {!zones.overlay && showGhosts && onCreateZone ? (
@@ -272,6 +278,7 @@ export function PhoneCanvas({
                 renderModule={renderModule}
                 contextePage={contextePage}
                 hauteurMaxMedia={hauteurMaxMedia}
+                game={game}
               />
             </div>
           ) : showGhosts && onCreateZone ? (
@@ -329,6 +336,7 @@ export function PhoneCanvas({
                   onMoveWidgetAcross={onMoveWidgetAcross}
                   renderModule={renderModule}
                   hauteurMaxMedia={hauteurMaxMedia}
+                  game={game}
                 />
               </div>
             </div>

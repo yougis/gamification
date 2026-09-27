@@ -9,13 +9,14 @@
 //   fond de zone = ajout en fin. Repli clavier : boutons haut/bas du panneau.
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import type { Widget, ZoneId } from "../../game/types";
+import type { Game, Widget, ZoneId } from "../../game/types";
 import { TextWidgetRenderer } from "./widgets/TextWidgetRenderer";
 import { ImageWidgetRenderer } from "./widgets/ImageWidgetRenderer";
 import { ButtonWidgetRenderer } from "./widgets/ButtonWidgetRenderer";
 import { ProgressBarWidgetRenderer } from "./widgets/ProgressBarWidgetRenderer";
 import { ModuleWidgetRenderer } from "./widgets/ModuleWidgetRenderer";
 import { SpacerWidgetRenderer } from "./widgets/SpacerWidgetRenderer";
+import { MapWidgetRenderer } from "./widgets/MapWidgetRenderer";
 
 export const DRAG_MIME = "application/x-geoplay-widget";
 
@@ -50,6 +51,7 @@ export function WidgetRenderer({
   renderModule,
   contextePage,
   hauteurMaxMedia,
+  game,
 }: {
   widget: Widget;
   index: number;
@@ -74,6 +76,9 @@ export function WidgetRenderer({
   // Borne viewport pour le fit (change screen-subpages), transmise aux
   // rendus image/module. Absente = pas de borne.
   hauteurMaxMedia?: number;
+  // Jeu courant (change widget-cartographie) : contexte de lecture pour les
+  // widgets lies (carte). Absent = apercu sans donnees.
+  game?: Game;
 }) {
   const [edition, setEdition] = useState(false);
   const [survol, setSurvol] = useState(false);
@@ -165,6 +170,7 @@ export function WidgetRenderer({
       {widget.type === "progress" ? <ProgressBarWidgetRenderer widget={widget} contextePage={contextePage} /> : null}
       {widget.type === "module" ? (renderModule ? renderModule(widget) : <ModuleWidgetRenderer widget={widget} moduleType={moduleType} moduleData={moduleData} hauteurMax={hauteurMaxMedia} />) : null}
       {widget.type === "spacer" ? <SpacerWidgetRenderer widget={widget} /> : null}
+      {widget.type === "map" ? <MapWidgetRenderer widget={widget} game={game} /> : null}
     </div>
   );
 }

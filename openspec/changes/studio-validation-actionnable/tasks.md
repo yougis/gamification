@@ -1,7 +1,7 @@
 ## 1. Typologie et glossaire
 
-- [ ] 1.1 Introduire `Diagnostic {code, niveau, noeud?, champ?, attendu?, correctifs[]}` émis à côté des chaînes par `validateGameFull`, avec table `niveauParCode` et requalification fermée, et vérifier : chaque règle existante a un niveau, `canExport` ne regarde que les erreurs
-- [ ] 1.2 Mapper les erreurs C1 AJV vers des codes au point de sortie et rendre `rendreDiagnostic` (glossaire fermé + « Voir »), geler `erreurFR`, et vérifier : les ~10 motifs historiques rendent à l'identique, aucun nouveau pattern-matching
+- [x] 1.1 Introduire `Diagnostic {code, niveau, noeud?, champ?, attendu?, correctifs[]}` émis à côté des chaînes par `validateGameFull`, avec table `niveauParCode` et requalification fermée, et vérifier : chaque règle existante a un niveau, `canExport` ne regarde que les erreurs
+- [x] 1.2 Mapper les erreurs C1 AJV vers des codes au point de sortie et rendre `rendreDiagnostic` (glossaire fermé + « Voir »), geler `erreurFR`, et vérifier : les ~10 motifs historiques rendent à l'identique, aucun nouveau pattern-matching
 
 ## 2. Écrans et corrections
 

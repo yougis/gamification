@@ -38,10 +38,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.geoplay.shared.game.paginateContent
 import com.geoplay.shared.model.Branding
+import com.geoplay.shared.model.Game
+import com.geoplay.shared.model.NodeState
 import com.geoplay.shared.model.ScreenDefinition
 import com.geoplay.shared.model.ScreenWidget
 import com.geoplay.shared.model.WidgetStyles
 import com.geoplay.shared.model.ZoneContent
+import com.geoplay.shared.game.DiscoveryState
+import com.geoplay.shared.ui.map.MapWidgetBlock
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.doubleOrNull
 
@@ -76,6 +80,17 @@ fun textAlignOf(align: String?): TextAlign = when (align) {
 fun fontWeightOf(weight: String?): FontWeight =
     if (weight == "bold") FontWeight.Bold else FontWeight.Normal
 
+// Contexte carte (change widget-cartographie) : jeu + états + découverte
+// pour les widgets `map`. Absent = carte ignorée gracieusement (jamais de
+// crash joueur), comme tout type sans contexte.
+data class CarteContexte(
+    val game: Game,
+    val states: Map<String, NodeState>,
+    val discovery: DiscoveryState = DiscoveryState(),
+    val onOpenNode: (String) -> Unit = {},
+    val onPleinEcran: ((ScreenWidget) -> Unit)? = null,
+)
+
 fun spacerHeightDp(widget: ScreenWidget): Dp {
     val el = widget.height ?: return 8.dp
     val num = when (el) {
@@ -107,6 +122,9 @@ fun ScreenRenderer(
     // Terminer + compteur. `false` = rendu intégral (défaut inchangé).
     sousPages: Boolean = false,
     onTerminer: () -> Unit = {},
+    // Carte strate 2 (change widget-cartographie) : contexte de lecture.
+    // Absent = widget `map` ignoré gracieusement.
+    carte: CarteContexte? = null,
     modifier: Modifier = Modifier,
 ) {
     val zones = screen.zones
@@ -137,7 +155,7 @@ fun ScreenRenderer(
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = scrim!!.toFloat().coerceIn(0f, 1f))))
         }
         Column(Modifier.fillMaxSize()) {
-            zones?.header?.let { ZoneBlock(it, branding, moduleSlot, imageContent, styleOf, onButtonAction, progressFraction, idxProgress, totalProgress) }
+            zones?.header?.let { ZoneBlock(it, branding, moduleSlot, imageContent, styleOf, onButtonAction, progressFraction, idxProgress, totalProgress, carte) }
             Box(
                 Modifier.weight(1f).fillMaxWidth()
                     .pointerInput(paginer, pageSure) {
@@ -154,7 +172,7 @@ fun ScreenRenderer(
                     zones?.content
                 }
                 zonePage?.let {
-                    ZoneBlock(it, branding, moduleSlot, imageContent, styleOf, onButtonAction, progressFraction, idxProgress, totalProgress)
+                    ZoneBlock(it, branding, moduleSlot, imageContent, styleOf, onButtonAction, progressFraction, idxProgress, totalProgress, carte)
                 }
             }
             if (paginer) {
@@ -176,7 +194,7 @@ fun ScreenRenderer(
                     }) { Text(if (pageSure >= pages.size - 1) "Terminer" else "Suivant →") }
                 }
             }
-            zones?.footer?.let { ZoneBlock(it, branding, moduleSlot, imageContent, styleOf, onButtonAction, progressFraction, idxProgress, totalProgress) }
+            zones?.footer?.let { ZoneBlock(it, branding, moduleSlot, imageContent, styleOf, onButtonAction, progressFraction, idxProgress, totalProgress, carte) }
         }
         val overlay = zones?.overlay
         if (overlay != null && !overlayDismissed) {
@@ -187,7 +205,7 @@ fun ScreenRenderer(
                     .padding(24.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                ZoneBlock(overlay, branding, moduleSlot, imageContent, styleOf, onButtonAction, progressFraction, pageIndex, pageTotal)
+                ZoneBlock(overlay, branding, moduleSlot, imageContent, styleOf, onButtonAction, progressFraction, pageIndex, pageTotal, carte)
             }
         }
         if (overlay != null && overlay.fermable && overlayDismissed) {
@@ -210,11 +228,12 @@ private fun ZoneBlock(
     progressFraction: Float?,
     pageIndex: Int?,
     pageTotal: Int?,
+    carte: CarteContexte? = null,
 ) {
     // Phase 1 : `stack` pour tous les layouts (grid/free suivront).
     Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(12.dp)) {
         for (w in zone.widgets) {
-            WidgetBlock(w, branding, moduleSlot, imageContent, styleOf(w), onButtonAction, progressFraction, pageIndex, pageTotal)
+            WidgetBlock(w, branding, moduleSlot, imageContent, styleOf(w), styleOf, onButtonAction, progressFraction, pageIndex, pageTotal, carte)
         }
     }
 }
@@ -226,10 +245,15 @@ private fun WidgetBlock(
     moduleSlot: @Composable () -> Unit,
     imageContent: @Composable (src: String, alt: String?) -> Unit,
     style: WidgetStyles,
+    styleOf: (ScreenWidget) -> WidgetStyles,
     onButtonAction: (action: String?) -> Unit,
     progressFraction: Float?,
     pageIndex: Int?,
     pageTotal: Int?,
+    carte: CarteContexte? = null,
+    // Garde volet (change widget-cartographie) : dans un volet, `map` et
+    // `module` ne s'affichent pas (passivité + pas de portail imbriqué).
+    dansVoletCarte: Boolean = false,
 ) {
     val primary = parseHexColor(branding?.primaryColor) ?: MaterialTheme.colorScheme.primary
     when (widget.type) {
@@ -270,8 +294,32 @@ private fun WidgetBlock(
             if (fraction != null) LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth())
             else LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
         }
-        "module" -> moduleSlot()
+        "module" -> if (dansVoletCarte) {
+            Text("(module non affichable dans le volet)", style = MaterialTheme.typography.labelSmall)
+        } else {
+            moduleSlot()
+        }
         "spacer" -> Spacer(Modifier.height(spacerHeightDp(widget)))
+        "map" -> {
+            // Carte strate 2 (change widget-cartographie) : passive, jamais
+            // de crash joueur. Sans contexte : ignorée gracieusement. Dans
+            // un volet : pastille (pas de carte ni portail imbriqués).
+            if (dansVoletCarte) {
+                Text("(carte non affichable dans le volet)", style = MaterialTheme.typography.labelSmall)
+            } else if (carte != null) {
+                MapWidgetBlock(
+                    widget = widget,
+                    game = carte.game,
+                    states = carte.states,
+                    discovery = carte.discovery,
+                    onOpenNode = carte.onOpenNode,
+                    onPleinEcran = carte.onPleinEcran,
+                    renduVolet = { w ->
+                        WidgetBlock(w, branding, moduleSlot, imageContent, styleOf(w), styleOf, onButtonAction, null, null, null, carte, dansVoletCarte = true)
+                    },
+                )
+            }
+        }
         // Type inconnu : ignoré gracieusement (jamais de crash joueur).
     }
 }

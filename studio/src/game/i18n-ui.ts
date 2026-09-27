@@ -93,6 +93,12 @@ export const IMPORTER = { nom: "Importer", aide: "Charger un fichier JSON de jeu
 // Erreurs de validation traduites (cartographie des verdicts C1/C2).
 // Les messages C1 portent l'id du nœud (« C1 <id> (nodes/<i>/…) : … ») : on le
 // reprend dans le texte pour que la navigation « Voir » le retrouve.
+/**
+ * @deprecated Gelée (change studio-validation-actionnable) : ne plus ajouter
+ * de motif. Les constats structurés se rendent via `rendreDiagnostic`
+ * (glossaire fermé, `game/diagnostics.ts`). Suppression quand la couverture
+ * structurée est totale (tâche 2.3).
+ */
 function etapeDe(msg: string): string {
   const id = /C1 (\S+) \(nodes\/\d+/.exec(msg)?.[1];
   return id ? `Étape « ${id} » : ` : "";
