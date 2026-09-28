@@ -266,6 +266,77 @@ fun present(unlocked: List<String>, prevQueue: List<String>, prevActive: String?
     return Presentation(next, rest)
 }
 
+// Suggestion d'ouverture (change home-player-runtime, compat-first) : meme file
+// que `present`, SANS jamais assigner d'actif. `present()` reste inchange
+// (modale unique). La tete est proposee, l'ouverture reste manuelle.
+// `prevFile` = file suggeree precedente complete (tete incluse).
+data class Suggestion(val tete: String?, val file: List<String>)
+
+fun suggest(unlocked: List<String>, prevFile: List<String>): Suggestion {
+    val file = prevFile.filter { unlocked.contains(it) }.toMutableList()
+    for (id in unlocked) if (!file.contains(id)) file.add(id)
+    return Suggestion(file.firstOrNull(), file)
+}
+
+// Snapshot d'ouverture + verdict Valider (change home-player-runtime) : pur,
+// miroir de runtime.ts. Droit a finir : eligible t0 seulement = hors-delai.
+// Jamais eligible = refus (vue en apercu seul).
+data class Ouverture(val id: String, val t0: Long, val eligiblesT0: List<String>)
+
+data class VerdictValider(val ok: Boolean, val horsDelai: Boolean = false, val motif: String? = null)
+
+fun snapshotOuverture(id: String, nowMs: Long, eligiblesT0: List<String>): Ouverture =
+    Ouverture(id, nowMs, eligiblesT0.toList())
+
+fun verdictValider(ouverture: Ouverture, eligiblesT1: List<String>): VerdictValider {
+    if (!ouverture.eligiblesT0.contains(ouverture.id)) {
+        return VerdictValider(ok = false, motif = "non-eligible-ouverture")
+    }
+    return VerdictValider(ok = true, horsDelai = !eligiblesT1.contains(ouverture.id))
+}
+
+// Verdict Abandonner (change home-player-runtime, option B) : miroir de
+// runtime.ts. Budget consomme, apercu gratuit, idempotent par ouverture.
+data class VerdictAbandonner(
+    val ok: Boolean,
+    val event: String? = null,
+    val horsDelai: Boolean = false,
+    val essaisRestants: Int = 0,
+    val motif: String? = null,
+)
+
+fun cleOuverture(o: Ouverture): String = "${o.id}@${o.t0}"
+
+fun verdictAbandonner(
+    ouverture: Ouverture,
+    eligiblesT1: List<String>,
+    essaisRestants: Int,
+    abandonsDejaJournalises: Set<String>,
+): VerdictAbandonner {
+    if (!ouverture.eligiblesT0.contains(ouverture.id)) {
+        return VerdictAbandonner(ok = false, motif = "apercu-gratuit")
+    }
+    if (abandonsDejaJournalises.contains(cleOuverture(ouverture))) {
+        return VerdictAbandonner(ok = false, motif = "deja-abandonne")
+    }
+    return VerdictAbandonner(
+        ok = true,
+        event = "ABANDON",
+        horsDelai = !eligiblesT1.contains(ouverture.id),
+        essaisRestants = maxOf(0, essaisRestants - 1),
+    )
+}
+
+// Regime de completion (change home-player-runtime) : miroir de runtime.ts.
+// Effets une seule fois, score selon `scoreOnReplay` ensuite. Anti-farming :
+// un rejeu ne redonne jamais (pas de double GIVE_ITEM).
+data class RegimeCompletion(val effets: Boolean, val score: Boolean)
+
+fun regimeCompletion(completionsDeja: Int, scoreOnReplay: Boolean): RegimeCompletion {
+    if (completionsDeja <= 0) return RegimeCompletion(effets = true, score = true)
+    return RegimeCompletion(effets = false, score = scoreOnReplay)
+}
+
 fun isPoolDue(pool: GameNode, timing: DrawTiming): Boolean =
     pool.randomPool?.drawTiming == timing
 

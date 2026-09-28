@@ -164,6 +164,97 @@ export function present(
   return { activeId: next, queue: rest };
 }
 
+// --- 1.2bis Suggestion d'ouverture (change home-player-runtime, compat-first) ---
+// `present()` ci-dessus reste inchange (modale unique). `suggest()` calcule la
+// meme file SANS jamais assigner d'actif : la tete est proposee, l'ouverture
+// reste manuelle (volet/carte/liste). `prevFile` = file suggeree precedente
+// complete (tete incluse). Eviction au relock, ordre stable, jamais d'event.
+export interface Suggestion {
+  tete: string | null;
+  file: string[];
+}
+
+export function suggest(unlocked: string[], prevFile: string[]): Suggestion {
+  const file = [...prevFile.filter((id) => unlocked.includes(id))];
+  for (const id of unlocked) if (!file.includes(id)) file.push(id);
+  return { tete: file[0] ?? null, file };
+}
+
+// --- 1.2ter Snapshot d'ouverture + verdict Valider (change home-player-runtime) ---
+// Snapshot pris a l'entree etape (t0) : seuls les eligibles t0 sont jouables.
+// Valider compare au frais (t1) : eligible t1 = COMPLETED normal, eligible t0
+// seulement = COMPLETED + hors-delai (droit a finir), jamais eligible = refus
+// (vue en apercu seul, aucun Valider possible). Pur, sans ecriture.
+export interface Ouverture {
+  id: string;
+  t0: number;
+  eligiblesT0: string[];
+}
+
+export function snapshotOuverture(id: string, nowMs: number, eligiblesT0: string[]): Ouverture {
+  return { id, t0: nowMs, eligiblesT0: [...eligiblesT0] };
+}
+
+export type VerdictValider =
+  | { ok: true; horsDelai: boolean }
+  | { ok: false; motif: "non-eligible-ouverture" };
+
+export function verdictValider(ouverture: Ouverture, eligiblesT1: string[]): VerdictValider {
+  if (!ouverture.eligiblesT0.includes(ouverture.id)) {
+    return { ok: false, motif: "non-eligible-ouverture" };
+  }
+  return { ok: true, horsDelai: !eligiblesT1.includes(ouverture.id) };
+}
+
+// --- 1.2quater Verdict Abandonner (change home-player-runtime, option B) ---
+// Abandonner une tentative jouable/rejouable ecrit `ABANDON` (sans effet ni
+// score) et consomme 1 essai du budget `maxReentries`. Apercu et relecture
+// restent gratuits (refus `apercu-gratuit`, zero ecriture). Idempotent par
+// ouverture (`id@t0` deja journalise = `deja-abandonne`). `hors-delai` si
+// l'etape a expire entre t0 et l'abandon. Pur, sans ecriture.
+export type VerdictAbandonner =
+  | { ok: true; event: "ABANDON"; horsDelai: boolean; essaisRestants: number }
+  | { ok: false; motif: "apercu-gratuit" | "deja-abandonne" };
+
+export function cleOuverture(o: Ouverture): string {
+  return `${o.id}@${o.t0}`;
+}
+
+export function verdictAbandonner(
+  ouverture: Ouverture,
+  eligiblesT1: string[],
+  essaisRestants: number,
+  abandonsDejaJournalises: Set<string>,
+): VerdictAbandonner {
+  if (!ouverture.eligiblesT0.includes(ouverture.id)) {
+    return { ok: false, motif: "apercu-gratuit" };
+  }
+  if (abandonsDejaJournalises.has(cleOuverture(ouverture))) {
+    return { ok: false, motif: "deja-abandonne" };
+  }
+  return {
+    ok: true,
+    event: "ABANDON",
+    horsDelai: !eligiblesT1.includes(ouverture.id),
+    essaisRestants: Math.max(0, essaisRestants - 1),
+  };
+}
+
+// --- 1.2quinquies Regime de completion (change home-player-runtime) ---
+// Effets une seule fois (premiere completion), score selon `scoreOnReplay`
+// ensuite. `completionsDeja` = nombre de Valider deja journalises pour le
+// noeud. Anti-farming : un rejeu ne redonne jamais (pas de double GIVE_ITEM,
+// pas de REVEAL rejoue). Pur, sans ecriture.
+export interface RegimeCompletion {
+  effets: boolean;
+  score: boolean;
+}
+
+export function regimeCompletion(completionsDeja: number, scoreOnReplay: boolean): RegimeCompletion {
+  if (completionsDeja <= 0) return { effets: true, score: true };
+  return { effets: false, score: scoreOnReplay };
+}
+
 // --- 1.3 Hote de modules isole ---
 export type RenderFn = (data: Record<string, unknown>) => unknown;
 

@@ -87,6 +87,69 @@ class GameEngineCommonTest {
     }
 
     @Test
+    fun suggestProposesHeadWithoutAssigning() {
+        // Change home-player-runtime (compat-first) : tete proposee, jamais d'actif.
+        var s = suggest(listOf("a", "b"), emptyList())
+        assertEquals("a", s.tete)
+        assertEquals(listOf("a", "b"), s.file)
+        s = suggest(listOf("a", "c"), s.file)
+        assertEquals("a", s.tete)
+        assertEquals(listOf("a", "c"), s.file)
+        s = suggest(listOf("c"), s.file)
+        assertEquals("c", s.tete)
+        assertEquals(listOf("c"), s.file)
+        s = suggest(emptyList(), s.file)
+        assertEquals(null, s.tete)
+        assertTrue(s.file.isEmpty())
+        // present() inchange (modale unique).
+        val p = present(listOf("a", "b"), emptyList(), null)
+        assertEquals("a", p.activeId)
+        assertEquals(listOf("b"), p.queue)
+    }
+
+    @Test
+    fun verdictValiderNominalGraceEtRefus() {
+        // Change home-player-runtime : nominal, droit a finir, refus apercu.
+        val nominal = verdictValider(snapshotOuverture("a", 1000L, listOf("a", "b")), listOf("a", "b"))
+        assertEquals(VerdictValider(ok = true, horsDelai = false), nominal)
+        val grace = verdictValider(snapshotOuverture("a", 1000L, listOf("a", "b")), listOf("b"))
+        assertEquals(VerdictValider(ok = true, horsDelai = true), grace)
+        val refus = verdictValider(snapshotOuverture("a", 1000L, listOf("b")), listOf("a", "b"))
+        assertEquals(VerdictValider(ok = false, motif = "non-eligible-ouverture"), refus)
+    }
+
+    @Test
+    fun verdictAbandonnerBudgeteGratuitIdempotent() {
+        // Change home-player-runtime (option B) : budget, gratuit, idempotent.
+        val ouv = snapshotOuverture("a", 1000L, listOf("a", "b"))
+        assertEquals(
+            VerdictAbandonner(ok = true, event = "ABANDON", horsDelai = false, essaisRestants = 2),
+            verdictAbandonner(ouv, listOf("a", "b"), 3, emptySet()),
+        )
+        assertEquals(
+            VerdictAbandonner(ok = true, event = "ABANDON", horsDelai = true, essaisRestants = 1),
+            verdictAbandonner(ouv, listOf("b"), 2, emptySet()),
+        )
+        assertEquals(
+            VerdictAbandonner(ok = false, motif = "deja-abandonne"),
+            verdictAbandonner(ouv, listOf("a", "b"), 2, setOf(cleOuverture(ouv))),
+        )
+        assertEquals(
+            VerdictAbandonner(ok = false, motif = "apercu-gratuit"),
+            verdictAbandonner(snapshotOuverture("z", 1000L, listOf("b")), listOf("b"), 3, emptySet()),
+        )
+    }
+
+    @Test
+    fun regimeCompletionEffetsUneSeuleFois() {
+        // Change home-player-runtime : effets 1ere fois, score rejeu, jamais de redon.
+        assertEquals(RegimeCompletion(effets = true, score = true), regimeCompletion(0, false))
+        assertEquals(RegimeCompletion(effets = true, score = true), regimeCompletion(0, true))
+        assertEquals(RegimeCompletion(effets = false, score = false), regimeCompletion(1, false))
+        assertEquals(RegimeCompletion(effets = false, score = true), regimeCompletion(2, true))
+    }
+
+    @Test
     fun geofencePresentUnlocks() {
         val geo = Condition(type = ConditionType.GEOFENCE, lat = 48.01, lng = 2.01, radiusMeters = 30, predicate = Predicate.ENTER)
         val game = Game(gameId = "test", nodes = listOf(node("poi", requires = listOf(geo))))

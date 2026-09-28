@@ -17,6 +17,8 @@ import "@xyflow/react/dist/style.css";
 import { validateGame, deadEnds } from "./game/validate";
 import { compterErreurs, rendreDiagnostic, type Diagnostic } from "./game/diagnostics";
 import { evaluate, drawPool, estHorsDelai, type Sim } from "./game/evaluate";
+import { suggest } from "./game/runtime";
+import { navigationInitiale, type Navigation } from "./game/navigation";
 import { composeNodes, setActivation, registerAsset, exportPackFull, validateGameFull, canExport, addSecoursCode, importGame, addObject, setObjects, duplicateObject, setReview, removeNode, renameNode, duplicateNode, patchScreenZone, removeScreenZone, addScreenWidget, setScreenWidget as mcpSetScreenWidget, removeScreenWidget, moveScreenWidget, moveScreenWidgetAcross, setNodeScreen, setExperienceStyle, migrerExperienceStyleRacine, setGameMode, setDifficulty, migrerGameModeDifficultyRacine, creerNoeudStart, garantirStart, setScreenBackground, setScreenStyles, setGlobalScreen, setGlobalBackground, patchGlobalZone, removeGlobalZone, addGlobalWidget, setGlobalWidget, removeGlobalWidget, moveGlobalWidget, moveGlobalWidgetAcross, setGlobalScreenStyles, setMinigameDefaults, setPresentation, migrerPreset, retirerOperator, setOperator, setMaxReentries, clampDrawCount, retirerDoublonPool, fixEnumDefaut, nettoyerReferencesOrphelines, correctifApplicable, type ManifestFile } from "./game/mcp";
 import { emptyMeta, type Condition, type Effect, type Game, type GameNode, type GameObject, type MinigameDefaults, type Predicate, type StudioMeta, type ExperienceStyle, type Branding, type GameMode, type Difficulty, type ScreenDefinition, type ZoneContent, type ZoneId } from "./game/types";
 import { buildCompatSidecar, canExportToChannel, type ChannelId } from "./game/compat";
@@ -801,6 +803,19 @@ const noeuds: Node[] = useMemo(
     return evaluate(game, s, draws, new Map(Object.entries(done)), new Map(Object.entries(counts)), new Set());
   }
   const file = activeId ? ev.unlocked.filter((id) => id !== activeId) : ev.unlocked;
+  // Navigation explicite + suggestion (change home-player-runtime, 3.1.2,
+  // compat-first) : miroirs purs de l'etat simu, SANS changer le comportement.
+  // `nav` reflete activeId (etape jouable, rejouee si deja terminee) ou HOME ;
+  // `suggestion` est la tete proposee sans auto-assignation (derivation sans
+  // etat : l'ordre des noeuds est stable). `present()` n'est pas utilise ici.
+  const nav: Navigation = useMemo(
+    () =>
+      activeId
+        ? { vue: "etape", id: activeId, mode: done[activeId] != null ? "rejeu" : "jouable" }
+        : navigationInitiale(),
+    [activeId, done],
+  );
+  const suggestion = suggest(ev.unlocked, []);
 
   const journal = (msg: string) => setLog((l) => [...l, `[${sessionId}] ${msg} (triche, hold=${game.global?.holdMode ?? "none"})`]);
   // HOLD simulé (prévisualisation uniquement, jamais écrit dans le JSON).
@@ -833,12 +848,15 @@ const noeuds: Node[] = useMemo(
     setActiveId(id);
     journal(`ouverture ${id}`);
   };
-  // Entrée MODE JEUX (change studio-lot-correctifs) : sans nœud actif, on
-  // ouvre la tête de file (premier éligible) au lieu de la salle d'attente ;
-  // l'ouverture est journalée comme toute ouverture manuelle. File vide =
-  // salle d'attente inchangée. L'enchaînement reste l'avance auto existante.
+  // Entrée MODE JEUX (change studio-lot-correctifs, home-player-runtime 3.1.2) :
+  // sans étape ouverte (`nav.vue !== "etape"`), on ouvre la tête proposée
+  // (`suggestion.tete`, identique à `file[0]` ici : sans actif,
+  // `file === ev.unlocked` et la tête suggérée est `unlocked[0]`) au lieu de
+  // la salle d'attente ; l'ouverture est journalée comme toute ouverture
+  // manuelle. File vide = salle d'attente inchangée. L'enchaînement reste
+  // l'avance auto existante (reprise en 4.x).
   const entrerModeJeux = () => {
-    if (!activeId && file.length) ouvrir(file[0]);
+    if (nav.vue !== "etape" && suggestion.tete) ouvrir(suggestion.tete);
     // Mention session sans fin (change player-home-solo) : jeu vide sous
     // HOME = pas de terminaison attendue, sortie par Quitter.
     if (game.nodes.length === 0 && (game.global?.presentation ?? []).includes("HOME")) {
@@ -1798,6 +1816,7 @@ const noeuds: Node[] = useMemo(
           </div>
           <Apercu
             game={game} sim={sim} setSim={setSim} file={file} activeId={activeId}
+            suggestionTete={suggestion.tete}
             ouvrir={ouvrir} terminer={terminer} draws={draws} forced={forced} setForced={setForced}
             log={log} testAll={testAll} testerBranches={testerBranches} sessionId={sessionId}
             setSessionId={setSessionId} nouvelleSession={nouvelleSession}
@@ -4019,6 +4038,10 @@ function Apercu(props: {
   game: Game; sim: { present: string[]; dwell: string[]; through: string[]; dtMin: number; precision: number };
   setSim: (fn: (s: { present: string[]; dwell: string[]; through: string[]; dtMin: number; precision: number }) => { present: string[]; dwell: string[]; through: string[]; dtMin: number; precision: number }) => void;
   file: string[]; activeId: string | null;
+  // Tête proposée (change home-player-runtime, 3.1.2) : pilote « Avancer
+  // d'un pas » à la place de `file[0]` (identique ici, sans actif
+  // `file === ev.unlocked`). Optionnel : absent = repli historique.
+  suggestionTete?: string | null;
   ouvrir: (id: string) => void; terminer: (id: string, abandon: boolean) => void;
   draws: Record<string, string[]>; forced: Record<string, string>; setForced: (f: Record<string, string>) => void;
   log: string[]; testAll: string | null; testerBranches: () => void; sessionId: string;
@@ -4091,7 +4114,7 @@ function Apercu(props: {
       <div className="font-mono text-[9px] text-fog">File d'attente : {props.file.length ? props.file.join(", ") : "—"} | Ouverte : {props.activeId ?? "—"}</div>
       <div className="flex gap-1">
         <button className="btn" onClick={props.nouvelleSession}><Icon name="ajouter" size={15} /> Nouvelle partie</button>
-        <button className="btn min-h-9" onClick={() => { if (!props.activeId && props.file[0]) props.ouvrir(props.file[0]); }} disabled={!!props.activeId || !props.file.length}>Avancer d'un pas</button>
+        <button className="btn min-h-9" onClick={() => { const tete = props.suggestionTete ?? props.file[0] ?? null; if (!props.activeId && tete) props.ouvrir(tete); }} disabled={!!props.activeId || !props.file.length}>Avancer d'un pas</button>
         <button className="btn min-h-9" onClick={props.reculer} disabled={props.nbTermines === 0}>Reculer d'un pas</button>
       </div>
       {props.activeId && (
