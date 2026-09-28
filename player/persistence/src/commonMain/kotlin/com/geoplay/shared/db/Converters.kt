@@ -32,7 +32,11 @@ class Converters {
     fun nodeStateToString(state: NodeState?): String? = state?.name
 
     @TypeConverter
-    fun stringToNodeState(value: String?): NodeState? = value?.let { NodeState.valueOf(it) }
+    fun stringToNodeState(value: String?): NodeState? = value?.let {
+        // Compat lecture (change home-player-runtime, 7.1) : les lignes
+        // historiques "ACTIVE" se relisent UNLOCKED (etape ouverte non terminee).
+        if (it == "ACTIVE") NodeState.UNLOCKED else NodeState.valueOf(it)
+    }
 
     @TypeConverter
     fun conditionTypeToString(type: ConditionType?): String? = type?.name

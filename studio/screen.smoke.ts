@@ -285,4 +285,28 @@ assert(!estImageAcceptable(fauxFichier("doc.pdf", "application/pdf")), "pdf refu
   console.log("ok: decoupage sous-pages");
 }
 
+// Anti-fuite carte (change home-player-runtime, 5.2) : ecran de noeud sans
+// content + content global a carte = content neutre ; sans screen du tout,
+// heritage global integral ; content noeud conserve tel quel.
+{
+  const carte = { type: "map", source: { kind: "steps" } } as Widget;
+  const globalCarte: ScreenDefinition = {
+    zones: { content: { layout: "stack", widgets: [carte] } },
+  };
+  const partiel = resolveScreen(
+    node({ zones: { header: { layout: "stack", widgets: [{ type: "text", text: "H" }] } } }),
+    globalCarte,
+  );
+  assert((partiel.zones?.content?.widgets ?? []).every((w) => w.type !== "map"), "content partiel : pas de fuite carte");
+  assert(partiel.zones?.header?.widgets?.[0]?.type === "text", "header partiel conserve");
+  const nu = resolveScreen(node(), globalCarte);
+  assert(nu.zones?.content?.widgets?.[0]?.type === "map", "sans screen : heritage global integral");
+  const plein = resolveScreen(
+    node({ zones: { content: { layout: "stack", widgets: [{ type: "module" }] } } }),
+    globalCarte,
+  );
+  assert(plein.zones?.content?.widgets?.[0]?.type === "module", "content noeud conserve, carte non heritee");
+  console.log("ok: anti-fuite carte");
+}
+
 console.log("screen.smoke: ALL OK");

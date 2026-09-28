@@ -249,26 +249,9 @@ fun evaluate(
     )
 }
 
-// File FIFO à modale unique (runtime.ts present) : ACTIVE latché, éviction au relock.
-data class Presentation(val activeId: String?, val queue: List<String>)
-
-fun present(unlocked: List<String>, prevQueue: List<String>, prevActive: String?): Presentation {
-    val stillThere = unlocked.toSet()
-    if (prevActive != null && stillThere.contains(prevActive)) {
-        val queue = prevQueue.filter { stillThere.contains(it) && it != prevActive }.toMutableList()
-        for (id in unlocked) if (id != prevActive && !queue.contains(id)) queue.add(id)
-        return Presentation(prevActive, queue)
-    }
-    val queue = prevQueue.filter { stillThere.contains(it) }.toMutableList()
-    for (id in unlocked) if (!queue.contains(id)) queue.add(id)
-    val next = queue.firstOrNull()
-    val rest = if (next != null) queue.drop(1) else emptyList()
-    return Presentation(next, rest)
-}
-
-// Suggestion d'ouverture (change home-player-runtime, compat-first) : meme file
-// que `present`, SANS jamais assigner d'actif. `present()` reste inchange
-// (modale unique). La tete est proposee, l'ouverture reste manuelle.
+// Suggestion d'ouverture (change home-player-runtime, 7.2 : `present()` et
+// la modale unique sont supprimes, `suggest()` est l'unique file, sans jamais
+// assigner d'actif). La tete est proposee, l'ouverture reste manuelle.
 // `prevFile` = file suggeree precedente complete (tete incluse).
 data class Suggestion(val tete: String?, val file: List<String>)
 
@@ -386,21 +369,6 @@ fun validateHoldConfig(game: Game): List<String> {
         errors.add("Modules ${needsLockNodes.map { it.id }} nécessitent holdMode != none")
     }
     return errors
-}
-
-fun presentWithHold(
-    unlocked: List<String>,
-    prevQueue: List<String>,
-    prevActive: String?,
-    holdActive: Boolean,
-    holdMode: HoldMode
-): Presentation {
-    if (holdActive && holdMode != HoldMode.NONE) {
-        val queue = prevQueue.filter { unlocked.contains(it) && it != prevActive }.toMutableList()
-        for (id in unlocked) if (id != prevActive && !queue.contains(id)) queue.add(id)
-        return Presentation(prevActive, queue)
-    }
-    return present(unlocked, prevQueue, prevActive)
 }
 
 fun resolveExperienceStyle(game: Game): ExperienceStyle {

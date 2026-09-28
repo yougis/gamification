@@ -21,3 +21,11 @@ export function navigationInitiale(): Navigation {
 export function estEtape(n: Navigation): n is Extract<Navigation, { vue: "etape" }> {
   return n.vue === "etape";
 }
+
+// Mode d'ouverture depuis l'etat (change home-player-runtime, 5.1) : pur.
+// Non termine + eligible = jouable, non termine sinon = apercu (titre seul),
+// termine + rejouable = rejeu, termine sinon = relecture. Sans ecriture.
+export function modeOuverture(t: { termine: boolean; eligible: boolean; rejouable: boolean }): VueMode {
+  if (!t.termine) return t.eligible ? "jouable" : "apercu";
+  return t.rejouable ? "rejeu" : "relecture";
+}

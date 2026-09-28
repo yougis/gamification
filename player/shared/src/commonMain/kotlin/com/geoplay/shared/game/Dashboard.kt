@@ -12,7 +12,7 @@ import com.geoplay.shared.model.GameNode
 // toutes satisfaites → null. Zéro nouvelle donnée auteur.
 
 // Vue par défaut (2.2) : le tableau de bord s'affiche quand presentation
-// inclut HOME et qu'aucune modale n'est ACTIVE. Combinable
+// inclut HOME et qu'aucune epreuve n'est ouverte. Combinable
 // (HOME + MAP + TOOLBOX) : chaque règle reste indépendante. Sans HOME :
 // comportement actuel inchangé.
 fun showHomeDashboard(game: Game, activeNodeId: String? = null): Boolean =

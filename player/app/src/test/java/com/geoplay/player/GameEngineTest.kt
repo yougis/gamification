@@ -3,13 +3,13 @@ package com.geoplay.player
 import com.geoplay.shared.game.Sim
 import com.geoplay.shared.game.drawPool
 import com.geoplay.shared.game.evaluate
-import com.geoplay.shared.game.present
+import com.geoplay.shared.game.suggest
 import com.geoplay.shared.model.Game
 import kotlinx.serialization.json.Json
 import org.junit.Assert.*
 import org.junit.Test
 
-// Preuve 2.1 : partie reference-5poi tirage -> branche -> FIN (machine LOCKED->UNLOCKED->ACTIVE->COMPLETED).
+// Preuve 2.1 : partie reference-5poi tirage -> branche -> FIN (machine LOCKED->UNLOCKED->COMPLETED).
 class GameEngineTest {
 
     private val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
@@ -55,15 +55,17 @@ class GameEngineTest {
     }
 
     @Test
-    fun fifoSingleModal_latchEviction() {
-        // File FIFO a modale unique : 2e geofence attend, sortie de file si relock.
-        val first = present(listOf("a", "b"), emptyList(), null)
-        assertEquals("a", first.activeId)
-        assertEquals(listOf("b"), first.queue)
-        // Relock de b : eviction de la file, a reste ACTIVE (latche).
-        val second = present(listOf("a"), first.queue, first.activeId)
-        assertEquals("a", second.activeId)
-        assertTrue(second.queue.isEmpty())
+    fun suggestHeadEviction() {
+        // Suggestion sans modale (change home-player-runtime, 7.2) : tete
+        // proposee, eviction au relock, jamais d'assignation.
+        val first = suggest(listOf("a", "b"), emptyList())
+        assertEquals("a", first.tete)
+        assertEquals(listOf("a", "b"), first.file)
+        // Relock de b : eviction, a reste propose en tete.
+        val second = suggest(listOf("a"), first.file)
+        assertEquals("a", second.tete)
+        assertTrue(second.file.contains("a"))
+        assertFalse(second.file.contains("b"))
     }
 
     @Test

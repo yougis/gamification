@@ -1,7 +1,6 @@
 package com.geoplay.shared.ui.navigation
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -35,8 +34,10 @@ import com.geoplay.shared.ui.theme.GeoPlayTheme
 import com.geoplay.shared.ui.toolbox.ToolboxDialog
 import com.geoplay.shared.ui.toolbox.ToolboxIconButton
 import com.geoplay.shared.game.toolboxIconVisible
-import com.geoplay.shared.game.noeudPrincipal
 import com.geoplay.shared.game.showHomeDashboard
+import com.geoplay.shared.game.Navigation
+import com.geoplay.shared.game.VueMode
+import com.geoplay.shared.game.modeVue
 import com.geoplay.shared.ui.home.HomeDashboard
 
 // Navigation commune (change player-kmp-migration, 4.1) : graphe -> module.
@@ -58,9 +59,9 @@ fun GeoPlayApp(
     inventory: Map<String, Int> = emptyMap(),
     onInventoryOpen: () -> Unit = {},
     onItemSelected: (String) -> Unit = {},
-    // Tableau de bord (change player-home-dashboard) : vue par défaut quand
-    // aucune modale ACTIVE et presentation inclut HOME. Défauts = pas de
-    // tableau (comportement actuel inchangé).
+    // Tableau de bord (change player-home-dashboard, home-player-runtime 7.2) :
+    // vue par defaut quand aucune epreuve n'est ouverte et presentation
+    // inclut HOME. Defauts = pas de tableau.
     elapsedMs: Long = 0L,
     countdownsMs: Map<String, Long?> = emptyMap(),
     queueHeadId: String? = null,
@@ -71,10 +72,6 @@ fun GeoPlayApp(
     tempsRestantMs: Long? = null,
     verrouillagesMs: Map<String, Long?> = emptyMap(),
     horsDelai: Boolean = false,
-    // File d'éligibilité (change player-immersion-parcours) : sert la règle
-    // d'arrivée et l'avance auto. Défauts = pas d'ouverture auto (repli liste).
-    unlocked: List<String> = emptyList(),
-    queue: List<String> = emptyList(),
     // Contenu d'image (change parite-player) : le shell résout `src`
     // vers ses assets du pack. Défaut = rien (jamais de réseau).
     imageContent: @Composable (src: String, alt: String?) -> Unit = { _, _ -> },
@@ -86,14 +83,23 @@ fun GeoPlayApp(
     // Id du nœud en cours hoisté (pas d'arguments de route : `Bundle.getString`
     // n'existe pas en commonMain navigation-compose).
     var selectedNodeId by remember { mutableStateOf<String?>(null) }
+    // Navigation explicite (change home-player-runtime, 7.2 : ACTIVE supprime) :
+    // `nav` est la position vue (HOME ou etape + mode). Aucune ouverture
+    // auto, aucune avance auto : Valider/Abandonner reviennent ici via le shell.
+    val nav: Navigation = remember(selectedNodeId, states) {
+        val id = selectedNodeId
+        if (id == null) Navigation.Home else Navigation.Etape(id, modeVue(states[id]))
+    }
+    // Epreuve en cours = etape ouverte en mode jouable/rejouable. Le plein
+    // ecran carte est inaccessible pendant une epreuve (vues exclusives).
+    val epreuveEnCours = (nav as? Navigation.Etape)?.let { it.mode == VueMode.JOUABLE || it.mode == VueMode.REJEU } == true
     var toolboxOpen by remember { mutableStateOf(false) }
     // Carte plein écran (change widget-cartographie) : remplace HOME (pas un
-    // overlay), un seul à la fois, inaccessible pendant une modale ACTIVE.
+    // overlay), un seul à la fois, inaccessible pendant une epreuve.
     // Retour via l'entrée Accueil : ni transition ni event.
     var cartePleinEcran by remember { mutableStateOf<ScreenWidget?>(null) }
-    val modaleActive = states.values.any { it == NodeState.ACTIVE }
     fun ouvrirCartePleinEcran(w: ScreenWidget) {
-        if (!modaleActive) cartePleinEcran = w
+        if (!epreuveEnCours) cartePleinEcran = w
     }
     fun openNode(id: String) {
         if (onOpenNode != null) {
@@ -108,35 +114,13 @@ fun GeoPlayApp(
             navController.navigate(GeoPlayRoutes.NODE)
         }
     }
-    // Avance auto (change player-immersion-parcours) : après complétion
-    // enregistrée (persistance par le shell via les callbacks), naviguer
-    // vers le premier éligible non terminé ; sinon tableau (HOME) ou liste
-    // (repli, déjà affichés). Abandon/retour n'avance jamais. Aucune
-    // transition moteur, aucun event : seule la navigation bouge.
-    var advanceFrom by remember { mutableStateOf<String?>(null) }
+    // Retour HOME systematique (change home-player-runtime, 7.2 : fin de
+    // l'avance auto). Apres ecriture (persistance par le shell via le
+    // callback), depiler vers HOME/liste. Abandon/retour ne font que depiler.
+    // Aucune transition moteur, aucun event : seule la navigation bouge.
     fun completeAndAdvance(id: String, finish: () -> Unit) {
         finish()
         navController.popBackStack()
-        advanceFrom = id
-    }
-    LaunchedEffect(states, advanceFrom) {
-        val from = advanceFrom ?: return@LaunchedEffect
-        // Attendre l'état frais : le nœud doit être COMPLETED.
-        if (states[from] != NodeState.COMPLETED) return@LaunchedEffect
-        advanceFrom = null
-        val completed = states.filterValues { it == NodeState.COMPLETED }.keys
-        noeudPrincipal(game, unlocked, completed, queue)?.let { openNode(it) }
-    }
-    // Arrivée immersive (change player-immersion-parcours) : une seule fois
-    // par jeu, ouvrir l'écran du nœud principal. Avec HOME : le tableau
-    // pilote (pas d'ouverture auto). Sans éligible : repli liste.
-    // Présentation d'éligible uniquement : aucune transition, aucun event.
-    LaunchedEffect(game) {
-        val activeId = states.entries.find { it.value == NodeState.ACTIVE }?.key
-        if (!showHomeDashboard(game, activeId)) {
-            val completed = states.filterValues { it == NodeState.COMPLETED }.keys
-            noeudPrincipal(game, unlocked, completed, queue)?.let { openNode(it) }
-        }
     }
     GeoPlayTheme {
         androidx.compose.foundation.layout.Column(modifier = modifier) {
@@ -147,6 +131,7 @@ fun GeoPlayApp(
                     toolboxOpen = true
                     onInventoryOpen()
                 },
+                viewedId = (nav as? Navigation.Etape)?.id,
             )
             if (toolboxOpen) {
                 ToolboxDialog(
@@ -157,7 +142,7 @@ fun GeoPlayApp(
                 )
             }
         val carteActive = cartePleinEcran
-        if (carteActive != null && !modaleActive) {
+        if (carteActive != null && !epreuveEnCours) {
             // Plein écran carte (change widget-cartographie) : remplace HOME,
             // retour via l'entrée Accueil. Navigation pure : ni transition
             // ni event. Un seul à la fois (remplacement, pas de file).
@@ -177,28 +162,30 @@ fun GeoPlayApp(
         } else {
         NavHost(navController = navController, startDestination = GeoPlayRoutes.GRAPH, modifier = Modifier.weight(1f)) {
             composable(GeoPlayRoutes.GRAPH) {
-                val activeId = states.entries.find { it.value == NodeState.ACTIVE }?.key
+                // Etape vue (tous modes) : le tableau est le defaut quand
+                // aucune epreuve n'est ouverte. Navigation pure.
+                val etapeVue = (nav as? Navigation.Etape)?.id
                 // Onglet Accueil permanent (change studio-home-accueil) : quand
                 // HOME est présent, le tableau reste accessible à tout moment
                 // via l'onglet, sans changer la règle d'affichage par défaut
-                // (tableau si aucune modale ACTIVE). Navigation pure : ni
+                // (tableau si aucune epreuve ouverte). Navigation pure : ni
                 // transition d'état ni event.
                 val homeDisponible = game.global.presentation.contains("HOME")
-                var ongletAccueil by remember(game, activeId) { mutableStateOf(showHomeDashboard(game, activeId)) }
+                var ongletAccueil by remember(game, etapeVue) { mutableStateOf(showHomeDashboard(game, etapeVue)) }
                 if (homeDisponible) {
                     Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
                         TextButton(onClick = { ongletAccueil = true }) { Text("Accueil") }
                         TextButton(onClick = { ongletAccueil = false }) { Text("Vue") }
                     }
                 }
-                if ((homeDisponible && ongletAccueil) || (!homeDisponible && showHomeDashboard(game, activeId))) {
+                if ((homeDisponible && ongletAccueil) || (!homeDisponible && showHomeDashboard(game, etapeVue))) {
                     HomeDashboard(
                         game = game,
                         states = states,
                         elapsedMs = elapsedMs,
                         countdownsMs = countdownsMs,
                         queueHeadId = queueHeadId,
-                        showInventoryEntry = toolboxIconVisible(game, activeId),
+                        showInventoryEntry = toolboxIconVisible(game, etapeVue),
                         inventoryCount = inventory.values.sum(),
                         onOpen = ::openNode,
                         onInventoryOpen = {
@@ -220,7 +207,8 @@ fun GeoPlayApp(
                 }
             }
             composable(GeoPlayRoutes.NODE) {
-                val nodeId = selectedNodeId.orEmpty()
+                // Lu depuis `nav` (identique à selectedNodeId : nav etape ⟺ id).
+                val nodeId = (nav as? Navigation.Etape)?.id.orEmpty()
                 val node = game.nodes.find { it.id == nodeId }
                 if (node == null) {
                     Text("Étape introuvable.", modifier = Modifier.padding(16.dp))

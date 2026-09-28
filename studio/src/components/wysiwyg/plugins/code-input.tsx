@@ -2,8 +2,8 @@
 // Etape cadenas : code attendu, indice, essais/temps via les defauts globaux.
 // Visuel 100 % CSS/SVG generique (aucun asset, offline-first preserve).
 // Rendu joueur : pave de saisie + clavier, verification, succes -> onComplete,
-// echec -> essais decrements puis verrouillage interne (onTimeout : le Noeud
-// reste ACTIVE, l'auteur tranche via Terminer/Abandonner).
+// echec -> essais decrements puis verrouillage interne (onTimeout : l'etape
+// reste ouverte, l'auteur tranche via Terminer/Abandonner).
 import { useEffect, useRef, useState } from "react";
 import type {
   ModuleEditorPreviewProps,

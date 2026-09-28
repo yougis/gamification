@@ -1,11 +1,13 @@
 // Preuves headless du change 400 : init topo, FIFO, hote, GPS, boussole, forceDraw.
 import { strict as assert } from "node:assert";
 import {
-  resolveGameStartPools, present, suggest, snapshotOuverture, verdictValider, verdictAbandonner, regimeCompletion, hostModule, gpsFrequencyHz, accuracyMessage,
+  resolveGameStartPools, suggest, snapshotOuverture, verdictValider, verdictAbandonner, regimeCompletion, hostModule, gpsFrequencyHz, accuracyMessage,
   smoothHeading, compassState, cameraPolicy, createInventoryEvent, INVENTORY_EVENT_TYPES,
 } from "./src/game/runtime.ts";
 import { drawPool } from "./src/game/evaluate.ts";
-import { navigationInitiale, estEtape, type Navigation } from "./src/game/navigation.ts";
+import { evaluate, type Sim } from "./src/game/evaluate.ts";
+import fixtureHome from "./src/game/game-home-2pts.json";
+import { navigationInitiale, estEtape, modeOuverture, type Navigation } from "./src/game/navigation.ts";
 import type { Game } from "./src/game/types.ts";
 
 const q = (id: string, extra = {}) => ({
@@ -35,15 +37,12 @@ const base = (nodes: never[]): Game => ({
   console.log("1.1 topo init : OK (cascade A->B, persistance immediate, cycle rejete)");
 }
 
-// 1.2 : FIFO, 2 geofences simultanees sans empilement, eviction au relock, ACTIVE latche.
+// 1.2 : suggestion, 2 geofences sans auto-assignation, eviction au relock,
+// tete proposee (change home-player-runtime, 7.2 : present() supprime).
 {
-  let p = present(["a", "b"], [], null);
-  assert.deepEqual([p.activeId, p.queue], ["a", ["b"]]);
-  p = present(["a", "b"], p.queue, p.activeId); // a reste ACTIVE (latche)
-  assert.deepEqual([p.activeId, p.queue], ["a", ["b"]]);
-  p = present(["b"], p.queue, p.activeId); // a relocke hors file, b promu
-  assert.deepEqual([p.activeId, p.queue], ["b", []]);
-  console.log("1.2 FIFO : OK (1 modale, ordre conserve, eviction, latch)");
+  const s = suggest(["a", "b"], []);
+  assert.deepEqual([s.tete, s.file], ["a", ["a", "b"]]);
+  console.log("1.2 suggestion : OK (tete proposee, sans actif, ordre conserve)");
 }
 
 // 1.3 : hote isole (inconnu + crash), boucle vivante.
@@ -111,9 +110,9 @@ const base = (nodes: never[]): Game => ({
   console.log("3.1 events inventaire : OK (vocabulaire fermé, fabrique, flag triche)");
 }
 
-// Suggestion d'ouverture (change home-player-runtime, compat-first) : tete
-// proposee sans actif assigne, ordre stable, eviction au relock, `present()`
-// inchange verifie au passage.
+// Suggestion d'ouverture (change home-player-runtime, 7.2 : `present()` et
+// la modale unique sont supprimes) : tete proposee sans actif assigne, ordre
+// stable, eviction au relock.
 {
   let s = suggest(["a", "b"], []);
   assert.deepEqual([s.tete, s.file], ["a", ["a", "b"]]);
@@ -124,9 +123,7 @@ const base = (nodes: never[]): Game => ({
   assert.deepEqual([s.tete, s.file], ["c", ["c"]]);
   s = suggest([], s.file);
   assert.deepEqual([s.tete, s.file], [null, []]);
-  const p = present(["a", "b"], [], null); // present() inchange (modale unique)
-  assert.deepEqual([p.activeId, p.queue], ["a", ["b"]]);
-  console.log("4.1 suggest : OK (tete proposee, sans actif, eviction, present inchange)");
+  console.log("4.1 suggest : OK (tete proposee, sans actif, eviction)");
 }
 
 // Verdict Valider (change home-player-runtime) : nominal, droit a finir +
@@ -184,5 +181,57 @@ const base = (nodes: never[]): Game => ({
   assert.equal(estEtape(vues[2]), true);
   assert.equal(estEtape(vues[0]), false);
   console.log("4.5 navigation : OK (HOME, volet, etape x4 modes, plein-ecran)");
+}
+
+// Modes d'ouverture (change home-player-runtime, 5.1) : matrice termine ×
+// eligible × rejouable, sans ecriture.
+{
+  assert.equal(modeOuverture({ termine: false, eligible: true, rejouable: false }), "jouable");
+  assert.equal(modeOuverture({ termine: false, eligible: false, rejouable: false }), "apercu");
+  assert.equal(modeOuverture({ termine: true, eligible: true, rejouable: true }), "rejeu");
+  assert.equal(modeOuverture({ termine: true, eligible: false, rejouable: false }), "relecture");
+  assert.equal(modeOuverture({ termine: true, eligible: true, rejouable: false }), "relecture");
+  console.log("4.7 modes : OK (jouable, apercu, rejeu, relecture)");
+}
+
+// Parcours fixture (change home-player-runtime, 1.3/4.3) : boucle manuelle
+// complete sur game-home-2pts.json via fonctions pures — ouvrir (snapshot),
+// valider (verdict), retour HOME (suggestion), sans auto-ouverture.
+{
+  const jeu = fixtureHome as unknown as Game;
+  const simBase: Sim = {
+    present: new Set(["point-a", "point-b"]), dwellOk: new Set(), throughOk: new Set(),
+    nowMs: 0, completedAt: new Map(), accuracyM: 5,
+  };
+  const done = new Map<string, number>();
+  const counts = new Map<string, number>();
+  const r0 = evaluate(jeu, { ...simBase }, {}, done, counts, new Set());
+  assert.deepEqual([...r0.unlocked].sort(), ["point-a", "point-b"]);
+  assert.equal(suggest(r0.unlocked, []).tete, "point-a"); // ordre noeuds stable
+  const ouvA = snapshotOuverture("point-a", 0, r0.unlocked);
+  assert.deepEqual(verdictValider(ouvA, r0.unlocked), { ok: true, horsDelai: false });
+  done.set("point-a", 1); counts.set("point-a", 1);
+  const r1 = evaluate(jeu, { ...simBase, completedAt: done }, {}, done, counts, new Set());
+  assert.ok(r1.unlocked.includes("point-b") && r1.unlocked.includes("fin")); // OR debloquee
+  const ouvB = snapshotOuverture("point-b", 0, r1.unlocked);
+  assert.deepEqual(verdictValider(ouvB, r1.unlocked), { ok: true, horsDelai: false });
+  done.set("point-b", 2); counts.set("point-b", 1);
+  const r2 = evaluate(jeu, { ...simBase, completedAt: done }, {}, done, counts, new Set());
+  assert.deepEqual(verdictValider(snapshotOuverture("fin", 0, r2.unlocked), r2.unlocked), { ok: true, horsDelai: false });
+  // Grace : WINDOW expiree entre t0 et t1 -> droit a finir + hors-delai.
+  const jeuW = {
+    gameId: "w", schemaVersion: "1.0.0", minEngineVersion: "1.0.0",
+    nodes: [{
+      id: "a",
+      module: { type: "INFO", data: { schemaVersion: "1.0.0", steps: [{ text: "x" }] } },
+      activation: { requires: [{ type: "WINDOW", avantSecondes: 600 }] },
+    }],
+  } as unknown as Game;
+  const e0 = evaluate(jeuW, { ...simBase, nowMs: 0 }, {}, new Map(), new Map(), new Set());
+  const e1 = evaluate(jeuW, { ...simBase, nowMs: 700000 }, {}, new Map(), new Map(), new Set());
+  assert.deepEqual(e0.unlocked, ["a"]);
+  assert.deepEqual(e1.unlocked, []);
+  assert.deepEqual(verdictValider(snapshotOuverture("a", 0, e0.unlocked), e1.unlocked), { ok: true, horsDelai: true });
+  console.log("4.6 parcours : OK (boucle manuelle 2pts + fin OR + grace WINDOW)");
 }
 console.log("RUNTIME SMOKE OK");

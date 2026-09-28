@@ -17,7 +17,7 @@ enum class Predicate { ENTER, EXIT, DWELL, THROUGH }
 enum class Anchor { GAME_START, NODE_COMPLETION }
 enum class DrawTiming { ON_POOL_ACTIVATION, ON_GAME_START }
 enum class Transport { BLE, WIFI }
-enum class NodeState { LOCKED, UNLOCKED, ACTIVE, COMPLETED }
+enum class NodeState { LOCKED, UNLOCKED, COMPLETED }
 enum class OnReentry { IGNORE, REPLAY }
 enum class ModuleType { QUIZ, DIFFERENCE_GAME, PUZZLE, AR_MARKER, BOUSSOLE, INFO, RANDOM_POOL, CODE_INPUT, CLUE_RESOLVER, ITEM_DROPPER, ITEM_CONSUMER }
 enum class Difficulty { ENFANT, FAMILLE, EXPERT }

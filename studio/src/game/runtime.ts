@@ -1,5 +1,6 @@
-// Runtime joueur (logique pure) : init topo, file FIFO a modale unique,
-// hotes isoles, politiques GPS/boussole/camera, meta-etat HOLD kiosque.
+// Runtime joueur (logique pure) : init topo, file de suggestion, verdicts
+// Valider/Abandonner, regime de completion, hotes isoles, politiques
+// GPS/boussole/camera, meta-etat HOLD kiosque.
 // Liaisons natives (CoreLocation, capteurs, MapLibre) en differe plateforme ;
 // tout le deducible est ici et teste.
 import { drawPool } from "./evaluate";
@@ -140,34 +141,14 @@ export function resolveGameStartPools(
   return draws;
 }
 
-// --- 1.2 File FIFO a modale unique (ACTIVE latche, eviction au relock) ---
-export interface Presentation {
-  activeId: string | null;
-  queue: string[];
-}
+// --- 1.2 File de suggestion (change home-player-runtime, 7.2) ---
+// `present()` et la modale unique sont supprimes : `suggest()` ci-dessous est
+// l'unique file. L'ouverture est manuelle, sans auto-assignation.
 
-export function present(
-  unlocked: string[],
-  prevQueue: string[],
-  prevActive: string | null,
-): Presentation {
-  const stillThere = new Set(unlocked);
-  if (prevActive && stillThere.has(prevActive)) {
-    // ACTIVE latche : la modale ouverte survit, la file suit le latch.
-    const queue = [...prevQueue.filter((id) => stillThere.has(id) && id !== prevActive)];
-    for (const id of unlocked) if (id !== prevActive && !queue.includes(id)) queue.push(id);
-    return { activeId: prevActive, queue };
-  }
-  const queue = [...prevQueue.filter((id) => stillThere.has(id))];
-  for (const id of unlocked) if (!queue.includes(id)) queue.push(id);
-  const [next = null, ...rest] = queue;
-  return { activeId: next, queue: rest };
-}
-
-// --- 1.2bis Suggestion d'ouverture (change home-player-runtime, compat-first) ---
-// `present()` ci-dessus reste inchange (modale unique). `suggest()` calcule la
-// meme file SANS jamais assigner d'actif : la tete est proposee, l'ouverture
-// reste manuelle (volet/carte/liste). `prevFile` = file suggeree precedente
+// --- 1.2bis Suggestion d'ouverture (change home-player-runtime, 7.2) ---
+// `suggest()` est l'unique file : meme ordre, SANS jamais assigner d'actif.
+// La tete est proposee, l'ouverture reste manuelle (volet/carte/liste).
+// `prevFile` = file suggeree precedente
 // complete (tete incluse). Eviction au relock, ordre stable, jamais d'event.
 export interface Suggestion {
   tete: string | null;

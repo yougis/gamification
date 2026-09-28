@@ -24,6 +24,7 @@ import com.geoplay.player.databinding.FragmentSettingsBinding
 import com.geoplay.shared.game.Sim
 import com.geoplay.shared.game.evaluate
 import com.geoplay.shared.model.Game
+import com.geoplay.shared.model.NodeState
 import com.geoplay.shared.model.OnReentry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -95,9 +96,6 @@ class GameFragment : Fragment() {
 
     private var activeId: String? = null
     private val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
-    // Arrivée immersive (change player-immersion-parcours) : ouverture auto
-    // une seule fois par partie (jamais à chaque rafraîchissement).
-    private var arrived = false
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
@@ -186,7 +184,6 @@ class GameFragment : Fragment() {
 
     private fun setupGame(game: Game) {
         this.game = game
-        arrived = false
         // Reprendre = meme sessionId relit ; nouvelle partie = nouveau sessionId (offline-pack + player-install).
         val argSession = arguments?.getString("sessionId")
         lifecycleScope.launch {
@@ -334,21 +331,12 @@ class GameFragment : Fragment() {
             val ev = evaluate(game, sim, draws.toMap(), done.toMap(), counts.toMap(), emptySet())
             val showHome = "HOME" in game.global.presentation
 
-            // Arrivée immersive : une seule fois, sans HOME (avec HOME le
-            // tableau pilote), ouvrir l'écran du nœud principal. Sans
-            // éligible : repli liste. Présentation d'éligible uniquement.
-            if (!arrived) {
-                arrived = true
-                if (!showHome && activeId == null) {
-                    com.geoplay.shared.game.noeudPrincipal(game, ev.unlocked, done.keys, ev.queue)?.let {
-                        activeId = it
-                        currentNodeId = it
-                    }
-                }
-            }
+            // Ouverture manuelle (change home-player-runtime, 7.2 : fin de
+            // l'arrivee auto). Avec HOME le tableau propose, sinon la liste ;
+            // aucune ouverture sans geste joueur.
 
             binding.tvCurrentNode.text = "Etape actuelle: " + (currentNodeId ?: "-")
-            binding.tvActiveNode.text = if (activeId != null) "Active: $activeId" else "Aucune"
+            binding.tvActiveNode.text = if (activeId != null) "Ouverte: $activeId" else "Aucune"
 
             binding.rvQueue.adapter = QueueAdapter(ev.queue) { id ->
                 activeId = id
@@ -378,7 +366,6 @@ class GameFragment : Fragment() {
                     .joinToString("\n") { n ->
                         val state = when {
                             done.containsKey(n.id) -> "Terminée"
-                            n.id == activeId -> "En cours"
                             ev.unlocked.contains(n.id) -> "Disponible"
                             else -> "Verrouillée"
                         }
@@ -388,7 +375,10 @@ class GameFragment : Fragment() {
                             (if (rest != null) " — dans " + com.geoplay.shared.ui.home.formatDuration(rest) else "") +
                             (if (verrou != null) " — se verrouille dans " + com.geoplay.shared.ui.home.formatDuration(verrou) else "")
                     }
-                val head = activeId ?: ev.queue.firstOrNull()
+                // Proposition (change home-player-runtime, 7.2) : tete suggeree
+                // hors etape ouverte, sans auto-ouverture. Ouvrir = meme
+                // chemin que le clic file (aucun event ajoute).
+                val head = com.geoplay.shared.game.suggest(ev.unlocked.filter { it != activeId }, emptyList()).tete
                 if (head != null && !done.containsKey(head)) {
                     binding.btnHomeOpen.visibility = View.VISIBLE
                     binding.btnHomeOpen.text = "Ouvrir : $head"
@@ -447,7 +437,7 @@ class GameFragment : Fragment() {
     }
 
     private fun completeCurrent(abandon: Boolean) {        val id = activeId ?: run {
-            Toast.makeText(requireContext(), "Aucune etape active", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), "Aucune étape ouverte", Toast.LENGTH_SHORT).show()
             return
         }
         val node = game?.nodes?.find { it.id == id } ?: return
@@ -500,17 +490,8 @@ class GameFragment : Fragment() {
                 Toast.makeText(requireContext(), "FIN atteinte : " + node.id + tag, Toast.LENGTH_LONG).show()
             }
             activeId = null
-            // Avance auto (change player-immersion-parcours) : après
-            // persistance, ouvrir le premier éligible non terminé ; sinon
-            // tableau (HOME) ou liste (repli, déjà affichés). Abandon
-            // n'avance jamais. Aucune transition, aucun event.
-            if (!abandon && game != null) {
-                val ev2 = evaluate(game!!, sim, draws.toMap(), done.toMap(), counts.toMap(), emptySet())
-                com.geoplay.shared.game.noeudPrincipal(game!!, ev2.unlocked, done.keys, ev2.queue)?.let {
-                    activeId = it
-                    currentNodeId = it
-                }
-            }
+            // Retour HOME systematique (change home-player-runtime, 7.2 : fin
+            // de l'avance auto). La proposition se recalcule a l'updateUI.
             updateUI()
         }
     }

@@ -77,18 +77,9 @@ class GameEngineCommonTest {
     }
 
     @Test
-    fun presentKeepsSingleModalFifo() {        val first = present(listOf("a", "b"), emptyList(), null)
-        assertEquals("a", first.activeId)
-        assertEquals(listOf("b"), first.queue)
-        // La modale reste latchée tant que a est éligible.
-        val second = present(listOf("a", "c"), first.queue, first.activeId)
-        assertEquals("a", second.activeId)
-        assertTrue(second.queue.contains("c"))
-    }
-
-    @Test
     fun suggestProposesHeadWithoutAssigning() {
-        // Change home-player-runtime (compat-first) : tete proposee, jamais d'actif.
+        // Change home-player-runtime (7.2 : present() supprime) : tete
+        // proposee, jamais d'actif assigne.
         var s = suggest(listOf("a", "b"), emptyList())
         assertEquals("a", s.tete)
         assertEquals(listOf("a", "b"), s.file)
@@ -101,10 +92,6 @@ class GameEngineCommonTest {
         s = suggest(emptyList(), s.file)
         assertEquals(null, s.tete)
         assertTrue(s.file.isEmpty())
-        // present() inchange (modale unique).
-        val p = present(listOf("a", "b"), emptyList(), null)
-        assertEquals("a", p.activeId)
-        assertEquals(listOf("b"), p.queue)
     }
 
     @Test

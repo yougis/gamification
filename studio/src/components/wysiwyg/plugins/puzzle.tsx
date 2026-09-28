@@ -6,8 +6,9 @@
 // Jeu (change studio-puzzle-code-input) : tuiles decoupees par
 // background-position, melange Fisher-Yates anti-resolu, deplacement `slide`
 // (tap-a-tap + clavier) ou `drag` (pointeur tactile/souris), completion ->
-// onComplete, essais/temps -> verrouillage interne (le Noeud reste ACTIVE,
-// l'auteur tranche via Terminer/Abandonner comme pour les autres modules).
+// onComplete, essais/temps -> verrouillage interne (l'etape reste ouverte,
+// snapshot + droit a finir : l'auteur tranche via Terminer/Abandonner comme
+// pour les autres modules).
 import { useEffect, useMemo, useRef, useState } from "react";
 import { urlAssetSession } from "../image-files";
 import type {

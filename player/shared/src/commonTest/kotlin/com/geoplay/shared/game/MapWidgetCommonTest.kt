@@ -94,18 +94,17 @@ class MapWidgetCommonTest {
     fun accesOuvrirSiEligibleSinonVerrouille() {
         assertEquals("Ouvrir" to true, accesPoi(NodeState.UNLOCKED))
         assertEquals("Verrouillé" to false, accesPoi(NodeState.LOCKED))
-        assertEquals("Verrouillé" to false, accesPoi(NodeState.ACTIVE))
         assertEquals("Verrouillé" to false, accesPoi(NodeState.COMPLETED))
     }
 
     @Test
     fun iconesDefautDistinctesEtSurcharge() {
         val defauts = NodeState.entries.map { iconePoi(null, it) }.toSet()
-        assertEquals(4, defauts.size)
+        assertEquals(3, defauts.size)
         val style = MapPoiStyle(locked = "cadenas", unlocked = "etoile")
         assertEquals("cadenas", iconePoi(style, NodeState.LOCKED))
         assertEquals("etoile", iconePoi(style, NodeState.UNLOCKED))
-        assertEquals(iconePoiDefaut(NodeState.ACTIVE), iconePoi(style, NodeState.ACTIVE))
+        assertEquals(iconePoiDefaut(NodeState.COMPLETED), iconePoi(style, NodeState.COMPLETED))
         assertFalse(iconePoi(MapPoiStyle(locked = "  "), NodeState.LOCKED) == "  ")
     }
 

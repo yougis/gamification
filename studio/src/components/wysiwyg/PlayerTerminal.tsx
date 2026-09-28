@@ -11,7 +11,15 @@ import { PlayerFallback } from "./PlayerFallback";
 import type { CarteSimu } from "./widgets/CarteInteractiveSimu";
 import { getPlayer } from "../../game/module-screen-plugin";
 import { resolveScreen } from "../../game/screen-utils";
+import type { VueMode } from "../../game/navigation";
 import type { Branding, ExperienceStyle, Game, GameNode, HoldMode, ScreenDefinition } from "../../game/types";
+
+const LIBELLE_MODE: Record<VueMode, string> = {
+  apercu: "Aperçu",
+  jouable: "Jouable",
+  relecture: "Relecture",
+  rejeu: "Rejouable",
+};
 
 export function PlayerTerminal({
   node,
@@ -29,6 +37,7 @@ export function PlayerTerminal({
   onOuvrirSimu,
   viewport = "phone-portrait",
   onViewport,
+  modeVue = "jouable",
 }: {
   node: GameNode;
   // Jeu courant (change widget-cartographie) : contexte de lecture pour les
@@ -53,6 +62,11 @@ export function PlayerTerminal({
   // (comportement historique portrait pour les autres appelants).
   viewport?: ViewportId;
   onViewport?: (v: ViewportId) => void;
+  // Mode vue (change home-player-runtime, 5.1) : apercu (titre seul, sans
+  // questionnaire ni ecriture), jouable/rejeu (renderer interactif +
+  // Terminer/Abandonner), relecture (fige, Quitter seul). Defaut = jouable
+  // (comportement historique pour les autres appelants).
+  modeVue?: VueMode;
 }) {
   useEffect(() => {
     const sortie = (e: KeyboardEvent) => {
@@ -101,11 +115,14 @@ export function PlayerTerminal({
         }
       : undefined;
 
+  const interactif = modeVue === "jouable" || modeVue === "rejeu";
+
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-canvas" role="dialog" aria-label={`Terminal joueur simulé — ${node.id}`}>
       <div className="flex min-h-11 items-center gap-2 border-b border-rule bg-panel px-3">
         <span className="puce">SIMULÉ</span>
         <span className="puce">hold:{holdMode}</span>
+        <span className="puce" title="Mode vue (navigation pure, sans écriture)">{LIBELLE_MODE[modeVue]}</span>
         <span className="truncate font-mono text-[11px] text-snow">{node.id}</span>
         {onViewport && (
           <span className="flex items-center gap-1" role="toolbar" aria-label="Viewport d'aperçu">
@@ -153,20 +170,34 @@ export function PlayerTerminal({
           couleurMessage={branding?.primaryColor}
           carteSimu={carteSimu}
           renderModule={() =>
-            Player ? (
-              <Player data={data} branding={branding} experienceStyle={experienceStyle} onComplete={onCompleteNode} />
+            interactif ? (
+              Player ? (
+                <Player data={data} branding={branding} experienceStyle={experienceStyle} onComplete={onCompleteNode} />
+              ) : (
+                <PlayerFallback moduleType={node.module.type} onTerminer={onTerminer} onAbandonner={onAbandonner} />
+              )
             ) : (
-              <PlayerFallback moduleType={node.module.type} onTerminer={onTerminer} onAbandonner={onAbandonner} />
+              <p className="text-xs text-fog">
+                {modeVue === "apercu"
+                  ? "Aperçu verrouillé — titre seul, questionnaire masqué, aucune écriture."
+                  : "Relecture — contenu figé, aucune écriture."}
+              </p>
             )
           }
         />
       </div>
       <div className="flex min-h-11 items-center gap-1 border-t border-rule bg-panel px-3">
         <span className="text-[9px] text-fog">Triche tracée :</span>
-        <button className="btn-primaire min-h-9" onClick={onTerminer}>
-          <Icon name="valider" size={15} /> Terminer
-        </button>
-        <button className="btn min-h-9" onClick={onAbandonner}>Abandonner</button>
+        {interactif ? (
+          <>
+            <button className="btn-primaire min-h-9" onClick={onTerminer}>
+              <Icon name="valider" size={15} /> Terminer
+            </button>
+            <button className="btn min-h-9" onClick={onAbandonner}>Abandonner</button>
+          </>
+        ) : (
+          <span className="text-[9px] text-fog">Quitter (Échap) pour revenir — aucune écriture dans ce mode.</span>
+        )}
       </div>
     </div>
   );

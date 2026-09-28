@@ -21,7 +21,6 @@ import com.geoplay.shared.model.NodeState
 fun nodeStateLabel(state: NodeState): String = when (state) {
     NodeState.LOCKED -> "Verrouillée"
     NodeState.UNLOCKED -> "Disponible"
-    NodeState.ACTIVE -> "En cours"
     NodeState.COMPLETED -> "Terminée"
 }
 

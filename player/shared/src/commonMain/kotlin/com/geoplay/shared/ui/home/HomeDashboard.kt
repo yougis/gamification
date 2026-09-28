@@ -18,7 +18,7 @@ import com.geoplay.shared.model.ScreenWidget
 import com.geoplay.shared.ui.graph.nodeStateLabel
 
 // Tableau de bord joueur (change player-home-dashboard) : vue par défaut
-// quand aucune modale ACTIVE et que presentation inclut HOME. Présentation
+// quand aucune epreuve n'est ouverte et que presentation inclut HOME. Présentation
 // pure — états, file et journal inchangés : ouvrir passe par la file
 // existante, fermer/revenir = reprise exacte. Temps limites d'épreuve
 // exclus par construction (vivent dans les écrans d'étapes).

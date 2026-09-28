@@ -14,7 +14,6 @@ import com.geoplay.shared.model.ScreenWidget
 // Icônes par défaut, distinguables sans la couleur seule.
 fun iconePoiDefaut(etat: NodeState): String = when (etat) {
     NodeState.LOCKED -> "alerte"
-    NodeState.ACTIVE -> "etape"
     NodeState.COMPLETED -> "ok"
     NodeState.UNLOCKED -> "lieu"
 }
@@ -22,7 +21,6 @@ fun iconePoiDefaut(etat: NodeState): String = when (etat) {
 fun iconePoi(style: MapPoiStyle?, etat: NodeState): String {
     val custom = when (etat) {
         NodeState.LOCKED -> style?.locked
-        NodeState.ACTIVE -> style?.active
         NodeState.COMPLETED -> style?.completed
         NodeState.UNLOCKED -> style?.unlocked
     }
@@ -82,7 +80,9 @@ fun bboxMarqueurs(marqueurs: List<MarqueurCarte>): BboxMarqueurs? {
     }
     val centreLat = (minLat + maxLat) / 2.0
     val margeLat = 200.0 / 111320.0
-    val margeLng = 200.0 / (111320.0 * kotlin.math.cos(Math.toRadians(centreLat)).coerceAtLeast(0.01))
+    // Portabilite wasmJs (home-player-runtime, correctif prealable 3.1.4) :
+    // `java.lang.Math` inexistant hors JVM ; formule identique via kotlin.math.
+    val margeLng = 200.0 / (111320.0 * kotlin.math.cos(centreLat * kotlin.math.PI / 180.0).coerceAtLeast(0.01))
     return BboxMarqueurs(minLat - margeLat, minLng - margeLng, maxLat + margeLat, maxLng + margeLng)
 }
 

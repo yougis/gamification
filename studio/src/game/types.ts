@@ -416,8 +416,8 @@ export type InventoryEventType =
   | "ITEM_GIVEN"
   | "ITEM_REMOVED";
 
-// Abonnement d'un mini-jeu : quand `event` survient (Nœud ACTIVE), le
-// renderer affiche `hint`, sans transition ni effet. Sans `itemId` :
+// Abonnement d'un mini-jeu : quand `event` survient pendant une etape ouverte
+// (mode jouable), le renderer affiche `hint`, sans transition ni effet. Sans `itemId` :
 // réagit à tout objet pour ce type d'événement.
 export interface InventoryHint {
   event: InventoryEventType;

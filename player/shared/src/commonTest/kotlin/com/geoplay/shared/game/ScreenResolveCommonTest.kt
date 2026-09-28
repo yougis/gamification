@@ -139,6 +139,32 @@ class ScreenResolveCommonTest {
     }
 
     @Test
+    fun carteGlobaleNeFuitPasSansContentLocal() {
+        // Change home-player-runtime (5.2) : partiel sans content = neutre ;
+        // sans screen = heritage integral ; content local conserve.
+        fun jeuCarte(screenLocal: ScreenDefinition?): Game = Game(
+            gameId = "g",
+            global = GlobalData(
+                screen = ScreenDefinition(
+                    zones = ScreenZones(
+                        content = ZoneContent(widgets = listOf(ScreenWidget(type = "map"))),
+                    ),
+                ),
+            ),
+            nodes = listOf(node("a", screenLocal)),
+        )
+        val partiel = resolveScreen(jeuCarte(ScreenDefinition(zones = ScreenZones())), jeuCarte(ScreenDefinition(zones = ScreenZones())).nodes.first())
+        assertTrue(partiel.zones?.content?.widgets?.none { it.type == "map" } == true)
+        val nu = resolveScreen(jeuCarte(null), jeuCarte(null).nodes.first())
+        assertEquals("map", nu.zones?.content?.widgets?.first()?.type)
+        val plein = resolveScreen(
+            jeuCarte(ScreenDefinition(zones = ScreenZones(content = ZoneContent(widgets = listOf(ScreenWidget(type = "module")))))),
+            jeuCarte(ScreenDefinition(zones = ScreenZones(content = ZoneContent(widgets = listOf(ScreenWidget(type = "module")))))).nodes.first(),
+        )
+        assertEquals("module", plein.zones?.content?.widgets?.first()?.type)
+    }
+
+    @Test
     fun paginateContentMirrorsStudioRule() {
         fun w(t: String) = ScreenWidget(type = t, text = "x")
         val p1 = paginateContent(listOf(w("text"), w("module"), w("text"), w("image")))

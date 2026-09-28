@@ -6,7 +6,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { availableRecipes, applyRecipe, resolveInventoryHint, toolboxIconVisible, timerRemainingMs, showHomeDashboard, noeudPrincipal } from "./src/game/inventory.ts";
 import { evaluate } from "./src/game/evaluate.ts";
-import { createInventoryEvent, present, INVENTORY_EVENT_TYPES } from "./src/game/runtime.ts";
+import { createInventoryEvent, suggest, INVENTORY_EVENT_TYPES } from "./src/game/runtime.ts";
 import { validateGame } from "./src/game/validate.ts";
 import type { Game, GameNode } from "./src/game/types.ts";
 
@@ -65,7 +65,7 @@ const PRECISES = [
 }
 
 // 2.2 : QUIZ bout en bout — journal → événement → indice du renderer,
-// Nœud resté ACTIVE, aucune progression émise.
+// Nœud ouvert en suggestion, aucune progression émise.
 {
   const quizData = {
     schemaVersion: "1.0.0",
@@ -86,9 +86,9 @@ const PRECISES = [
     ],
   } as unknown as Game;
   assert.deepEqual(validateGame(jeu).layers.flatMap((l) => l.errors), []);
-  // Le Nœud est ACTIVE (modale unique).
-  const p0 = present(["q"], [], null);
-  assert.equal(p0.activeId, "q");
+  // Le Nœud est ouvert en suggestion (sans auto-assignation).
+  const s0 = suggest(["q"], []);
+  assert.equal(s0.tete, "q");
   // Journal : la loupe est sélectionnée pendant le quiz.
   const evt = createInventoryEvent("ITEM_SELECTED", "s1", "loupe");
   // Le renderer résout l'indice précis…
@@ -96,10 +96,10 @@ const PRECISES = [
   // …puis un objet quelconque → abonnement large…
   const evt2 = createInventoryEvent("ITEM_SELECTED", "s1", "cle");
   assert.equal(resolveInventoryHint(quizData.inventoryHints as never, evt2.type, evt2.itemId), "Un objet a été sélectionné.");
-  // …et le Nœud reste ACTIVE, sans progression émise.
-  const p1 = present(["q"], p0.queue, p0.activeId);
-  assert.equal(p1.activeId, "q");
-  console.log("hints 2.2 : OK (QUIZ précis + large, ACTIVE inchangé)");
+  // …et le Nœud reste propose en tete, sans auto-assignation.
+  const s1 = suggest(["q"], s0.file);
+  assert.equal(s1.tete, "q");
+  console.log("hints 2.2 : OK (QUIZ précis + large, suggestion sans actif)");
 }
 
 // 2.2 : PUZZLE bout en bout — même boucle sur le second module.
@@ -123,13 +123,13 @@ const PRECISES = [
   } as unknown as Game;
   const erreurs = validateGame(jeu).layers.flatMap((l) => l.errors);
   assert.deepEqual(erreurs.filter((m) => m.includes("inventoryHints") || m.includes("événement")), []);
-  const p0 = present(["p"], [], null);
-  assert.equal(p0.activeId, "p");
+  const s0p = suggest(["p"], []);
+  assert.equal(s0p.tete, "p");
   const evt = createInventoryEvent("ITEM_USED", "s1", "colle");
   assert.equal(resolveInventoryHint(puzzleData.inventoryHints as never, evt.type, evt.itemId), "Bien utilisé, continue.");
-  const p1 = present(["p"], p0.queue, p0.activeId);
-  assert.equal(p1.activeId, "p");
-  console.log("hints 2.2 : OK (PUZZLE large, ACTIVE inchangé)");
+  const s1p = suggest(["p"], s0p.file);
+  assert.equal(s1p.tete, "p");
+  console.log("hints 2.2 : OK (PUZZLE large, suggestion sans actif)");
 }
 
 // 3.1 (events-hints) : partie Sherlock — 0 régression C1+C2, journal
@@ -270,7 +270,7 @@ const PRECISES = [
   // Sherlock : 6 objets + TOOLBOX → icône sur chaque écran par défaut.
   assert(toolboxIconVisible(sherlock, null), "sherlock icône globale");
   assert(sherlock.nodes.every((n) => toolboxIconVisible(sherlock, n.id)), "sherlock icône partout");
-  // Épreuve isolée : un nœud masqué ne montre rien tant qu'il est ACTIVE.
+  // Épreuve isolée : un nœud masqué ne montre rien tant qu'il est vu.
   const isole = { ...sherlock, nodes: sherlock.nodes.map((n, i) => (i === 0 ? { ...n, inventoryAccess: false } : n)) };
   assert(!toolboxIconVisible(isole, sherlock.nodes[0].id), "nœud isolé masqué");
   assert(toolboxIconVisible(isole, sherlock.nodes[1].id), "autres nœuds intacts");
@@ -338,8 +338,8 @@ const PRECISES = [
   const avecHome = { ...base, global: { presentation: ["HOME"] } };
   const combine = { ...base, global: { presentation: ["HOME", "MAP", "TOOLBOX"] } };
   const sansHome = { ...base, global: { presentation: ["MAP"] } };
-  assert(showHomeDashboard(avecHome, null) === true, "HOME seul sans ACTIVE → tableau");
-  assert(showHomeDashboard(avecHome, "a") === false, "ACTIVE → pas de tableau");
+  assert(showHomeDashboard(avecHome, null) === true, "HOME seul sans epreuve → tableau");
+  assert(showHomeDashboard(avecHome, "a") === false, "etape vue → pas de tableau");
   assert(showHomeDashboard(combine, null) === true, "combiné → tableau");
   assert(showHomeDashboard(sansHome, null) === false, "sans HOME → inchangé");
   assert(showHomeDashboard(base, null) === false, "sans présentation → inchangé");

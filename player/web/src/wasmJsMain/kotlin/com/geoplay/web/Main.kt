@@ -31,7 +31,7 @@ import com.geoplay.shared.game.InventoryState
 import com.geoplay.shared.game.timerRemainingMs
 import com.geoplay.shared.game.drawPool
 import com.geoplay.shared.game.evaluate
-import com.geoplay.shared.game.present
+import com.geoplay.shared.game.suggest
 import com.geoplay.shared.model.Anchor
 import com.geoplay.shared.model.Condition
 import com.geoplay.shared.model.ConditionType
@@ -522,8 +522,9 @@ private fun RunScreen(game: Game, avertissements: List<String>, onExit: () -> Un
     var completedCount by remember(game.gameId) { mutableStateOf(resumed?.completedCount ?: emptyMap()) }
     var draws by remember(game.gameId) { mutableStateOf(resumed?.draws ?: emptyMap()) }
     var seenUnlocked by remember(game.gameId) { mutableStateOf(resumed?.seen ?: emptySet()) }
-    var queue by remember(game.gameId) { mutableStateOf(listOf<String>()) }
-    var active by remember(game.gameId) { mutableStateOf<String?>(null) }
+    // Suggestion d'ouverture (change home-player-runtime, 7.2 : ACTIVE et la
+    // modale auto sont supprimes). L'ouverture est manuelle via GeoPlayApp ;
+    // la tete proposee alimente le tableau, sans auto-assignation.
     var insideSince by remember(game.gameId) { mutableStateOf(mapOf<String, Long>()) }
     var tickWall by remember(game.gameId) { mutableStateOf(0L) }
     var baseElapsed by remember(game.gameId) { mutableStateOf(resumed?.baseElapsedMs ?: 0L) }
@@ -650,9 +651,6 @@ private fun RunScreen(game: Game, avertissements: List<String>, onExit: () -> Un
         }
         if (fresh.isNotEmpty()) draws = draws + fresh
         seenUnlocked = seenUnlocked + eval.unlocked
-        val pres = present(eval.unlocked, queue, active)
-        queue = pres.queue
-        active = pres.activeId
     }
 
     fun persist() {
@@ -682,21 +680,22 @@ private fun RunScreen(game: Game, avertissements: List<String>, onExit: () -> Un
         if (cheatBypass || simFix != null || drawForced) cheatedIds = cheatedIds + id
         completedAt = completedAt + (id to nowMs)
         completedCount = completedCount + (id to ((completedCount[id] ?: 0) + 1))
-        active = null
         persist()
         if (node?.isEnding == true) finished = id
     }
 
-    val states = remember(eval.unlocked, active, completedAt) {
+    val states = remember(eval.unlocked, completedAt) {
         game.nodes.associate { n ->
             n.id to when {
                 completedAt.containsKey(n.id) -> NodeState.COMPLETED
-                n.id == active -> NodeState.ACTIVE
                 eval.unlocked.contains(n.id) -> NodeState.UNLOCKED
                 else -> NodeState.LOCKED
             }
         }
     }
+    // Suggestion d'ouverture (change home-player-runtime, 7.2) : tete proposee
+    // pour le tableau, sans auto-assignation. L'ouverture est manuelle.
+    val suggestion = remember(eval.unlocked) { suggest(eval.unlocked, emptyList()) }
 
     Column(modifier = Modifier.fillMaxSize()) {
         if (avertissements.isNotEmpty()) {
@@ -799,16 +798,14 @@ private fun RunScreen(game: Game, avertissements: List<String>, onExit: () -> Un
                 countdownsMs = game.nodes.associate { n ->
                     n.id to timerRemainingMs(n, completedAt, nowMs)
                 },
-                queueHeadId = active ?: queue.firstOrNull(),
+                // Tete proposee, sans auto-ouverture (change home-player-runtime).
+                queueHeadId = suggestion.tete,
                 // Tableau de bord temps global (change game-temps-global-fenetres).
                 tempsRestantMs = dureeTotaleMs(game)?.let { (it - nowMs).coerceAtLeast(0L) },
                 verrouillagesMs = game.nodes.associate { n ->
                     n.id to verrouillageDansMs(n, nowMs)
                 },
                 horsDelai = horsDelai,
-                // Arrivée immersive : file d'éligibilité pour la règle.
-                unlocked = eval.unlocked,
-                queue = queue,
             )
         }
     }

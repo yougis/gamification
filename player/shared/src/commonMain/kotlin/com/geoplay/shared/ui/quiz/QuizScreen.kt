@@ -25,7 +25,7 @@ fun QuizScreen(
     questions: List<QuizQuestion>,
     onComplete: (Int) -> Unit,
     modifier: Modifier = Modifier,
-    // Indice résolu depuis inventoryHints (Nœud ACTIVE uniquement, fourni
+    // Indice résolu depuis inventoryHints (étape ouverte en jouable uniquement, fourni
     // par l'appelant). Passif : zone d'affichage, jamais de modale.
     hint: String? = null,
 ) {

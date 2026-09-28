@@ -28,9 +28,12 @@ fun ToolboxIconButton(
     states: Map<String, NodeState>,
     onOpen: () -> Unit,
     modifier: Modifier = Modifier,
+    // Etape vue (change home-player-runtime, 7.2 : ACTIVE supprime) : le
+    // masquage `inventoryAccess: false` s'applique a l'ecran vu. Defaut =
+    // comportement sans epreuve (icone selon objets + TOOLBOX).
+    viewedId: String? = null,
 ) {
-    val activeId = states.entries.find { it.value == NodeState.ACTIVE }?.key
-    if (!toolboxIconVisible(game, activeId)) return
+    if (!toolboxIconVisible(game, viewedId)) return
     Row(modifier = modifier.fillMaxWidth()) {
         androidx.compose.foundation.layout.Spacer(modifier = Modifier.weight(1f))
         IconButton(onClick = onOpen) {

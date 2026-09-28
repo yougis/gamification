@@ -1,5 +1,6 @@
 package com.geoplay.shared.game
 
+import com.geoplay.shared.model.NodeState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -31,5 +32,14 @@ class NavigationCommonTest {
             Navigation.PleinEcran,
         )
         assertEquals(4, vues.toSet().size)
+    }
+
+    @Test
+    fun modeVueDepuisEtatMoteur() {
+        // Change home-player-runtime (3.1.3, 7.2 : ACTIVE supprime).
+        assertEquals(VueMode.JOUABLE, modeVue(NodeState.UNLOCKED))
+        assertEquals(VueMode.RELECTURE, modeVue(NodeState.COMPLETED))
+        assertEquals(VueMode.APERCU, modeVue(NodeState.LOCKED))
+        assertEquals(VueMode.APERCU, modeVue(null))
     }
 }

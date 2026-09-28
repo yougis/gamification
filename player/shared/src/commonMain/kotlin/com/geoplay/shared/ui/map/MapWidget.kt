@@ -59,7 +59,6 @@ import com.geoplay.shared.providers.defaultLocationProvider
 fun symboleEtat(icone: String, etat: NodeState): String {
     val defaut = when (etat) {
         NodeState.LOCKED -> "alerte"
-        NodeState.ACTIVE -> "etape"
         NodeState.COMPLETED -> "ok"
         NodeState.UNLOCKED -> "lieu"
     }
@@ -67,7 +66,6 @@ fun symboleEtat(icone: String, etat: NodeState): String {
     return when (etat) {
         NodeState.LOCKED -> "■"
         NodeState.UNLOCKED -> "●"
-        NodeState.ACTIVE -> "▶"
         NodeState.COMPLETED -> "✓"
     }
 }

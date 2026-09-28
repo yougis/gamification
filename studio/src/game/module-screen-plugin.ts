@@ -33,8 +33,8 @@ export interface ModulePlayerRendererProps {
   branding?: Branding;
   experienceStyle?: ExperienceStyle;
   onComplete?: (score: number) => void;
-  // Indice résolu depuis inventoryHints pour l'événement courant (Nœud
-  // ACTIVE uniquement, fourni par l'appelant). Passif : zone d'affichage,
+  // Indice résolu depuis inventoryHints pour l'événement courant (étape
+  // ouverte en jouable uniquement, fourni par l'appelant). Passif : zone d'affichage,
   // jamais de modale, ne vole pas le focus, ne change ni état ni score.
   hint?: string | null;
 }

@@ -88,8 +88,8 @@ class InventoryEventsCommonTest {
     }
 
     @Test
-    fun quizEndToEndJournalToRendererStaysActive() {
-        // Journal : la loupe est sélectionnée pendant le quiz ACTIVE.
+    fun quizEndToEndJournalToRendererStaysOpen() {
+        // Journal : la loupe est sélectionnée pendant le quiz ouvert.
         val evt = inventoryEvent(InventoryEventType.ITEM_SELECTED, "s1", "loupe")
         // Le renderer parse les data du module puis résout l'indice précis.
         val json = kotlinx.serialization.json.Json
@@ -110,10 +110,10 @@ class InventoryEventsCommonTest {
             "Un objet a été sélectionné.",
             resolveInventoryHint(hints, evt2.type, evt2.itemId)
         )
-        // Le nœud reste ACTIVE : la modale unique ne bouge pas.
-        val p0 = present(listOf("q"), emptyList(), null)
-        assertEquals("q", p0.activeId)
-        assertEquals("q", present(listOf("q"), p0.queue, p0.activeId).activeId)
+        // Le nœud reste ouvert en suggestion : aucune auto-assignation.
+        val s0 = suggest(listOf("q"), emptyList())
+        assertEquals("q", s0.tete)
+        assertEquals("q", suggest(listOf("q"), s0.file).tete)
     }
 
     @Test
@@ -126,7 +126,7 @@ class InventoryEventsCommonTest {
         val hints = parseInventoryHints(data)
         val evt = inventoryEvent(InventoryEventType.ITEM_USED, "s1", "colle")
         assertEquals("Bien utilisé, continue.", resolveInventoryHint(hints, evt.type, evt.itemId))
-        val p0 = present(listOf("p"), emptyList(), null)
-        assertEquals("p", present(listOf("p"), p0.queue, p0.activeId).activeId)
+        val s0 = suggest(listOf("p"), emptyList())
+        assertEquals("p", suggest(listOf("p"), s0.file).tete)
     }
 }

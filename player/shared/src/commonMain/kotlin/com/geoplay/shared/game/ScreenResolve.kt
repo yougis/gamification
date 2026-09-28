@@ -36,9 +36,17 @@ fun mergeWidgetStyles(base: WidgetStyles?, over: WidgetStyles?): WidgetStyles? {
 fun mergeZones(global: ScreenZones?, local: ScreenZones?): ScreenZones? {
     if (global == null) return local
     if (local == null) return global
+    // Anti-fuite carte (change home-player-runtime, 5.2) : miroir Studio —
+    // ecran de noeud sans content + content global a carte = content neutre.
+    // Sans screen du tout, heritage global integral (compatibilite).
+    val content = if (local.content == null && global.content?.widgets?.any { it.type == "map" } == true) {
+        defaultScreen().zones?.content
+    } else {
+        local.content ?: global.content
+    }
     return ScreenZones(
         header = local.header ?: global.header,
-        content = local.content ?: global.content,
+        content = content,
         footer = local.footer ?: global.footer,
         overlay = local.overlay ?: global.overlay,
     )

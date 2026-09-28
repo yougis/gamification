@@ -17,8 +17,8 @@ import "@xyflow/react/dist/style.css";
 import { validateGame, deadEnds } from "./game/validate";
 import { compterErreurs, rendreDiagnostic, type Diagnostic } from "./game/diagnostics";
 import { evaluate, drawPool, estHorsDelai, type Sim } from "./game/evaluate";
-import { suggest } from "./game/runtime";
-import { navigationInitiale, type Navigation } from "./game/navigation";
+import { suggest, snapshotOuverture, verdictValider, verdictAbandonner, regimeCompletion, cleOuverture, type Ouverture } from "./game/runtime";
+import { navigationInitiale, modeOuverture, type Navigation, type VueMode } from "./game/navigation";
 import { composeNodes, setActivation, registerAsset, exportPackFull, validateGameFull, canExport, addSecoursCode, importGame, addObject, setObjects, duplicateObject, setReview, removeNode, renameNode, duplicateNode, patchScreenZone, removeScreenZone, addScreenWidget, setScreenWidget as mcpSetScreenWidget, removeScreenWidget, moveScreenWidget, moveScreenWidgetAcross, setNodeScreen, setExperienceStyle, migrerExperienceStyleRacine, setGameMode, setDifficulty, migrerGameModeDifficultyRacine, creerNoeudStart, garantirStart, setScreenBackground, setScreenStyles, setGlobalScreen, setGlobalBackground, patchGlobalZone, removeGlobalZone, addGlobalWidget, setGlobalWidget, removeGlobalWidget, moveGlobalWidget, moveGlobalWidgetAcross, setGlobalScreenStyles, setMinigameDefaults, setPresentation, migrerPreset, retirerOperator, setOperator, setMaxReentries, clampDrawCount, retirerDoublonPool, fixEnumDefaut, nettoyerReferencesOrphelines, correctifApplicable, type ManifestFile } from "./game/mcp";
 import { emptyMeta, type Condition, type Effect, type Game, type GameNode, type GameObject, type MinigameDefaults, type Predicate, type StudioMeta, type ExperienceStyle, type Branding, type GameMode, type Difficulty, type ScreenDefinition, type ZoneContent, type ZoneId } from "./game/types";
 import { buildCompatSidecar, canExportToChannel, type ChannelId } from "./game/compat";
@@ -368,6 +368,12 @@ export default function App() {  const [st, dispatch] = useReducer(reduce, undef
   const [done, setDone] = useState<Record<string, number>>({});
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [replays, setReplays] = useState<Record<string, number>>({});
+  // Ouvertures et abandons (change home-player-runtime, 4.2) : snapshot t0
+  // par etape ouverte, cles d'abandon journalisees (id@t0, idempotence),
+  // compteur d'abandons par noeud (budget partage avec les rejeux).
+  const [ouvertures, setOuvertures] = useState<Record<string, Ouverture>>({});
+  const [abandons, setAbandons] = useState<Set<string>>(new Set());
+  const [abandonsCount, setAbandonsCount] = useState<Record<string, number>>({});
   const [activeId, setActiveId] = useState<string | null>(null);
   const [log, setLog] = useState<string[]>([]);
   const [testAll, setTestAll] = useState<string | null>(null);
@@ -808,13 +814,26 @@ const noeuds: Node[] = useMemo(
   // `nav` reflete activeId (etape jouable, rejouee si deja terminee) ou HOME ;
   // `suggestion` est la tete proposee sans auto-assignation (derivation sans
   // etat : l'ordre des noeuds est stable). `present()` n'est pas utilise ici.
+  // Mode d'ouverture (change home-player-runtime, 5.1) : pur, via
+  // modeOuverture — rejouable = replay avec budget restant.
+  const noeudActif = activeId ? (game.nodes.find((n) => n.id === activeId) ?? null) : null;
+  const modeOuvert: VueMode | null =
+    !activeId || !noeudActif
+      ? null
+      : modeOuverture({
+          termine: done[activeId] != null,
+          eligible: ev.unlocked.includes(activeId),
+          rejouable:
+            noeudActif.onReentry === "replay" &&
+            (noeudActif.maxReentries ?? 0) - (replays[activeId] ?? 0) - (abandonsCount[activeId] ?? 0) > 0,
+        });
   const nav: Navigation = useMemo(
-    () =>
-      activeId
-        ? { vue: "etape", id: activeId, mode: done[activeId] != null ? "rejeu" : "jouable" }
-        : navigationInitiale(),
-    [activeId, done],
+    () => (activeId && modeOuvert ? { vue: "etape", id: activeId, mode: modeOuvert } : navigationInitiale()),
+    [activeId, modeOuvert],
   );
+  // Position vue (change home-player-runtime, 4.3) : lue depuis `nav`
+  // (identique a activeId : nav etape ⟺ actif), jamais de la file.
+  const actifNav = nav.vue === "etape" ? nav.id : null;
   const suggestion = suggest(ev.unlocked, []);
 
   const journal = (msg: string) => setLog((l) => [...l, `[${sessionId}] ${msg} (triche, hold=${game.global?.holdMode ?? "none"})`]);
@@ -845,6 +864,9 @@ const noeuds: Node[] = useMemo(
     journal(`retour ${last} : étape rouverte`);
   };
   const ouvrir = (id: string) => {
+    // Snapshot t0 (change home-player-runtime, 4.2) : fige les eligibles a
+    // l'entree pour le droit a finir ; l'ouverture reste navigation pure.
+    setOuvertures((o) => ({ ...o, [id]: snapshotOuverture(id, sim.dtMin * 60000, ev.unlocked) }));
     setActiveId(id);
     journal(`ouverture ${id}`);
   };
@@ -864,56 +886,78 @@ const noeuds: Node[] = useMemo(
     }
     setModeJeux(true);
   };
+  // Valider/Abandonner sur verdicts + retour HOME (change home-player-runtime,
+  // 4.2) : fin de l'avance auto. Valider = une ecriture COMPLETED (droit a
+  // finir + hors-delai), Abandonner = ecriture ABANDON budgetee, les deux
+  // journalisees SIMULE. Seule la proposition (tete) est journalisee.
   const terminer = (id: string, abandon: boolean) => {
     const n = game.nodes.find((m) => m.id === id)!;
+    const ouverture = ouvertures[id] ?? snapshotOuverture(id, sim.dtMin * 60000, ev.unlocked);
+    // Tirages pools (conservé) : calculés avant l'évaluation fraîche.
+    const nextDraws = { ...draws };
+    for (const p of game.nodes) {
+      if (!p.randomPool || nextDraws[p.id]) continue;
+      const s = objetSim();
+      const ok = p.activation.requires.every((c) => {
+        if (c.type === "TIMER") return s.nowMs >= (c.delaySeconds ?? 0) * 1000;
+        if (c.type === "NODE_COMPLETED") return (done[c.nodeId!] ?? -1) >= 0;
+        if (c.type === "POOL_DRAWN") return (draws[c.poolNodeId!] ?? []).length > 0;
+        return true;
+      });
+      if (ok) {
+        const f = forced[p.id] ? [forced[p.id]] : undefined;
+        nextDraws[p.id] = drawPool(p, sessionId, f);
+        journal(`tirage ${p.id} -> ${nextDraws[p.id].join(",")}${f ? " (forcé)" : ""}`);
+      }
+    }
+    setDraws(nextDraws);
+    // Éligibles frais (avec la complétion incluse, comme l'avance auto
+    // historique) pour le verdict puis la suggestion, sans auto-ouverture.
     const fois = (counts[id] ?? 0) + 1;
+    const fraisDone = new Map(Object.entries(done));
+    fraisDone.set(id, sim.dtMin * 60000);
+    const fraisCounts = new Map(Object.entries(counts));
+    fraisCounts.set(id, fois);
+    const eligiblesT1 = evaluate(game, objetSim(), nextDraws, fraisDone, fraisCounts, new Set()).unlocked;
+    const budgetRestant = (n.maxReentries ?? Number.MAX_SAFE_INTEGER) - (replays[id] ?? 0) - (abandonsCount[id] ?? 0);
+    if (abandon) {
+      const v = verdictAbandonner(ouverture, eligiblesT1, budgetRestant, abandons);
+      if (!v.ok) {
+        journal(`${id} : abandon sans effet (${v.motif === "deja-abandonne" ? "déjà journalisé" : "aperçu gratuit"})`);
+        setActiveId(null);
+        return;
+      }
+      setAbandons((a) => new Set(a).add(cleOuverture(ouverture)));
+      setAbandonsCount((c) => ({ ...c, [id]: (c[id] ?? 0) + 1 }));
+      journal(`${id} : abandonnée${v.horsDelai ? " (hors-délai)" : ""}`);
+      setActiveId(null);
+      return;
+    }
+    const v = verdictValider(ouverture, eligiblesT1);
+    if (!v.ok) {
+      journal(`${id} : validation refusée (jamais éligible à l'ouverture)`);
+      setActiveId(null);
+      return;
+    }
     if (fois > 1) {
-      const used = replays[id] ?? 0;
+      const used = (replays[id] ?? 0) + (abandonsCount[id] ?? 0);
       if (n.onReentry !== "replay" || used >= (n.maxReentries ?? 0)) {
         journal(`${id} : rejouée ignorée`);
         setActiveId(null);
         return;
       }
-      setReplays((r) => ({ ...r, [id]: used + 1 }));
-      if (!n.scoreOnReplay) journal(`${id} : rejouée sans score`);
+      setReplays((r) => ({ ...r, [id]: (r[id] ?? 0) + 1 }));
     }
+    const regime = regimeCompletion(counts[id] ?? 0, n.scoreOnReplay ?? false);
+    if (fois > 1 && !regime.score) journal(`${id} : rejouée sans score`);
+    if (fois > 1 && !regime.effets) journal(`${id} : effets déjà appliqués (sans redon)`);
     setCounts((c) => ({ ...c, [id]: fois }));
-    if (!abandon) {
-      setDone((d) => ({ ...d, [id]: sim.dtMin * 60000 }));
-      journal(`${id} : TERMINÉE${estHorsDelai(game, sim.dtMin * 60000) ? " (hors délai)" : ""}`);
-      const nextDraws = { ...draws };
-      for (const p of game.nodes) {
-        if (!p.randomPool || nextDraws[p.id]) continue;
-        const s = objetSim();
-        const ok = p.activation.requires.every((c) => {
-          if (c.type === "TIMER") return s.nowMs >= (c.delaySeconds ?? 0) * 1000;
-          if (c.type === "NODE_COMPLETED") return (done[c.nodeId!] ?? -1) >= 0;
-          if (c.type === "POOL_DRAWN") return (draws[c.poolNodeId!] ?? []).length > 0;
-          return true;
-        });
-        if (ok) {
-          const f = forced[p.id] ? [forced[p.id]] : undefined;
-          nextDraws[p.id] = drawPool(p, sessionId, f);
-          journal(`tirage ${p.id} -> ${nextDraws[p.id].join(",")}${f ? " (forcé)" : ""}`);
-        }
-      }
-      setDraws(nextDraws);
-      // Avance auto (change studio-correctifs-terrain) : réévalue avec les
-      // états frais (done + draws à jour) et rouvre le premier éligible ;
-      // sinon retomber sur l'attente existante.
-      const base = objetSim();
-      const sFrais: Sim = { ...base, completedAt: new Map(base.completedAt).set(id, sim.dtMin * 60000) };
-      const fraisDone = new Map(Object.entries(done));
-      fraisDone.set(id, sim.dtMin * 60000);
-      const fraisCounts = new Map(Object.entries(counts));
-      fraisCounts.set(id, fois);
-      const suivant = evaluate(game, sFrais, nextDraws, fraisDone, fraisCounts, new Set()).unlocked.find((nid) => nid !== id) ?? null;
-      if (suivant) journal(`${suivant} : ouverture auto`);
-      setActiveId(suivant);
-    } else {
-      journal(`${id} : abandonnée`);
-      setActiveId(null);
-    }
+    setDone((d) => ({ ...d, [id]: sim.dtMin * 60000 }));
+    journal(`${id} : TERMINÉE${v.horsDelai ? " (hors-délai : droit à finir)" : estHorsDelai(game, sim.dtMin * 60000) ? " (hors délai)" : ""}`);
+    const tete = eligiblesT1.find((nid) => nid !== id) ?? null;
+    if (tete) journal(`retour accueil — suggestion : ${tete}`);
+    else journal("retour accueil");
+    setActiveId(null);
   };
 
   const nouvelleSession = () => {
@@ -921,6 +965,9 @@ const noeuds: Node[] = useMemo(
     setDone({});
     setCounts({});
     setReplays({});
+    setOuvertures({});
+    setAbandons(new Set());
+    setAbandonsCount({});
     setActiveId(null);
     setSim({ present: [], dwell: [], through: [], dtMin: 0, precision: 5 });
     journal("nouvelle session");
@@ -1831,7 +1878,7 @@ const noeuds: Node[] = useMemo(
               terminees={new Set(Object.keys(done))}
               elus={ev.unlocked}
               teteFile={file[0] ?? null}
-              actif={activeId}
+              actif={actifNav}
               onOuvrir={ouvrir}
               viewport={screenViewport}
             />
@@ -1848,6 +1895,7 @@ const noeuds: Node[] = useMemo(
               onTerminer={() => activeId && terminer(activeId, false)}
               onAbandonner={() => activeId && terminer(activeId, true)}
               onQuitter={() => setModeJeux(false)}
+              modeVue={modeOuvert ?? "jouable"}
               positionSimu={positionSimu}
               eligiblesSimu={ev.unlocked}
               onOuvrirSimu={ouvrir}
@@ -1866,7 +1914,7 @@ const noeuds: Node[] = useMemo(
                     terminees={new Set(Object.keys(done))}
                     elus={ev.unlocked}
                     teteFile={file[0] ?? null}
-                    actif={activeId}
+                    actif={actifNav}
                     onOuvrir={ouvrir}
                     viewport={screenViewport}
                     onViewport={setScreenViewport}
@@ -4111,7 +4159,7 @@ function Apercu(props: {
       </div>
       </div>
       </Accordeon>
-      <div className="font-mono text-[9px] text-fog">File d'attente : {props.file.length ? props.file.join(", ") : "—"} | Ouverte : {props.activeId ?? "—"}</div>
+      <div className="font-mono text-[9px] text-fog">File d'attente : {props.file.length ? props.file.join(", ") : "—"} | Ouverte : {props.activeId ?? "—"} | Suggestion : {props.suggestionTete ?? "—"}</div>
       <div className="flex gap-1">
         <button className="btn" onClick={props.nouvelleSession}><Icon name="ajouter" size={15} /> Nouvelle partie</button>
         <button className="btn min-h-9" onClick={() => { const tete = props.suggestionTete ?? props.file[0] ?? null; if (!props.activeId && tete) props.ouvrir(tete); }} disabled={!!props.activeId || !props.file.length}>Avancer d'un pas</button>
@@ -4124,7 +4172,10 @@ function Apercu(props: {
       <div className="max-h-32 overflow-auto bg-canvas border border-rule rounded p-2 shadow-none">
         {game.nodes.filter((n) => !n.randomPool).map((n) => (
           <div key={n.id} className="min-h-11 flex items-center px-1">
-            <button className="btn min-h-9" onClick={() => props.ouvrir(n.id)} disabled={!props.file.includes(n.id) && props.activeId !== n.id}>ouvrir</button>
+            {/* Consultation large (change home-player-runtime, 5.1) : toute etape
+                non structurelle s'ouvre — le mode (apercu/jouable/relecture) est
+                decide a l'ouverture, sans ecriture. */}
+            <button className="btn min-h-9" onClick={() => props.ouvrir(n.id)}>ouvrir</button>
             {" "}{n.id}
             <label className="text-[9px]"><input type="checkbox" checked={props.sim.present.includes(n.id)} onChange={() => bascule("present", n.id)} /> ici</label>
             <label className="text-[9px]"><input type="checkbox" checked={props.sim.dwell.includes(n.id)} onChange={() => bascule("dwell", n.id)} /> reste</label>

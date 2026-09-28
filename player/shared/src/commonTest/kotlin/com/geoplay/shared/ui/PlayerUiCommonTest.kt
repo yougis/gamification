@@ -16,7 +16,6 @@ class PlayerUiCommonTest {
     fun nodeStatesHaveLabels() {
         assertEquals("Verrouillée", nodeStateLabel(NodeState.LOCKED))
         assertEquals("Disponible", nodeStateLabel(NodeState.UNLOCKED))
-        assertEquals("En cours", nodeStateLabel(NodeState.ACTIVE))
         assertEquals("Terminée", nodeStateLabel(NodeState.COMPLETED))
     }
 

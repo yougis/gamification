@@ -1,5 +1,5 @@
 // Etat non bloquant du terminal joueur (change studio-player-preview) :
-// affiche quand le Module du noeud ACTIVE ne declare aucun renderer joueur.
+// affiche quand le Module de l'etape ouverte ne declare aucun renderer joueur.
 // Triche uniquement : terminer/abandonner sans ecrire dans le JSON source.
 import { Icon } from "../icons";
 

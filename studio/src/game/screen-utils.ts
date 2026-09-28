@@ -13,10 +13,18 @@ export function resolveScreen(node: GameNode, globalScreen?: ScreenDefinition): 
   if (!node.screen && !globalScreen) return DEFAULT_SCREEN;
   if (!node.screen) return globalScreen!;
   if (!globalScreen) return node.screen;
+  const zones = { ...globalScreen.zones, ...node.screen.zones };
+  // Anti-fuite carte (change home-player-runtime, 5.2) : un ecran de noeud
+  // qui definit ses zones mais pas de content n'herite pas d'un content
+  // global portant une carte — content neutre par defaut. Sans screen du
+  // tout, heritage global integral (compatibilite ascendante).
+  if (!node.screen.zones?.content && (globalScreen.zones?.content?.widgets ?? []).some((w) => w.type === "map")) {
+    zones.content = DEFAULT_SCREEN.zones!.content!;
+  }
   return {
     ...globalScreen,
     ...node.screen,
-    zones: { ...globalScreen.zones, ...node.screen.zones },
+    zones,
   };
 }
 
