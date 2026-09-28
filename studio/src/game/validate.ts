@@ -202,6 +202,15 @@ export function validateLayer2(game: Game): LayerReport {
     sig.signaler("TILESTRATEGY_NONE_MAP", `C2 global.tileStrategy "none" avec global.map configuré (pas de tuiles affichées)`, { champ: "global.tileStrategy" });
   }
 
+  // Tuiles offline (change smart-tile-caching) : rayon strictement positif
+  // en stratégie radius (défense en profondeur, la couche 1 l'exige déjà).
+  if (gAny?.tileStrategy === "radius") {
+    const rayon = (gAny as { tileRadiusMeters?: unknown }).tileRadiusMeters;
+    if (typeof rayon !== "number" || !(rayon > 0)) {
+      sig.signaler("RAYON_TUILES_INVALIDE", `C2 global.tileRadiusMeters doit être > 0 en stratégie "radius" (reçu : ${JSON.stringify(rayon)})`, { champ: "global.tileRadiusMeters", attendu: "> 0" });
+    }
+  }
+
   // Widget cartographie (change widget-cartographie) : collecte des widgets
   // map des écrans (nœuds + global) pour les règles de cohérence source.
   const ecrans: { proprietaire: string; def: unknown }[] = [];

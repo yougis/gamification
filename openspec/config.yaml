@@ -108,3 +108,19 @@ rules:
         - Resumer dans le changelog l'impact sur le schema graphe/registre s'il a ete
           modifie, pour que les changes suivants (Studio, moteur, orchestrateur,
           modules, packaging offline) sachent s'ils doivent etre mis a jour.
+
+pipeline:
+  explore:
+    require_tools: [codegraph]
+    prompt_enrichment: |
+      Utilise l'index sémantique local de CodeGraph pour vérifier où le schéma concerné est actuellement consommé (Validateur AJV, Studio MCP ou KMP Runtime).
+  
+  propose:
+    require_tools: [codegraph]
+    impact_analysis: |
+      Chaque fichier `proposal.md` généré doit inclure une section "Impact CodeGraph" listant les fichiers sources exacts à modifier dans la frontière KMP (`kmp-native-boundary`) et le registre des modules.
+
+# Déclaration de l'infrastructure d'indexation
+infrastructure:
+  code_mapping: codegraph
+  database_path: ".codegraph/db.sqlite"

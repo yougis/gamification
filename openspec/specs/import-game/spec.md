@@ -69,7 +69,7 @@ L'import SHALL fonctionner avec le workflow existant du Studio (undo/redo, valid
 
 ### Requirement: Pas de transmission réseau
 
-L'import de fichier est entièrement local. Aucun fichier n'est transmis à un serveur. Le manifest SHA-256 est généré localement.
+L'import de fichier SHALL être entièrement local. Aucun fichier ne SHALL être transmis à un serveur. Le manifest SHA-256 SHALL être généré localement.
 
 #### Scenario: Import offline
 - **GIVEN** un utilisateur sans connexion réseau

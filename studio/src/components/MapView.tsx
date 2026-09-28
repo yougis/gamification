@@ -60,7 +60,29 @@ export default function MapView({ game, sel, onSelect, onGameChange }: MapViewPr
   const [planImage, setPlanImage] = useState<HTMLImageElement | null>(null);
   const [planSize, setPlanSize] = useState<{ w: number; h: number }>({ w: 800, h: 600 });
 
+  // ── Outdoor tiles fallback (change studio-tuiles-fallback) ──
+  // Bascule sur fond uni quand les tuiles échouent en boucle ou que WebGL est perdu.
+  const TILE_ERROR_THRESHOLD = 6;
+  const TILE_ERROR_WINDOW_MS = 30_000;
+  const [mapLoaded, setMapLoaded] = useState(false);
+  const [tilesFailed, setTilesFailed] = useState(false);
+  const [tilesFailInfo, setTilesFailInfo] = useState("");
+  const tileErrorTimes = useRef<number[]>([]);
+  const tilesFailedRef = useRef(false);
+  tilesFailedRef.current = tilesFailed;
+
   const activePlan = indoorPlans?.find((p) => p.id === activeFloor) ?? indoorPlans?.[0];
+
+  // Tente de réafficher les tuiles après un fallback (bouton pastille).
+  const retryTiles = () => {
+    const map = mapRef.current;
+    tileErrorTimes.current = [];
+    setTilesFailed(false);
+    setTilesFailInfo("");
+    if (map && mapLoaded && !map.getLayer("osm")) {
+      map.addLayer({ id: "osm", type: "raster", source: "osm" });
+    }
+  };
 
   // ── Outdoor MapLibre init ──
   useEffect(() => {
@@ -69,6 +91,8 @@ export default function MapView({ game, sel, onSelect, onGameChange }: MapViewPr
     const bbox = computeBbox(game);
     const map = new maplibregl.Map({
       container: mapContainer.current,
+      // 2 connexions max : conforme à la politique d'usage OSM, calme la rafale 502.
+      maxParallelImageRequests: 2,
       style: {
         version: 8,
         sources: {
@@ -79,14 +103,39 @@ export default function MapView({ game, sel, onSelect, onGameChange }: MapViewPr
             attribution: "OpenStreetMap",
           },
         },
-        layers: [{ id: "osm", type: "raster", source: "osm" }],
+        layers: [
+          { id: "fond-uni", type: "background", paint: { "background-color": "#e9edf3" } },
+          { id: "osm", type: "raster", source: "osm" },
+        ],
       },
       center: bbox ? [(bbox.minLng + bbox.maxLng) / 2, (bbox.minLat + bbox.maxLat) / 2] : [2.35, 48.85],
       zoom: 14,
     });
     map.addControl(new maplibregl.NavigationControl());
-    map.on("load", () => { loadedRef.current = true; });
-    map.on("error", (e) => console.warn("MapLibre error:", e.error?.message));
+    map.on("load", () => { loadedRef.current = true; setMapLoaded(true); });
+    map.on("error", (e) => {
+      console.warn("MapLibre error:", e.error?.message);
+      // Seules les erreurs de tuiles comptent : quelques 502 isolés ne doivent
+      // pas faire basculer la carte, le seuil laisse une chance au retry natif.
+      if (!e.tile) return;
+      const now = Date.now();
+      tileErrorTimes.current = [...tileErrorTimes.current.filter((t) => now - t < TILE_ERROR_WINDOW_MS), now];
+      if (tileErrorTimes.current.length >= TILE_ERROR_THRESHOLD && !tilesFailedRef.current) {
+        tilesFailedRef.current = true;
+        setTilesFailed(true);
+        setTilesFailInfo(" — vérifiez le proxy dev /tiles (npm run dev)");
+        try { if (map.getLayer("osm")) map.removeLayer("osm"); } catch { /* déjà retirée */ }
+      }
+    });
+    // Sans GPU, la carte MapLibre est morte : même fallback, marqueurs DOM conservés.
+    const onWebglLost = () => {
+      if (tilesFailedRef.current) return;
+      tilesFailedRef.current = true;
+      setTilesFailed(true);
+      setTilesFailInfo(" — WebGL indisponible sur ce poste");
+      try { if (map.getLayer("osm")) map.removeLayer("osm"); } catch { /* déjà retirée */ }
+    };
+    map.getCanvas().addEventListener("webglcontextlost", onWebglLost);
     mapRef.current = map;
 
     // Click to place node
@@ -119,13 +168,21 @@ export default function MapView({ game, sel, onSelect, onGameChange }: MapViewPr
       });
     });
 
-    return () => { loadedRef.current = false; map.remove(); mapRef.current = null; };
+    return () => {
+      loadedRef.current = false;
+      setMapLoaded(false);
+      map.getCanvas().removeEventListener("webglcontextlost", onWebglLost);
+      map.remove();
+      mapRef.current = null;
+    };
   }, [isIndoor]);
 
   // ── Outdoor markers + geofence circles ──
+  // Les marqueurs (DOM) sont montés dès que la carte existe, indépendamment du
+  // chargement des tuiles ; seules les couches geofence exigent le style chargé.
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || isIndoor || !loadedRef.current) return;
+    if (!map || isIndoor) return;
 
     // Clean previous
     markersRef.current.forEach((m) => m.remove());
@@ -192,17 +249,17 @@ export default function MapView({ game, sel, onSelect, onGameChange }: MapViewPr
       features.push(circleGeoJSON(ll.lat, ll.lng, getRadius(node)));
     }
 
-    if (features.length > 0) {
+    if (features.length > 0 && mapLoaded && map.isStyleLoaded()) {
       map.addSource("geofences", { type: "geojson", data: { type: "FeatureCollection", features } });
       map.addLayer({ id: "geofence-fills", type: "fill", source: "geofences", paint: { "fill-color": "#3b82f6", "fill-opacity": 0.15 } });
       map.addLayer({ id: "geofence-strokes", type: "line", source: "geofences", paint: { "line-color": "#3b82f6", "line-width": 1 } });
     }
-  }, [game.nodes, sel, isIndoor]);
+  }, [game.nodes, sel, isIndoor, mapLoaded]);
 
   // ── Outdoor fit bounds ──
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || isIndoor || !loadedRef.current) return;
+    if (!map || isIndoor || !mapLoaded) return;
     const bbox = computeBbox(game);
     if (bbox) {
       map.fitBounds([[bbox.minLng, bbox.minLat], [bbox.maxLng, bbox.maxLat]], { padding: 50 });
@@ -376,6 +433,15 @@ export default function MapView({ game, sel, onSelect, onGameChange }: MapViewPr
               ⚠ Geofences chevauchent: {o.a} / {o.b}
             </span>
           ))}
+        </div>
+      )}
+      {/* Tiles fallback pastille */}
+      {tilesFailed && (
+        <div className="px-2 py-1 bg-orange-100 border-b text-xs text-orange-800 flex items-center gap-2">
+          <span>⚠ Tuiles indisponibles — fond uni (marqueurs conservés){tilesFailInfo}</span>
+          <button className="underline font-medium" onClick={retryTiles} title="Réessayer le chargement des tuiles">
+            Réessayer
+          </button>
         </div>
       )}
       <div ref={mapContainer} className="flex-1" />

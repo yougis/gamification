@@ -32,6 +32,7 @@ export function ZoneRenderer({
   contextePage,
   hauteurMaxMedia,
   game,
+  lignesApercu,
 }: {
   zone: ZoneContent;
   zoneId: ZoneId;
@@ -117,6 +118,7 @@ export function ZoneRenderer({
               contextePage={contextePage}
               hauteurMaxMedia={hauteurMaxMedia}
               game={game}
+              lignesApercu={lignesApercu}
               onDropBefore={
                 dndActif
                   ? (fromZone, fromIndex, toZone, toIndex) => onMoveWidgetAcross?.(fromZone, fromIndex, toZone, toIndex)

@@ -1,8 +1,8 @@
 // Outils MCP du Studio (spike) : meme schema des deux cotes, rien ne sort sans validation.
 import { validateGame } from "./validate";
 import { Collecteur, messagesBloquants, type Diagnostic } from "./diagnostics";
-import { sha256Hex, type ManifestFile } from "./pack";
-import type { Game, GameNode, ReviewStatus, StudioMeta, HoldMode, HoldExit, NavigationModel, Discovery, Effect, GameObject, ExperienceStyle, Branding, GameMode, Difficulty, NodePosition, ScreenDefinition, ZoneContent, ZoneId, Widget, WidgetStyles, MinigameDefaults } from "./types";
+import { sha256Hex, compterTuiles, detecterTuilesHorsBbox, type ManifestFile } from "./pack";
+import type { Game, GameNode, ReviewStatus, StudioMeta, HoldMode, HoldExit, NavigationModel, Discovery, Effect, GameObject, ExperienceStyle, Branding, GameMode, Difficulty, NodePosition, ScreenDefinition, ZoneContent, ZoneId, Widget, WidgetStyles, MinigameDefaults, TileStrategy, TilePackMeta } from "./types";
 
 export type { ManifestFile };
 const sha256hex = sha256Hex;
@@ -864,6 +864,25 @@ export async function exportPackFull(
     }
   }
   const diagnostics = [...result.diagnostics, ...sig.diagnostics];
+  // Tuiles hors zone (change smart-tile-caching) : avertissement non
+  // bloquant — le pack reste exportable après confirmation explicite.
+  try {
+    const bboxExport = computeBboxFromStrategy(game);
+    if (bboxExport) {
+      const hors = detecterTuilesHorsBbox(bboxExport, manifest.map((m) => m.path));
+      if (hors.length > 0) {
+        const avant = sig.diagnostics.length;
+        sig.signaler(
+          "TUILES_HORS_BBOX",
+          `C2 ${hors.length} tuile(s) hors de la zone du jeu : ${hors.slice(0, 5).join(", ")}${hors.length > 5 ? "…" : ""}`,
+          { champ: "manifest", attendu: "tuiles dans la bbox calculée" },
+        );
+        diagnostics.push(...sig.diagnostics.slice(avant));
+      }
+    }
+  } catch {
+    /* estimation indicative : jamais bloquante */
+  }
   if (errors.length) return { ok: false, errors, diagnostics };
   const gameJson = JSON.stringify(game, null, 2);
   const files = await Promise.all(
@@ -941,6 +960,98 @@ export function setNodePosition(game: Game, nodeId: string, position: NodePositi
     ...game,
     nodes: game.nodes.map((n) => (n.id === nodeId ? { ...n, position } : n)),
   };
+}
+
+// --- Tuiles offline (change smart-tile-caching) ---
+// Toute valeur lue depuis le JSON du jeu, jamais en dur. La stratégie vit
+// dans `global` (même niveau que le schéma Draft-07 existant) ; `fixed`
+// relit `global.map.bbox`, `none` ne télécharge rien.
+
+export type Bbox = { minLat: number; minLng: number; maxLat: number; maxLng: number };
+
+/** Bbox couvrant tous les POI GEOFENCE avec un buffer en mètres. */
+export function computeBboxFromPoi(game: Game, radiusMeters: number): Bbox | null {
+  const rayon = radiusMeters > 0 ? radiusMeters : 0;
+  const points: { lat: number; lng: number }[] = [];
+  for (const node of game.nodes) {
+    for (const c of node.activation.requires) {
+      const ll = extractLatLng(c);
+      if (ll) points.push(ll);
+    }
+  }
+  if (points.length === 0) return null;
+  let minLat = Infinity, minLng = Infinity, maxLat = -Infinity, maxLng = -Infinity;
+  for (const p of points) {
+    if (p.lat < minLat) minLat = p.lat;
+    if (p.lng < minLng) minLng = p.lng;
+    if (p.lat > maxLat) maxLat = p.lat;
+    if (p.lng > maxLng) maxLng = p.lng;
+  }
+  const centerLat = (minLat + maxLat) / 2;
+  return {
+    minLat: minLat - metersToLatDeg(rayon),
+    minLng: minLng - metersToLngDeg(rayon, centerLat),
+    maxLat: maxLat + metersToLatDeg(rayon),
+    maxLng: maxLng + metersToLngDeg(rayon, centerLat),
+  };
+}
+
+/** Bbox selon la stratégie du jeu (`global.tileStrategy`, défaut `fixed`). */
+export function computeBboxFromStrategy(game: Game): Bbox | null {
+  const g = game.global ?? {};
+  const strategy = (g.tileStrategy ?? "fixed") as TileStrategy;
+  if (strategy === "none") return null;
+  if (strategy === "radius") {
+    const rayon = typeof g.tileRadiusMeters === "number" ? g.tileRadiusMeters : 200;
+    return computeBboxFromPoi(game, rayon);
+  }
+  if (strategy === "viewport") return computeBbox(game);
+  const bbox = (g.map as { bbox?: Bbox } | undefined)?.bbox;
+  if (bbox && [bbox.minLat, bbox.minLng, bbox.maxLat, bbox.maxLng].every((v) => typeof v === "number")) {
+    return { ...bbox };
+  }
+  return computeBbox(game);
+}
+
+/** Pose la stratégie tuiles (+ rayon si `radius`) via un pas d'undo. */
+export function setTileStrategy(game: Game, strategy: TileStrategy, radius?: number): Game {
+  const global = { ...(game.global ?? {}), tileStrategy: strategy };
+  if (strategy === "radius" && typeof radius === "number") {
+    (global as Record<string, unknown>).tileRadiusMeters = radius;
+  }
+  if (strategy !== "radius" && radius === undefined) {
+    // Conserve le rayon existant : il resservira si l'auteur revient en radius.
+  }
+  return { ...game, global };
+}
+
+/** Bbox optimale + stratégie + estimation tuiles (menu Packs de carte). */
+export function computeOptimalBbox(game: Game): { bbox: Bbox | null; strategy: TileStrategy; tileCount: number } {
+  const g = game.global ?? {};
+  const strategy = (g.tileStrategy ?? "fixed") as TileStrategy;
+  const bbox = computeBboxFromStrategy(game);
+  const map = (g.map as { minZoom?: number; maxZoom?: number } | undefined) ?? {};
+  const tileCount = bbox ? compterTuiles(bbox, map.minZoom ?? 10, map.maxZoom ?? 16) : 0;
+  return { bbox, strategy, tileCount };
+}
+
+/**
+ * Désigne l'unique pack de tuiles actif du projet (`global.tilePackId`,
+ * `null` = aucun). L'export embarque les tuiles du pack actif ; sans actif,
+ * la carte replie sur fond uni. Un pas d'undo via `editGame`.
+ */
+export function setActiveTilePack(game: Game, packId: string | null): Game {
+  const global = { ...(game.global ?? {}) } as Record<string, unknown>;
+  if (packId === null) delete global.tilePackId;
+  else global.tilePackId = packId;
+  return { ...game, global };
+}
+
+/** Pack actif résolu depuis un cache (jamais d'exception : id inconnu = absent). */
+export function packActif(packs: TilePackMeta[], game: Game): TilePackMeta | null {
+  const id = game.global?.tilePackId;
+  if (typeof id !== "string" || !id) return null;
+  return packs.find((p) => p.id === id) ?? null;
 }
 
 /** Detect pairs of geofences that overlap (distance < sum of radii). */

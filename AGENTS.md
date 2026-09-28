@@ -44,17 +44,12 @@ projet :
 
 ## Regles de code generales
 
-- Le projet utilise **OpenSpec** comme systeme de specification et de
-  gestion des changes.
-- Tout changement de schema graphe (Noeuds/activation/registre/branding/
-  manifest) doit identifier les consommateurs impactes (Studio MCP, runtime
-  natif, orchestrateur, modules, packaging offline).
-- Les modules GeoPlay (geoplay-spec-validator, geoplay-graph-architect,
-  geoplay-studio-authoring, geoplay-runtime-engine, geoplay-module-registry,
-  geoplay-offline-pack) sont les outils de l'agent. Ils ne sont pas modifies
-  mais leur integration est documentee dans les profils de documentation.
-- Pour le developpement des runtime et modules IOS et Android approche "base Kotlin 
-  + modules natifs ciblés" (kmp-native-boundary) est l'outil de l'agent
+- Le projet utilise **OpenSpec** comme systeme de specification et de gestion des changes, combine a **CodeGraph** pour la cartographie sémantique du code.
+- **Cartographie obligatoire** : Avant chaque proposition (`/opsx:propose`), l'agent doit utiliser CodeGraph pour identifier l'impact exact d'un changement de schéma sur les modules indexés (Studio MCP, runtime natif, validateur).
+- Tout changement de schema graphe (Noeuds/activation/registre/branding/manifest) doit identifier les consommateurs impactes via CodeGraph pour garantir la non-regression.
+- Les modules GeoPlay (geoplay-spec-validator, geoplay-graph-architect, geoplay-studio-authoring, geoplay-runtime-engine, geoplay-module-registry, geoplay-offline-pack) sont les outils de l'agent. Ils ne sont pas modifies mais leur integration est documentee dans les profils de documentation.
+- Pour le developpement des runtime et modules IOS et Android approche "base Kotlin + modules natifs ciblés" (kmp-native-boundary) est l'outil de l'agent.
+
 
 ## Profils de parties prenantes
 
@@ -102,3 +97,5 @@ Les skills suivants sont disponibles pour l'agent :
 - `openspec-explore` — Explorer des ideas
 - `kmp-native-boundary` - développer le  runtime Player (android et Ios) avec de modules parfois natifs.
 - `impeccable` — Amelioration d'interface
+- `codegraph-search` — Interroger l'index sémantique SQLite pour cartographier les dépendances du code
+- `codegraph-analyze` — Analyser les chaînes d'appel et impacts sur la frontière KMP (`kmp-native-boundary`)

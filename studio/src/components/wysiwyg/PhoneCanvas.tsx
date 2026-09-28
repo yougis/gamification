@@ -3,6 +3,7 @@
 // Disposition : header en haut, content scrollable au centre, footer en bas,
 // overlay en calque absolu. Clic sur le fond -> selection de l'ecran (null).
 import type { Game, ScreenDefinition, Widget, ZoneId } from "../../game/types";
+import type { LigneApercu } from "../../game/apercu-accueil";
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { couleurTexteDefaut, paginateContent, screenBackgroundStyle } from "../../game/screen-utils";
@@ -42,6 +43,7 @@ function FantomeZone({ libelle, zoneId, onCreate }: { libelle: string; zoneId: Z
 export function PhoneCanvas({
   screen,
   game,
+  lignesApercu,
   moduleType,
   moduleData,
   selectedZoneId,
@@ -64,6 +66,9 @@ export function PhoneCanvas({
   // Jeu courant (change widget-cartographie) : contexte de lecture pour les
   // widgets lies (carte : positions, fonds). Absent = apercu sans donnees.
   game?: Game;
+  // Snapshot d'essai (change home-phonecanvas-unique) : lignes lues par la
+  // carte (pastille d'état), jamais simulées ici. Absent = aperçu statique.
+  lignesApercu?: LigneApercu[];
   moduleType?: string;
   moduleData?: Record<string, unknown>;
   selectedZoneId?: ZoneId | null;
@@ -185,6 +190,7 @@ export function PhoneCanvas({
                 contextePage={contextePage}
                 hauteurMaxMedia={hauteurMaxMedia}
                 game={game}
+                lignesApercu={lignesApercu}
               />
             </div>
           ) : showGhosts && onCreateZone ? (
@@ -255,6 +261,7 @@ export function PhoneCanvas({
                 contextePage={contextePage}
                 hauteurMaxMedia={hauteurMaxMedia}
                 game={game}
+                lignesApercu={lignesApercu}
             />
           </div>
           {!zones.overlay && showGhosts && onCreateZone ? (
@@ -279,6 +286,7 @@ export function PhoneCanvas({
                 contextePage={contextePage}
                 hauteurMaxMedia={hauteurMaxMedia}
                 game={game}
+                lignesApercu={lignesApercu}
               />
             </div>
           ) : showGhosts && onCreateZone ? (
@@ -337,6 +345,7 @@ export function PhoneCanvas({
                   renderModule={renderModule}
                   hauteurMaxMedia={hauteurMaxMedia}
                   game={game}
+                  lignesApercu={lignesApercu}
                 />
               </div>
             </div>

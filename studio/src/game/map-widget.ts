@@ -1,8 +1,9 @@
 // Helpers purs du widget cartographie (change widget-cartographie) :
 // extraction des positions, fabriques par defaut, bornes d'apercu.
 // Aucune ecriture, aucun etat : strate 2 strictement passive.
-import { computeBbox } from "./mcp";
-import type { Game, GameNode, MapWidget, PoiState, Widget } from "./types";
+import { computeBbox, packActif } from "./mcp";
+import { selectFond } from "./pack";
+import type { Game, GameNode, MapWidget, PoiState, TilePackMeta, Widget } from "./types";
 
 export interface MarqueurCarte {
   id: string;
@@ -49,6 +50,42 @@ export function aFondCarte(game: Game): boolean {
   const mapOk = !!g.map && typeof g.map === "object" && Object.keys(g.map).length > 0;
   const indoorOk = Array.isArray(g.indoorPlans) && g.indoorPlans.length > 0;
   return mapOk || indoorOk;
+}
+
+// --- Fond effectif (change smart-tile-caching) ---
+// Le Fond existant `"tuiles du pack"` (`background: "pack-tiles"`) lit le
+// pack actif du projet (`global.tilePackId`) : aucune nouvelle valeur de
+// fond, aucun réseau. Sans pack actif ni tuiles, repli fond uni avec
+// marqueurs et position — exactement comme la carte standalone.
+
+/** Le projet dispose-t-il des tuiles du pack actif ? */
+export function tuilesPackActifDisponibles(game: Game, packs: TilePackMeta[]): boolean {
+  const pack = packActif(packs, game);
+  return !!pack && pack.statut === "pret" && pack.nbTuiles > 0;
+}
+
+/** Fond effectif d'un widget map : `pack-tiles` résout le pack actif. */
+export function fondEffectifWidget(
+  game: Game,
+  widget: Pick<MapWidget, "background">,
+  packs: TilePackMeta[],
+): "pack-tiles" | "indoor-plan" | "solid" {
+  const fond = widget.background ?? "pack-tiles";
+  if (fond === "pack-tiles" && !tuilesPackActifDisponibles(game, packs)) return "solid";
+  return fond;
+}
+
+/** Fond de rendu via le sélecteur existant (tuiles/statique/uni). */
+export function selectFondWidget(
+  game: Game,
+  widget: Pick<MapWidget, "background">,
+  packs: TilePackMeta[],
+  statiqueDisponible = false,
+): "tuiles" | "statique" | "uni" {
+  const effectif = fondEffectifWidget(game, widget, packs);
+  if (effectif === "pack-tiles") return "tuiles";
+  if (effectif === "indoor-plan") return statiqueDisponible ? "statique" : "uni";
+  return selectFond(false, statiqueDisponible);
 }
 
 /**

@@ -661,6 +661,12 @@ Le bouton d'export de l'écran Exporter SHALL déclencher la génération du pac
 - **WHEN** l'auteur ouvre l'écran Exporter
 - **THEN** la checklist affiche la condition kiosque « jeu relu exigé » en plus du nœud `draft` nommé
 
+#### Scenario: Export avec avertissement confirmé
+
+- **GIVEN** un jeu valide avec 1 avertissement (`consumable` inutilisé) et 0 erreur
+- **WHEN** l'auteur confirme « Exporter quand même »
+- **THEN** le pack est généré et la confirmation est journalisée avec l'avertissement nommé
+
 #### Scenario: Export réussi depuis l'écran Exporter
 
 - **GIVEN** un jeu valide C1+C2 sans nœud `draft`
@@ -1238,3 +1244,79 @@ Le panneau de propriétés du widget carte SHALL exposer : la source (`kind: ste
 - **GIVEN** une icône `locked` personnalisée
 - **WHEN** l'auteur active le retour au défaut sur ce seul champ
 - **THEN** l'icône retombe sur le défaut, les autres réglages sont inchangés
+
+### Requirement: Aperçus HOME rendus par le PhoneCanvas de l'écran global
+
+Les aperçus HOME (mini-aperçu t=0 du volet des étapes et aperçu d'essai de Prévisualiser, y compris la salle d'attente du Mode Jeux) SHALL rendre le même `PhoneCanvas` en lecture seule que la vue Screen du Composer (`showGhosts={false}`, sans sélection ni édition, comme le terminal joueur simulé) : l'écran affiché SHALL toujours être `game.global.screen`, y compris vide. Aucun markup parallèle SHALL subsister : le tableau texte historique codé en dur dans les aperçus SHALL être supprimé.
+
+#### Scenario: Écran composé prévisualisé à l'identique
+
+- **GIVEN** un écran global avec header (texte « Bienvenue ») et widget carte, pseudo-sélection Accueil active dans le Composer
+- **WHEN** l'auteur consulte le mini-aperçu du volet ou l'aperçu de Prévisualiser
+- **THEN** le même header, le même widget carte et les mêmes styles s'affichent, en lecture seule, sans contrôle d'édition
+
+#### Scenario: Écran vide assumé
+
+- **GIVEN** un jeu avec `HOME` et `global.screen` vide ou absent
+- **WHEN** l'auteur consulte un aperçu HOME
+- **THEN** un écran vide s'affiche (PhoneCanvas systématique), sans repli vers le tableau texte historique
+
+### Requirement: Données d'essai lues par l'écran, jamais écrites
+
+Les aperçus HOME SHALL rester en lecture seule : le temps (t=0 figé pour le mini-aperçu, temps simulé pour Prévisualiser), les états, les rebours et la proposition d'ouverture SHALL être lus depuis l'état d'essai existant (`calculerApercu`, inchangé) et consommés par l'écran via les widgets liés et blocs dérivés ; l'ouverture SHALL rejouer le contrôle d'essai existant. Aucun aperçu SHALL écrire au JSON ni à la simulation.
+
+#### Scenario: Rebours simulés dans l'écran composé
+
+- **GIVEN** un essai avec un POI `TIMER 600s` et du temps simulé écoulé
+- **WHEN** l'auteur consulte l'aperçu de Prévisualiser
+- **THEN** l'écran composé affiche le rebours diminué d'autant, le JSON et la simu sont inchangés hors contrôles d'essai
+
+### Requirement: Arbre de l'écran global dans le volet des étapes
+
+Quand `HOME` est présent, l'entrée « écran global — Accueil » du volet des étapes SHALL exposer un sous-arbre repliable des éléments de son écran, avec les mêmes modalités que les étapes : zones présentes dans l'ordre d'affichage (en-tête, contenu, pied de page, surimpression, fantômes exclus), puis widgets de chaque zone (type + libellé court, `map` libellé « carte »). L'arbre SHALL être replié par défaut et son état SHALL rester local, jamais persisté.
+
+#### Scenario: Dépliage de l'arbre global
+
+- **GIVEN** le volet des étapes avec un écran global (header + content avec carte)
+- **WHEN** l'auteur déplie le sous-arbre de l'entrée Accueil
+- **THEN** les zones header et content apparaissent, avec le widget carte sous content
+
+### Requirement: Sélection arbre global vers le détail
+
+Sélectionner une zone ou un widget de l'arbre global SHALL produire la même sélection que le clic canvas : pseudo-sélection Accueil + zone/widget, panneau détail affiché avec ses propriétés, canvas centré sur l'écran global. Sélectionner un nœud SHALL désélectionner l'arbre global et inversement (pseudo-sélection exclusive inchangée).
+
+#### Scenario: Widget carte vers le détail
+
+- **GIVEN** le sous-arbre global déplié avec un widget carte dans content
+- **WHEN** l'auteur clique l'entrée du widget carte
+- **THEN** le widget est sélectionné (surligné dans le canvas Screen) et le panneau de droite affiche ses propriétés carte
+
+### Requirement: Pas de visuel d'écran dans le volet Étape
+
+Le volet des étapes SHALL ne jamais rendre de visuel d'écran (ni PhoneCanvas ni mini-aperçu) : l'entrée Accueil n'expose que l'arbre. Le bouton « Ouvrir » historique de l'entrée SHALL être supprimé (l'ouverture d'étape se fait depuis le graphe, la liste ou la prévisualisation). Le volet Screen (WYSIWYG) et la prévisualisation SHALL rester inchangés, avec un rendu identique entre eux.
+
+#### Scenario: Entrée sans visuel
+
+- **GIVEN** l'entrée Accueil affichée avec un écran global composé
+- **WHEN** l'auteur regarde le volet des étapes
+- **THEN** aucun rendu d'écran n'apparaît, seul l'arbre repliable est proposé ; le volet Screen montre toujours le rendu WYSIWYG
+
+### Requirement: Téléchargement du JSON brut malgré le blocage
+
+Quand l'export du pack est bloqué (erreurs C1/C2 ou statuts), l'écran Exporter SHALL exposer à côté du bouton bloqué un bouton toujours actif « Télécharger le JSON brut (non valide, debug) ». Le bouton SHALL télécharger le jeu courant tel quel en `game.json` (sans manifest, sans SHA-256, sans assets, sans `compat.json`), avec un nom de fichier marqué non valide, et SHALL rappeler les causes du blocage. Le téléchargement SHALL ne modifier aucun état (ni JSON, ni historique undo, ni rapport d'export).
+
+#### Scenario: Jeu invalide inspectable
+
+- **GIVEN** un jeu bloqué par 2 erreurs C1 affiché dans l'écran Exporter
+- **WHEN** l'auteur active « Télécharger le JSON brut »
+- **THEN** le `game.json` courant est téléchargé avec les 2 causes rappelées, le pack reste bloqué, aucun état n'a changé
+
+### Requirement: Pack jamais confondu avec le brut
+
+Le bouton de génération du pack SHALL rester désactivé tant que la règle centrale `canExport` l'exige ; le JSON brut SHALL ne jamais être produit avec un manifest, un SHA ni des assets. Un JSON brut réimporté SHALL suivre le pipeline d'import existant (validation couches 1+2).
+
+#### Scenario: Brut réimporté revalidé
+
+- **GIVEN** un `game.json` brut téléchargé avec 2 erreurs C1
+- **WHEN** l'auteur le réimporte après correction manuelle
+- **THEN** l'import suit la validation bi-couche comme tout fichier local

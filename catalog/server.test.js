@@ -129,3 +129,35 @@ test("code inconnu → 404 propre, pack invalide → 400", async () => {
   const menteur = await post("/publish", { gameId: "Menteur", gameJson: g, manifest: tampered });
   assert.equal(menteur.status, 400);
 });
+
+test("packs de tuiles : publier → lister → supprimer (smart-tile-caching)", async () => {
+  const gameId = "Jeu Tuiles";
+  const pack = {
+    id: `${gameId}/abc123-1`,
+    nom: "Centre-ville",
+    config: {
+      bbox: { minLat: 48.85, minLng: 2.34, maxLat: 48.87, maxLng: 2.37 },
+      minZoom: 12, maxZoom: 14, tileStrategy: "radius", tileRadiusMeters: 300,
+    },
+    nbTuiles: 42, tailleOctets: 860160, date: new Date().toISOString(), statut: "pret",
+  };
+  const vide = await get(`/tilepacks?gameId=${encodeURIComponent(gameId)}`);
+  assert.equal(vide.status, 200);
+  assert.deepEqual(vide.json, []);
+  const pub = await post("/tilepacks", { gameId, pack });
+  assert.equal(pub.status, 200);
+  assert.equal(pub.json.id, pack.id);
+  const liste = await get(`/tilepacks?gameId=${encodeURIComponent(gameId)}`);
+  assert.equal(liste.status, 200);
+  assert.equal(liste.json.length, 1);
+  assert.equal(liste.json[0].nom, "Centre-ville");
+  // Pack invalide : stratégie inconnue → 400, rien stocké de plus.
+  const bad = await post("/tilepacks", { gameId, pack: { ...pack, id: `${gameId}/bad`, config: { ...pack.config, tileStrategy: "warp" } } });
+  assert.equal(bad.status, 400);
+  const del = await fetch(`${base}/tilepacks/${encodeURIComponent(gameId)}/abc123-1`, { method: "DELETE" });
+  assert.equal(del.status, 200);
+  const apres = await get(`/tilepacks?gameId=${encodeURIComponent(gameId)}`);
+  assert.deepEqual(apres.json, []);
+  const missing = await fetch(`${base}/tilepacks/${encodeURIComponent(gameId)}/abc123-1`, { method: "DELETE" });
+  assert.equal(missing.status, 404);
+});

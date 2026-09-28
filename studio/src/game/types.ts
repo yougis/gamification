@@ -268,6 +268,40 @@ export interface CalibrationState {
 
 export type TileStrategy = "fixed" | "viewport" | "radius" | "none";
 
+export interface GlobalMapConfig {
+  provider?: string;
+  bbox?: { minLat: number; minLng: number; maxLat: number; maxLng: number };
+  minZoom?: number;
+  maxZoom?: number;
+  attribution?: string;
+}
+
+// Pack de tuiles généré (change smart-tile-caching) : métadonnées du cache,
+// persistées côté serveur et listées dans le menu « Packs de carte ».
+// Les tuiles elles-mêmes restent des fichiers du pack (manifest SHA-256).
+export type TilePackStatus = "pret" | "generation" | "echec";
+
+export interface TilePackMeta {
+  id: string;
+  nom: string;
+  // Snapshot de la config au moment de la génération (jamais une référence
+  // vivante vers global : le pack reste rejouable tel quel).
+  config: {
+    provider?: string;
+    bbox: { minLat: number; minLng: number; maxLat: number; maxLng: number };
+    minZoom: number;
+    maxZoom: number;
+    tileStrategy: TileStrategy;
+    tileRadiusMeters?: number;
+  };
+  nbTuiles: number;
+  tailleOctets: number;
+  date: string; // ISO
+  statut: TilePackStatus;
+  /** Fichier fautif en cas d'échec, jamais de code d'erreur brut. */
+  erreur?: string;
+}
+
 export type HoldMode = "none" | "guidedAccess" | "screenPinning" | "lockTask";
 export type HoldExitMethod = "adminPin" | "adminGesture" | "adminQR" | "animateurCode";
 
@@ -329,6 +363,13 @@ export interface Game {
     indoorPlans?: IndoorPlan[];
     screen?: ScreenDefinition;
     minigameDefaults?: MinigameDefaults;
+    // Tuiles offline (change smart-tile-caching) : stratégie lue depuis le
+    // JSON du jeu (jamais en dur). tilePackId désigne l'unique pack actif
+    // du projet, utilisé à l'export ; absent = comportement bbox actuel.
+    map?: GlobalMapConfig;
+    tileStrategy?: TileStrategy;
+    tileRadiusMeters?: number;
+    tilePackId?: string;
   };
   nodes: GameNode[];
   objects?: GameObject[];

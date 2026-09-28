@@ -9,7 +9,6 @@ import { ChevronRepli } from "./Repli";
 import { CONDITIONS_FR, ETATS_FR, MODULES_FR } from "../game/i18n-ui";
 import type { Game, Widget, ZoneId } from "../game/types";
 import { removeNode } from "../game/mcp";
-import { AccueilApercu } from "./AccueilApercu";
 
 export type FiltreListe = "tous" | "etapes" | "tirages" | "fins" | "impasses" | "brouillons";
 
@@ -35,6 +34,8 @@ function libelleWidget(w: Widget): string {
       return w.label || "bouton";
     case "module":
       return "module";
+    case "map":
+      return "carte";
     case "progress":
       return "progression";
     case "spacer":
@@ -78,6 +79,8 @@ export function NodeList({
   onBasculerHome,
   accueilSelectionne,
   onChoisirAccueil,
+  onChoisirZoneAccueil,
+  onChoisirWidgetAccueil,
 }: {
   game: Game;
   statuts: Record<string, { state: string }>;
@@ -113,6 +116,11 @@ export function NodeList({
   // multiple, ni suppression, ni arête, ignorée par validation/export).
   accueilSelectionne?: boolean;
   onChoisirAccueil?: () => void;
+  // Sous-arbre de l'écran global (change home-arbre-accueil) : mêmes
+  // modalités que les étapes (sélection = clic canvas vers le détail).
+  // Absents = pas d'arbre global.
+  onChoisirZoneAccueil?: (zoneId: ZoneId) => void;
+  onChoisirWidgetAccueil?: (zoneId: ZoneId, index: number) => void;
   // Mini-jeu choisi en premier à la création (change studio-module-first) :
   // détermine module, données et écran initial des étapes créées.
   moduleCreation?: string;
@@ -133,6 +141,11 @@ export function NodeList({
       return next;
     });
   };
+  // Arbre de l'écran global (change home-arbre-accueil) : état local,
+  // jamais persisté, replié par défaut comme les étapes.
+  const [arbreAccueilOuvert, setArbreAccueilOuvert] = useState(false);
+  const zonesArbreAccueil = ORDRE_ZONES.filter((z) => game.global?.screen?.zones?.[z] != null);
+  const avecArbreAccueil = zonesArbreAccueil.length > 0 && (onChoisirZoneAccueil || onChoisirWidgetAccueil);
 
   const elements = useMemo(() => {
     const q = recherche.trim().toLowerCase();
@@ -200,13 +213,63 @@ export function NodeList({
           className={`mx-2 mt-2 rounded border p-2 text-left cursor-pointer ${accueilSelectionne ? "border-neon bg-neon/5" : "border-dashed border-line hover:border-neon/40"}`}
         >
           <span className="flex items-center gap-1.5">
+            {avecArbreAccueil ? (
+              <button
+                type="button"
+                className="shrink-0 rounded px-0.5 text-fog hover:text-snow"
+                onClick={(e) => { e.stopPropagation(); setArbreAccueilOuvert((o) => !o); }}
+                title={arbreAccueilOuvert ? "Replier l'écran global" : "Déplier l'écran global (zones et widgets)"}
+                aria-label={arbreAccueilOuvert ? "Replier l'écran global" : "Déplier l'écran global"}
+                aria-expanded={arbreAccueilOuvert}
+              >
+                <Icon name={arbreAccueilOuvert ? "chevron-b" : "chevron-d"} size={13} />
+              </button>
+            ) : null}
             <Icon name="accueil" size={15} />
             <span className="text-[9px] font-bold uppercase text-snow">Écran global — Accueil</span>
             <span className="puce">HOME</span>
           </span>
-          <span className="mt-1 block">
-            <AccueilApercu game={game} onOuvrir={(id) => onChoisir(id)} />
-          </span>
+          {avecArbreAccueil && arbreAccueilOuvert ? (
+            <span className="mt-1 block" role="tree" aria-label="Écran global">
+              {zonesArbreAccueil.map((z) => {
+                const widgets = game.global?.screen?.zones?.[z]?.widgets ?? [];
+                const zoneChoisie = accueilSelectionne === true && selZoneId === z;
+                return (
+                  <span key={z} className="block">
+                    <button
+                      type="button"
+                      role="treeitem"
+                      aria-selected={zoneChoisie && selWidgetIndex == null}
+                      className={`flex w-full items-center gap-1 rounded px-1 py-0.5 text-left text-[8px] ${zoneChoisie && selWidgetIndex == null ? "bg-neon/10 text-neon" : "text-fog hover:text-snow"}`}
+                      onClick={(e) => { e.stopPropagation(); onChoisirAccueil(); onChoisirZoneAccueil?.(z); }}
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); onChoisirAccueil(); onChoisirZoneAccueil?.(z); } }}
+                      title={`Voir la zone ${NOM_ZONE_ARBRE[z]}`}
+                    >
+                      <Icon name="zone" size={12} /> {NOM_ZONE_ARBRE[z]} ({widgets.length})
+                    </button>
+                    {widgets.map((w, i) => {
+                      const widgetChoisi = accueilSelectionne === true && selZoneId === z && selWidgetIndex === i;
+                      return (
+                        <button
+                          key={i}
+                          type="button"
+                          role="treeitem"
+                          aria-selected={widgetChoisi}
+                          className={`ml-4 flex w-[calc(100%-1rem)] items-center gap-1 rounded px-1 py-0.5 text-left text-[8px] ${widgetChoisi ? "bg-neon/10 text-neon" : "text-fog hover:text-snow"}`}
+                          onClick={(e) => { e.stopPropagation(); onChoisirAccueil(); onChoisirWidgetAccueil?.(z, i); }}
+                          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); onChoisirAccueil(); onChoisirWidgetAccueil?.(z, i); } }}
+                          title={`Voir le widget ${libelleWidget(w)}`}
+                        >
+                          <Icon name="etape" size={11} />
+                          <span className="overflow-hidden text-ellipsis whitespace-nowrap">{w.type} — {libelleWidget(w)}</span>
+                        </button>
+                      );
+                    })}
+                  </span>
+                );
+              })}
+            </span>
+          ) : null}
         </div>
       )}
       <header className="flex flex-col gap-2 border-b border-rule p-2">

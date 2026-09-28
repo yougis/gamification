@@ -19,7 +19,7 @@
 
 1. **Enveloppes fines, pas nouveau composant** : `AccueilApercu` et `ApercuAccueil` deviennent des enveloppes (`PhoneCanvas` + props essai) plutôt qu'un 3e composant — les 3 call sites gardent leurs props, le diff reste local. Alternative (composant unique `ApercuHome`) rejetée : les deux signatures d'entrée diffèrent (t=0 calculé en interne vs état simu externe) et l'unification forcerait un refactor des appelants.
 2. **Lecture seule stricte** : aucun callback d'édition/sélection passé au PhoneCanvas des aperçus ; `onOuvrir` existant conservé (rejoue le contrôle d'essai / sélectionne un nœud, comme aujourd'hui). Aucune écriture JSON possible par construction.
-3. **Données via les widgets, pas via le canvas** : le PhoneCanvas ne reçoit aucune prop « essai » nouvelle ; ce sont les widgets liés et blocs dérivés rendus dedans qui consomment `calculerApercu` (mini : t=0 ; simu : état courant). Le canvas reste agnostique, comme en édition.
+3. **Données via les widgets, canvas quasi-agnostique** : une seule prop optionnelle `lignesApercu` (snapshot opaque `LigneApercu[]`, lecture seule) traverse `PhoneCanvas → ZoneRenderer → WidgetRenderer → MapWidgetRenderer` pour les pastilles d'état des marqueurs ; aucune logique d'essai dans le canvas (pas de tick, pas d'ouverture, pas d'écriture). Sans elle : aperçu statique auteur inchangé.
 4. **Écran vide assumé** : pas de branche conditionnelle « écran vide → tableau texte » — supprime du code au lieu d'en ajouter, et rend l'état « HOME sans écran composé » visible (incite à composer).
 
 ## Risks / Trade-offs

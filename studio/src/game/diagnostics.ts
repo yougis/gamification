@@ -31,6 +31,8 @@ export interface Diagnostic {
 export const niveauParCode: Record<string, Niveau> = {
   INDOOR_GEOFENCE: "avertissement",
   TILESTRATEGY_NONE_MAP: "avertissement",
+  RAYON_TUILES_INVALIDE: "erreur",
+  TUILES_HORS_BBOX: "avertissement",
   CARTE_ALL_EVENTE: "avertissement",
   CARTE_SANS_ETAPE: "avertissement",
   CONSUMABLE_INUTILISE: "info",
@@ -134,6 +136,10 @@ export function rendreDiagnostic(d: Diagnostic): string {
       return `L'étape ${etape} mélange intérieur et GPS, incompatibles : choisis l'un ou l'autre.`;
     case "TILESTRATEGY_NONE_MAP":
       return "Carte configurée mais tuiles désactivées : rien ne s'affichera sur la carte.";
+    case "RAYON_TUILES_INVALIDE":
+      return "Le rayon des tuiles doit être strictement positif en stratégie « rayon » (menu Packs de carte).";
+    case "TUILES_HORS_BBOX":
+      return `Tuile(s) hors de la zone du jeu (${d.attendu ?? ""}) : elles alourdissent le pack pour rien.`;
     case "REF_INCONNUE":
       return `L'étape ${etape} attend une étape qui n'existe plus. Supprime ce déclencheur ou recrée l'étape.`;
     case "CYCLE":

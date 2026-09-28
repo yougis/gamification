@@ -4,6 +4,7 @@
 // côté appelant (exportPackFull / importerFichier) — le service n'est
 // qu'un transport, jamais une autorité.
 import type { ManifestFile } from "./mcp";
+import type { TilePackMeta } from "./types";
 
 export interface CatalogEntry {
   code: string;
@@ -125,4 +126,34 @@ export async function publishGame(
   });
   if (!r.ok) throw new Error(await lireErreur(r));
   return (await r.json()) as PublishedPack;
+}
+
+// Cache serveur des packs de tuiles (change smart-tile-caching) : le
+// service ne stocke que les métas (même contrat `TilePackMeta` que le
+// store local) ; les tuiles restent des fichiers du pack (manifest
+// SHA-256), téléchargeables avec le `game.json` à l'export.
+export async function publierPackTuiles(serviceUrl: string, gameId: string, pack: TilePackMeta): Promise<{ id: string }> {
+  const r = await appelerService("pack de tuiles", `${normaliserUrlService(serviceUrl)}/tilepacks`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ gameId, pack }),
+  });
+  if (!r.ok) throw new Error(await lireErreur(r));
+  return (await r.json()) as { id: string };
+}
+
+export async function listerPacksTuiles(serviceUrl: string, gameId: string): Promise<TilePackMeta[]> {
+  const r = await appelerService("packs de tuiles", `${normaliserUrlService(serviceUrl)}/tilepacks?gameId=${encodeURIComponent(gameId)}`);
+  if (!r.ok) throw new Error(await lireErreur(r));
+  return (await r.json()) as TilePackMeta[];
+}
+
+export async function supprimerPackTuiles(serviceUrl: string, packId: string): Promise<void> {
+  const r = await appelerService(
+    "pack de tuiles",
+    `${normaliserUrlService(serviceUrl)}/tilepacks/${packId.split("/").map(encodeURIComponent).join("/")}`,
+    { method: "DELETE" },
+  );
+  if (r.status === 404) throw new Error("pack introuvable");
+  if (!r.ok) throw new Error(await lireErreur(r));
 }

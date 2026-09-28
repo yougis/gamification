@@ -56,12 +56,12 @@ import { Icon, type IconName } from "./components/icons";
 import Splitter from "./components/Splitter";
 import { WorkflowStepper, type EtapeWorkflow } from "./components/WorkflowStepper";
 import { NodeList } from "./components/NodeList";
-import { AccueilApercu } from "./components/AccueilApercu";
 import { ApercuAccueil } from "./components/ApercuAccueil";
 import { BlocsAcces } from "./components/BlocsAcces";
 import { ChevronRepli, RailReplie } from "./components/Repli";
 import { Accordeon, useAccordeon } from "./components/Accordeon";
 import MapView from "./components/MapView";
+import { TilePackPanel } from "./components/TilePackPanel";
 import { PhoneCanvas, VIEWPORTS, type ViewportId } from "./components/wysiwyg/PhoneCanvas";
 import { enregistrerAssetSession } from "./components/wysiwyg/image-files";
 import { ImagePicker } from "./components/wysiwyg/ImagePicker";
@@ -1603,7 +1603,7 @@ const noeuds: Node[] = useMemo(
   // que le détail, pour ne pas re-rendre à chaque frame de drag.
   const liste = useMemo(() => (
     <div className="flex flex-col min-h-0">
-      <NodeList game={game} statuts={st.present.meta.status} impasses={impasses} sel={sel} selMulti={selMulti} onChoisir={choisirNoeud} onChoisirZone={(id, z) => { choisirNoeud(id); setScreenZone(z); setScreenWidget(null); setScreenBg(false); setMep((m) => (m.repliees.detail ? { ...m, repliees: { ...m.repliees, detail: false } } : m)); }} onChoisirWidget={(id, z, i) => { choisirNoeud(id); setScreenZone(z); setScreenWidget(i); setScreenBg(false); setMep((m) => (m.repliees.detail ? { ...m, repliees: { ...m.repliees, detail: false } } : m)); }} selZoneId={screenZone} selWidgetIndex={screenWidget} onBasculer={(id) => choisirNoeud(id, true)} onToutBasculer={basculerTout} toutSelectionne={toutEstSelectionne} erreursParNoeud={erreursParNoeud} lectureSeule={relecture} onReplier={() => basculerSection("liste")} onAjouter={(preset) => ajouterEtape(preset)} onSupprimer={!relecture ? (id) => editGame((g) => removeNode(g, id), "removeNode") : undefined} moduleCreation={moduleCreation} onModuleCreation={setModuleCreation} typesModule={TYPES_MODULE} homeActif={homeActif} onBasculerHome={basculerHome} accueilSelectionne={selAccueil} onChoisirAccueil={choisirAccueil} />
+      <NodeList game={game} statuts={st.present.meta.status} impasses={impasses} sel={sel} selMulti={selMulti} onChoisir={choisirNoeud} onChoisirZone={(id, z) => { choisirNoeud(id); setScreenZone(z); setScreenWidget(null); setScreenBg(false); setMep((m) => (m.repliees.detail ? { ...m, repliees: { ...m.repliees, detail: false } } : m)); }} onChoisirWidget={(id, z, i) => { choisirNoeud(id); setScreenZone(z); setScreenWidget(i); setScreenBg(false); setMep((m) => (m.repliees.detail ? { ...m, repliees: { ...m.repliees, detail: false } } : m)); }} selZoneId={screenZone} selWidgetIndex={screenWidget} onBasculer={(id) => choisirNoeud(id, true)} onToutBasculer={basculerTout} toutSelectionne={toutEstSelectionne} erreursParNoeud={erreursParNoeud} lectureSeule={relecture} onReplier={() => basculerSection("liste")} onAjouter={(preset) => ajouterEtape(preset)} onSupprimer={!relecture ? (id) => editGame((g) => removeNode(g, id), "removeNode") : undefined} moduleCreation={moduleCreation} onModuleCreation={setModuleCreation} typesModule={TYPES_MODULE} homeActif={homeActif} onBasculerHome={basculerHome} accueilSelectionne={selAccueil} onChoisirAccueil={choisirAccueil} onChoisirZoneAccueil={(z) => { choisirAccueil(); setScreenZone(z); setScreenWidget(null); setScreenBg(false); setMep((m) => (m.repliees.detail ? { ...m, repliees: { ...m.repliees, detail: false } } : m)); }} onChoisirWidgetAccueil={(z, i) => { choisirAccueil(); setScreenZone(z); setScreenWidget(i); setScreenBg(false); setMep((m) => (m.repliees.detail ? { ...m, repliees: { ...m.repliees, detail: false } } : m)); }} />
     </div>
   ), [game, st.present.meta.status, impasses, sel, selMulti, erreursParNoeud, relecture, choisirNoeud, basculerTout, toutEstSelectionne, ajouterEtape, moduleCreation, screenZone, screenWidget]);
   const listeSimple = useMemo(() => (
@@ -1936,6 +1936,20 @@ const noeuds: Node[] = useMemo(
                       ))}
                     </ul>
                   )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const a = document.createElement("a");
+                      a.href = URL.createObjectURL(new Blob([JSON.stringify(game, null, 2)], { type: "application/json" }));
+                      a.download = "game-brut-non-valide.json";
+                      a.click();
+                      window.setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+                    }}
+                    title={bloque ? `JSON source tel quel (non valide, debug) — blocage inchangé :\n${raisonsBlocage.join("\n")}` : "JSON source tel quel (debug, sans manifest ni SHA)"}
+                    aria-label="Télécharger le JSON brut (non valide, debug)"
+                    className="mt-2 w-full rounded border border-line py-2 font-display text-[8px] font-bold uppercase tracking-widest text-fog hover:text-snow hover:border-neon/40">
+                    Télécharger le JSON brut (non valide, debug)
+                  </button>
                   <div className="mt-4 border-t border-rule pt-3" aria-label="Publier au catalogue">
                     <div className="text-[8px] font-mono uppercase tracking-widest text-fog mb-2">Publier au catalogue</div>
                     <label className="flex flex-col gap-1 text-xs mb-2">
@@ -1976,6 +1990,7 @@ const noeuds: Node[] = useMemo(
             <h2 className="font-display font-extrabold text-2xl tracking-widest uppercase text-snow mb-6">Configuration</h2>
             <ModePanel game={game} edit={edit} lectureSeule={relecture} />
             <PresentationPanel game={game} edit={edit} lectureSeule={relecture} />
+            <TilePackPanel game={game} meta={st.present.meta} edit={edit} lectureSeule={relecture} />
             <ExperienceStylePanel game={game} edit={edit} lectureSeule={relecture} />
             <BrandingPanel game={game} edit={edit} lectureSeule={relecture} onPickFile={prendreImage} />
             <ScreenGlobalPanel game={game} edit={edit} lectureSeule={relecture} onPickFile={prendreImage} />

@@ -11,7 +11,7 @@
 //   <gameId>/v<n>/assets/...    octets des assets
 import { createServer } from "node:http";
 import { createHash } from "node:crypto";
-import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, unlinkSync } from "node:fs";
 import { join, dirname, normalize } from "node:path";
 
 export const DATA_DIR = process.env.CATALOG_DATA_DIR ?? join(dirname(new URL(import.meta.url).pathname), "data");
@@ -61,7 +61,7 @@ function send(res, status, obj, contentType = "application/json") {
   res.writeHead(status, {
     "content-type": contentType,
     "access-control-allow-origin": "*",
-    "access-control-allow-methods": "GET, POST, OPTIONS",
+    "access-control-allow-methods": "GET, POST, DELETE, OPTIONS",
     "access-control-allow-headers": "content-type",
   });
   res.end(body);
@@ -97,7 +97,7 @@ export function createApp() {
     if (req.method === "OPTIONS") {
       res.writeHead(204, {
         "access-control-allow-origin": "*",
-        "access-control-allow-methods": "GET, POST, OPTIONS",
+        "access-control-allow-methods": "GET, POST, DELETE, OPTIONS",
         "access-control-allow-headers": "content-type",
         "content-length": "0",
       });
@@ -272,6 +272,104 @@ export function createApp() {
         return;
       }
     }
+
+  // Packs de tuiles (change smart-tile-caching) : cache serveur par projet.
+  // Le serveur ne stocke que les métas (config snapshot, taille, statut) :
+  // les tuiles restent des fichiers du pack (manifest SHA-256).
+  // POST /tilepacks {gameId, pack} → {id}
+  // GET /tilepacks?gameId=<nom> → [pack] (triés par date décroissante)
+  // DELETE /tilepacks/<gameId>/<reste…> → {ok: true}
+  const STRATEGIES_TUILES = ["fixed", "viewport", "radius", "none"];
+  const packValide = (gameId, pack) => {
+    if (!pack || typeof pack !== "object") return "pack requis";
+    if (typeof pack.id !== "string" || !pack.id.startsWith(`${gameId}/`)) return "pack.id doit commencer par gameId + '/'";
+    const c = pack.config;
+    if (!c || typeof c !== "object") return "pack.config requis";
+    for (const k of ["minLat", "minLng", "maxLat", "maxLng"]) {
+      if (typeof c.bbox?.[k] !== "number") return `pack.config.bbox.${k} requis`;
+    }
+    if (typeof c.minZoom !== "number" || typeof c.maxZoom !== "number") return "pack.config zooms requis";
+    if (!STRATEGIES_TUILES.includes(c.tileStrategy)) return "pack.config.tileStrategy invalide";
+    if (typeof pack.nbTuiles !== "number" || typeof pack.tailleOctets !== "number") return "nbTuiles/tailleOctets requis";
+    if (!["pret", "generation", "echec"].includes(pack.statut)) return "pack.statut invalide";
+    return null;
+  };
+  if (req.method === "POST" && parts.length === 1 && parts[0] === "tilepacks") {
+    let body;
+    try {
+      body = JSON.parse(await readBody(req));
+    } catch {
+      send(res, 400, { error: "JSON invalide ou trop volumineux" });
+      return;
+    }
+    const { gameId, pack } = body ?? {};
+    if (typeof gameId !== "string" || !gameId.trim() || gameId.includes("..")) {
+      send(res, 400, { error: "gameId requis" });
+      return;
+    }
+    const probleme = packValide(gameId, pack);
+    if (probleme) {
+      send(res, 400, { error: probleme });
+      return;
+    }
+    const dir = join(DATA_DIR, gameId, "tilepacks");
+    mkdirSync(dir, { recursive: true });
+    const rel = safeAssetPath(pack.id.slice(gameId.length + 1));
+    if (!rel) {
+      send(res, 400, { error: "pack.id invalide" });
+      return;
+    }
+    writeFileSync(join(dir, `${rel}.json`), JSON.stringify({ ...pack, date: pack.date ?? new Date().toISOString() }, null, 2));
+    send(res, 200, { id: pack.id });
+    return;
+  }
+  if (req.method === "GET" && parts.length === 1 && parts[0] === "tilepacks") {
+    const gameId = url.searchParams.get("gameId") ?? "";
+    if (!gameId || gameId.includes("..")) {
+      send(res, 400, { error: "gameId requis" });
+      return;
+    }
+    const dir = join(DATA_DIR, gameId, "tilepacks");
+    if (!existsSync(dir)) {
+      send(res, 200, []);
+      return;
+    }
+    const packs = [];
+    for (const f of readdirSync(dir)) {
+      if (!f.endsWith(".json")) continue;
+      try {
+        packs.push(JSON.parse(readFileSync(join(dir, f), "utf8")));
+      } catch {
+        /* entrée corrompue : ignorée, jamais bloquante */
+      }
+    }
+    packs.sort((a, b) => (b.date < a.date ? -1 : 1));
+    send(res, 200, packs);
+    return;
+  }
+  if (req.method === "DELETE" && parts.length >= 3 && parts[0] === "tilepacks") {
+    let gameId;
+    let rel;
+    try {
+      gameId = decodeURIComponent(parts[1]);
+      rel = safeAssetPath(parts.slice(2).map((p) => decodeURIComponent(p)).join("/"));
+    } catch {
+      send(res, 400, { error: "chemin invalide" });
+      return;
+    }
+    if (!gameId || !rel) {
+      send(res, 400, { error: "chemin invalide" });
+      return;
+    }
+    const fp = join(DATA_DIR, gameId, "tilepacks", `${rel}.json`);
+    if (!existsSync(fp)) {
+      send(res, 404, { error: "pack introuvable" });
+      return;
+    }
+    unlinkSync(fp);
+    send(res, 200, { ok: true });
+    return;
+  }
 
     send(res, 404, { error: "route inconnue" });
   };

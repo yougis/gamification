@@ -135,6 +135,7 @@
           "enum": ["fixed", "viewport", "radius", "none"]
         },
         "tileRadiusMeters": {"type": "number", "exclusiveMinimum": 0},
+        "tilePackId": {"type": "string", "minLength": 1},
         "screen": {"$ref": "#/definitions/screen"},
         "minigameDefaults": {
           "type": "object",
