@@ -105,8 +105,10 @@ export function validateLayer2(game: Game): LayerReport {
   const errors = sig.errors;
   const byId = new Map(game.nodes.map((n) => [n.id, n]));
 
-  // ExperienceStyle validation.
-  const exStyle = game.experienceStyle;
+  // ExperienceStyle validation (change studio-config-experience-style : lit
+  // global.experienceStyle, seule valeur conforme au schéma ; la clé racine
+  // n'existe pas et ne doit jamais être lue ici).
+  const exStyle = game.global?.experienceStyle;
   if (exStyle?.preset && !["BASIC", "GUIDED", "TREASURE_HUNT", "ESCAPE_GAME", "OPEN_EXPLORATION"].includes(exStyle.preset)) {
     sig.signaler("PRESET_EXPERIENCE_INVALIDE", `C2 experienceStyle.preset invalide: ${exStyle.preset}`, { champ: "experienceStyle.preset", attendu: "BASIC, GUIDED, TREASURE_HUNT, ESCAPE_GAME, OPEN_EXPLORATION" });
   }
@@ -114,12 +116,15 @@ export function validateLayer2(game: Game): LayerReport {
     sig.signaler("IDENTITY_NAME_VIDE", `C2 experienceStyle.identity.name ne peut pas etre vide`, { champ: "experienceStyle.identity.name" });
   }
 
-  // GameMode et Difficulty validation.
-  if (game.gameMode && !["NORMAL", "ANIMATEUR", "SOIREE", "HARDCORE"].includes(game.gameMode)) {
-    sig.signaler("GAMEMODE_INVALIDE", `C2 gameMode invalide: ${game.gameMode}`, { champ: "gameMode", attendu: "NORMAL, ANIMATEUR, SOIREE, HARDCORE" });
+  // GameMode et Difficulty validation (change studio-config-gamemode-difficulty :
+  // lus depuis global, seules valeurs conformes au schéma ; la racine n'existe pas).
+  const gm = game.global?.gameMode;
+  if (gm && !["NORMAL", "ANIMATEUR", "SOIREE", "HARDCORE"].includes(gm)) {
+    sig.signaler("GAMEMODE_INVALIDE", `C2 gameMode invalide: ${gm}`, { champ: "gameMode", attendu: "NORMAL, ANIMATEUR, SOIREE, HARDCORE" });
   }
-  if (game.difficulty && !["ENFANT", "FAMILLE", "EXPERT"].includes(game.difficulty)) {
-    sig.signaler("DIFFICULTY_INVALIDE", `C2 difficulty invalide: ${game.difficulty}`, { champ: "difficulty", attendu: "ENFANT, FAMILLE, EXPERT" });
+  const diff = game.global?.difficulty;
+  if (diff && !["ENFANT", "FAMILLE", "EXPERT"].includes(diff)) {
+    sig.signaler("DIFFICULTY_INVALIDE", `C2 difficulty invalide: ${diff}`, { champ: "difficulty", attendu: "ENFANT, FAMILLE, EXPERT" });
   }
 
   // Branding validation.
@@ -495,6 +500,9 @@ function validateLayer1(game: unknown): LayerReport {
   const valid = validateSchema(game);
   const g = game as { nodes?: { id?: string; activation?: { requires?: unknown[]; operator?: string } }[] };
   if (!valid && validateSchema.errors) {
+    // Passe 1 : entrees brutes (même calculs qu'avant, sans signaler).
+    type Entree = { code: string; message: string; extra?: { noeud?: string; champ?: string; attendu?: string }; loc: string; keyword: string };
+    const entrees: Entree[] = [];
     for (const e of validateSchema.errors) {
       const loc = e.instancePath ? e.instancePath.replace(/^\//, "") : "";
       let msg = e.message ?? "erreur de validation";
@@ -526,8 +534,57 @@ function validateLayer1(game: unknown): LayerReport {
         msg = `type d'événement hors vocabulaire (reçu : ${JSON.stringify(recu)})`;
         code = "C1_ENUM_INVALIDE";
       }
-      sig.signaler(code, `C1 ${locId ? locId + " : " : ""}${msg}`, { noeud: node?.id, champ });
+      entrees.push({ code, message: `C1 ${locId ? locId + " : " : ""}${msg}`, extra: { noeud: node?.id, champ }, loc, keyword: e.keyword ?? "" });
     }
+    // Passe 2 — repli oneOf (change clic-carte-valide) : quand les erreurs
+    // d'un même requires[i] contiennent l'échec oneOf, elles ne sont pas
+    // signalées une par une (bruit AJV par branche) mais repliées en UN
+    // constat avec le champ manquant probable nommé. Les brutes ne sont pas
+    // retenues côté affichage (reproductibles via l'export brut du JSON).
+    const parCondition = new Map<string, number[]>();
+    entrees.forEach((en, i) => {
+      const m = /^(nodes\/\d+\/activation\/requires\/\d+)/.exec(en.loc);
+      if (!m) return;
+      const liste = parCondition.get(m[1]) ?? [];
+      liste.push(i);
+      parCondition.set(m[1], liste);
+    });
+    const replie = new Set<number>();
+    const CHAMP_PROBABLE: Record<string, string> = {
+      GEOFENCE: "predicate",
+      NODE_COMPLETED: "nodeId",
+      TIMER: "delaySeconds",
+      POOL_DRAWN: "poolNodeId",
+      PROXIMITY_MASTER: "masterId",
+      ITEM_REQUIRED: "itemId",
+      ITEM_USED: "itemId",
+      CODE_INPUT: "code",
+      CLUE_RESOLVED: "clueId",
+    };
+    for (const [base, idxs] of parCondition) {
+      if (!idxs.some((i) => entrees[i].keyword === "oneOf" && entrees[i].loc === base)) continue;
+      const m = /^nodes\/(\d+)\/activation\/requires\/(\d+)$/.exec(base);
+      const node = m ? g.nodes?.[Number(m[1])] : undefined;
+      const cond = m
+        ? ((node?.activation?.requires as Record<string, unknown>[] | undefined)?.[Number(m[2])] as Record<string, unknown> | undefined)
+        : undefined;
+      const probable = typeof cond?.type === "string" ? CHAMP_PROBABLE[cond.type] : undefined;
+      const locId = node?.id ? `${node.id} (${base})` : base;
+      const msg = probable
+        ? `déclencheur sans variante valide (manque probablement « ${probable} »)`
+        : `déclencheur sans variante valide (aucune des variantes du schéma ne correspond)`;
+      entrees.push({
+        code: "C1_DECLENCHEUR_SANS_VARIANTE",
+        message: `C1 ${locId ? locId + " : " : ""}${msg}`,
+        extra: { noeud: node?.id, champ: probable ?? `requires/${m?.[2] ?? "?"}` },
+        loc: base,
+        keyword: "repli",
+      });
+      for (const i of idxs) replie.add(i);
+    }
+    entrees.forEach((en, i) => {
+      if (!replie.has(i)) sig.signaler(en.code, en.message, en.extra as { noeud?: string; champ?: string });
+    });
   }
   return { layer: 1, errors, diagnostics: sig.diagnostics };
 }

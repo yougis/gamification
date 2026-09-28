@@ -5,7 +5,7 @@
 // global (`global.screen.styles`), ecran (`node.screen.styles`) et contenu
 // selectionne (`widgets[].styles`), avec badges d'origine via `resolveStyles`.
 // Le panneau ne touche jamais au JSON : toute modification passe par callbacks.
-import type { GameNode, ScreenBackground, Widget, WidgetStyles, ZoneContent, ZoneId } from "../../game/types";
+import type { GameNode, ImageWidget, MapWidget, ScreenBackground, Widget, WidgetStyles, ZoneContent, ZoneId } from "../../game/types";
 import { resolveStyles } from "../../game/screen-utils";
 import type { ModuleScreenPlugin } from "../../game/module-screen-plugin";
 import { Accordeon, useAccordeon } from "../Accordeon";
@@ -18,6 +18,7 @@ import { SpacerWidgetProperties } from "./SpacerWidgetProperties";
 import { MapWidgetProperties } from "./MapWidgetProperties";
 import { ScreenProperties } from "./ScreenProperties";
 import { StyleToolbar } from "./StyleToolbar";
+import { RetourDefaut } from "./FieldDefaults";
 
 // Champs de style couverts par les customs d'un plugin module.
 function champsCustoms(customs: ModuleScreenPlugin["customizableStyles"]): (keyof WidgetStyles)[] {  const out: (keyof WidgetStyles)[] = [];
@@ -67,6 +68,86 @@ function BadgeHeritage({ local }: { local: WidgetStyles | undefined }) {
     <span className="puce" title={perso ? "Valeurs propres à ce niveau" : "Hérité du niveau parent"}>
       {perso ? "personnalisé" : "hérité"}
     </span>
+  );
+}
+
+// Mise en page d'un widget visuel (change studio-widgets-pleinecran) :
+// taille en % de la zone, flag plein écran (cadre entier sous l'overlay),
+// ordre d'empilement via monter/descendre (= ordre du tableau, dernier = dessus).
+function MiseEnPageWidget({
+  widget,
+  onChange,
+  onMonter,
+  onDescendre,
+  peutMonter,
+  peutDescendre,
+}: {
+  widget: ImageWidget | MapWidget;
+  onChange: (w: ImageWidget | MapWidget) => void;
+  onMonter?: () => void;
+  onDescendre?: () => void;
+  peutMonter: boolean;
+  peutDescendre: boolean;
+}) {
+  const saisirPct = (brut: string): number | undefined => {
+    if (brut.trim() === "") return undefined;
+    const n = Number(brut);
+    if (!Number.isFinite(n)) return undefined;
+    return Math.min(100, Math.max(0, Math.round(n)));
+  };
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex gap-2">
+        <label className="flex flex-1 flex-col gap-1 text-xs">
+          <span className="flex items-center gap-1">
+            Largeur % <span className="text-fog">(auto)</span>
+            <RetourDefaut visible={widget.largeurPct !== undefined} titre="largeur" onReset={() => onChange({ ...widget, largeurPct: undefined })} />
+          </span>
+          <input
+            type="number"
+            className="champ"
+            min={0}
+            max={100}
+            value={widget.largeurPct ?? ""}
+            placeholder="auto"
+            onChange={(e) => onChange({ ...widget, largeurPct: saisirPct(e.target.value) })}
+          />
+        </label>
+        <label className="flex flex-1 flex-col gap-1 text-xs">
+          <span className="flex items-center gap-1">
+            Hauteur % <span className="text-fog">(auto)</span>
+            <RetourDefaut visible={widget.hauteurPct !== undefined} titre="hauteur" onReset={() => onChange({ ...widget, hauteurPct: undefined })} />
+          </span>
+          <input
+            type="number"
+            className="champ"
+            min={0}
+            max={100}
+            value={widget.hauteurPct ?? ""}
+            placeholder="auto"
+            onChange={(e) => {
+              const v = saisirPct(e.target.value);
+              onChange(v === undefined ? { ...widget, hauteurPct: undefined } : { ...widget, hauteurPct: v });
+            }}
+          />
+        </label>
+      </div>
+      <label className="flex items-center gap-2 text-xs">
+        <input
+          type="checkbox"
+          checked={widget.pleinEcran === true}
+          onChange={(e) => onChange({ ...widget, pleinEcran: e.target.checked ? true : undefined })}
+        />
+        <span className="flex items-center gap-1">
+          Plein écran (cadre entier, sous la surimpression)
+          <RetourDefaut visible={widget.pleinEcran === true} titre="plein écran" onReset={() => onChange({ ...widget, pleinEcran: undefined })} />
+        </span>
+      </label>
+      <div className="flex gap-1">
+        <button type="button" className="btn btn-compact min-h-8 px-2 text-[8px]" disabled={!onMonter || !peutMonter} title="Monter (peint plus tard = dessus)" aria-label="Monter le widget" onClick={onMonter}>↑ Monter</button>
+        <button type="button" className="btn btn-compact min-h-8 px-2 text-[8px]" disabled={!onDescendre || !peutDescendre} title="Descendre (peint plus tôt = dessous)" aria-label="Descendre le widget" onClick={onDescendre}>↓ Descendre</button>
+      </div>
+    </div>
   );
 }
 
@@ -185,6 +266,31 @@ export function PropertiesPanel({
             <MapWidgetProperties widget={widget} onChange={(w) => onPatchWidget(selectedZone, selectedWidgetIndex, w)} />
           ) : null}
         </SectionStyle>
+        {(widget.type === "image" || widget.type === "map") && (
+          <SectionStyle
+            id="pp-mise-en-page"
+            titre="Mise en page"
+            badge={
+              widget.pleinEcran ? (
+                <span className="puce">plein écran</span>
+              ) : widget.largeurPct != null || widget.hauteurPct != null ? (
+                <span className="puce">
+                  {widget.largeurPct ?? "auto"}×{widget.hauteurPct ?? "auto"}
+                </span>
+              ) : undefined
+            }
+            defaut={false}
+          >
+            <MiseEnPageWidget
+              widget={widget}
+              onChange={(w) => onPatchWidget(selectedZone, selectedWidgetIndex, w)}
+              onMonter={onMoveWidget ? () => onMoveWidget(selectedZone, selectedWidgetIndex, -1) : undefined}
+              onDescendre={onMoveWidget ? () => onMoveWidget(selectedZone, selectedWidgetIndex, 1) : undefined}
+              peutMonter={selectedWidgetIndex > 0}
+              peutDescendre={selectedWidgetIndex < (zone?.widgets?.length ?? 0) - 1}
+            />
+          </SectionStyle>
+        )}
         <SectionStyle id="pp-style-contenu" titre="Style — Contenu" badge={<BadgeHeritage local={widget.styles} />} defaut={false}>
           <StyleToolbar
             niveau="widget"

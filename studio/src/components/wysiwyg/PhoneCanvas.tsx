@@ -4,10 +4,12 @@
 // overlay en calque absolu. Clic sur le fond -> selection de l'ecran (null).
 import type { Game, ScreenDefinition, Widget, ZoneId } from "../../game/types";
 import type { LigneApercu } from "../../game/apercu-accueil";
+import type { CarteSimu } from "./widgets/CarteInteractiveSimu";
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { couleurTexteDefaut, paginateContent, screenBackgroundStyle } from "../../game/screen-utils";
 import { ZoneRenderer } from "./ZoneRenderer";
+import { WidgetRenderer } from "./WidgetRenderer";
 import { Icon } from "../icons";
 
 // Viewports d'apercu (change studio-screen-editor, design D1) : etat d'edition
@@ -61,6 +63,7 @@ export function PhoneCanvas({
   cleContexte,
   couleurMessage,
   afficherPagination = true,
+  carteSimu,
 }: {
   screen: ScreenDefinition;
   // Jeu courant (change widget-cartographie) : contexte de lecture pour les
@@ -99,6 +102,9 @@ export function PhoneCanvas({
   // Pagination des sous-pages (change screen-subpages) : onglets + nav
   // active. `false` pour les miniatures (ex. TemplatePicker).
   afficherPagination?: boolean;
+  // Carte simu (change carte-joueur-navigable, phase 3) : carte interactive
+  // dans le terminal simulé. Absent = aperçu auteur statique.
+  carteSimu?: CarteSimu;
 }) {
   const zones = screen.zones ?? {};
   const format = VIEWPORTS.find((v) => v.id === viewport) ?? VIEWPORTS[0];
@@ -155,6 +161,51 @@ export function PhoneCanvas({
   // calculé sur le fond résolu, héritée par tous les descendants sans
   // couleur explicite (couleurs auteur verbatim conservées).
   const couleurDefaut = couleurTexteDefaut(screen.background);
+  // Couche plein écran (change studio-widgets-pleinecran) : widgets
+  // `pleinEcran` des zones header/content/footer, sortis du flux et peints
+  // sur le cadre entier (ordre des zones puis du tableau : dernier = dessus),
+  // sous la zone overlay. Indices pleins (décalage sous-pages inclus pour
+  // content) : callbacks bruts, comme les zones. En mode auteur la couche est
+  // non-interactive (le fantôme en zone sélectionne) ; en lecture seule les
+  // widgets restent actifs (ex. carte simu du terminal).
+  const edition = onSelectZone != null || onCreateZone != null;
+  const visuelsPleinEcran: { zoneId: ZoneId; widget: Widget; index: number }[] = [];
+  for (const zid of ["header", "content", "footer"] as ZoneId[]) {
+    const rendus = zid === "content" ? (sousPages[indexSur] ?? []) : (zones[zid]?.widgets ?? []);
+    const base = zid === "content" ? decalage : 0;
+    rendus.forEach((w, i) => {
+      if ((w as { pleinEcran?: boolean }).pleinEcran === true) visuelsPleinEcran.push({ zoneId: zid, widget: w, index: base + i });
+    });
+  }
+  const dndBreakout = onMoveWidgetAcross != null;
+  const couchePleinEcran =
+    visuelsPleinEcran.length === 0 ? null : (
+      <div className="absolute inset-0" aria-label="Widgets plein écran">
+        {visuelsPleinEcran.map(({ zoneId, widget, index }) => (
+          <div key={`${zoneId}-${index}`} className={`absolute inset-0 ${edition ? "pointer-events-none" : ""}`}>
+            <WidgetRenderer
+              widget={widget}
+              index={index}
+              zoneId={zoneId}
+              moduleType={moduleType}
+              moduleData={moduleData}
+              selected={selectedZoneId === zoneId && selectedWidgetIndex === index}
+              deplacable={dndBreakout && widget.type === "text"}
+              onSelect={(i) => onSelectWidget?.(zoneId, i)}
+              onCommitText={onCommitText}
+              renderModule={renderModule}
+              contextePage={contextePage}
+              hauteurMaxMedia={hauteurMaxMedia}
+              game={game}
+              lignesApercu={lignesApercu}
+              carteSimu={carteSimu}
+              onDropBefore={dndBreakout ? (fz, fi, tz, ti) => onMoveWidgetAcross?.(fz, fi, tz, ti) : undefined}
+            />
+          </div>
+        ))}
+      </div>
+    );
+
   const cadre = (
     <div
       role="button"
@@ -191,6 +242,8 @@ export function PhoneCanvas({
                 hauteurMaxMedia={hauteurMaxMedia}
                 game={game}
                 lignesApercu={lignesApercu}
+                carteSimu={carteSimu}
+                masquerPleinEcran
               />
             </div>
           ) : showGhosts && onCreateZone ? (
@@ -262,6 +315,8 @@ export function PhoneCanvas({
                 hauteurMaxMedia={hauteurMaxMedia}
                 game={game}
                 lignesApercu={lignesApercu}
+                carteSimu={carteSimu}
+                masquerPleinEcran
             />
           </div>
           {!zones.overlay && showGhosts && onCreateZone ? (
@@ -287,6 +342,8 @@ export function PhoneCanvas({
                 hauteurMaxMedia={hauteurMaxMedia}
                 game={game}
                 lignesApercu={lignesApercu}
+                carteSimu={carteSimu}
+                masquerPleinEcran
               />
             </div>
           ) : showGhosts && onCreateZone ? (
@@ -294,6 +351,7 @@ export function PhoneCanvas({
               <FantomeZone libelle="+ Pied de page" zoneId="footer" onCreate={onCreateZone} />
             </div>
           ) : null}
+          {couchePleinEcran}
           {zones.overlay && (!overlayMasquee || !oeil) && !(dissimulable && masqueJoueur) ? (
             <div
               className="absolute inset-0 flex items-center justify-center bg-black/50 p-6"
@@ -346,6 +404,7 @@ export function PhoneCanvas({
                   hauteurMaxMedia={hauteurMaxMedia}
                   game={game}
                   lignesApercu={lignesApercu}
+                  carteSimu={carteSimu}
                 />
               </div>
             </div>

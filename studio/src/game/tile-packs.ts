@@ -14,7 +14,12 @@ export interface TilePackDepot {
 
 const CLE_DEFAUT = "geoplay-tile-packs-v1";
 
-function depotLocal(cle = CLE_DEFAUT): TilePackDepot {
+/** Seuil de confirmation (tâche 3.4) : au-delà, la génération exige un
+ * second clic explicite — une bbox abusive ne part jamais par mégarde. */
+export const SEUIL_CONFIRMATION_TUILES = 2000;
+
+/** Dépôt localStorage (menu Packs de carte) : [<gameId>[/<reste>] → métas. */
+export function depotLocal(cle = CLE_DEFAUT): TilePackDepot {
   return {
     lire() {
       try {

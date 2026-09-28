@@ -1,0 +1,98 @@
+{
+  "gameId": "nouvelle-enquete",
+  "schemaVersion": "1.0.0",
+  "minEngineVersion": "1.0.0",
+  "branding": {
+    "name": "alo",
+    "primaryColor": "#1a7f37",
+    "secondaryColor": "#5f3dc4",
+    "fontFamily": "system-ui"
+  },
+  "global": {
+    "gpsRadiusMeters": 30,
+    "navigationModel": "BASIC",
+    "presentation": [
+      "MAP",
+      "HOME"
+    ],
+    "gameMode": "NORMAL",
+    "difficulty": "FAMILLE",
+    "experienceStyle": {
+      "preset": "BASIC"
+    },
+    "screen": {
+      "layout": "map-fullscreen",
+      "background": {
+        "type": "color",
+        "value": "#0e1420"
+      },
+      "zones": {
+        "content": {
+          "layout": "stack",
+          "widgets": [
+            {
+              "type": "map",
+              "source": {
+                "kind": "steps"
+              },
+              "background": "pack-tiles",
+              "volet": {
+                "widgets": [
+                  {
+                    "type": "text",
+                    "text": "POI",
+                    "style": "heading"
+                  },
+                  {
+                    "type": "button",
+                    "label": "Ouvrir",
+                    "poiAction": "open-step",
+                    "variant": "primary"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    "tilePackId": "nouvelle-enquete/mul8erzf-1"
+  },
+  "nodes": [
+    {
+      "id": "start",
+      "isEnding": true,
+      "module": {
+        "type": "INFO",
+        "data": {
+          "schemaVersion": "1.0.0",
+          "steps": [
+            {
+              "text": "Bienvenue. Modifiez ce texte pour raconter le début de votre jeu."
+            }
+          ]
+        }
+      },
+      "activation": {
+        "requires": [
+          {
+            "type": "TIMER",
+            "anchor": "GAME_START",
+            "delaySeconds": 0
+          },
+          {
+            "type": "GEOFENCE",
+            "lat": 48,
+            "lng": 2,
+            "radiusMeters": 30,
+            "predicate": "enter"
+          }
+        ],
+        "operator": "AND"
+      },
+      "discovery": {
+        "mode": "VISIBLE_NOW"
+      }
+    }
+  ]
+}

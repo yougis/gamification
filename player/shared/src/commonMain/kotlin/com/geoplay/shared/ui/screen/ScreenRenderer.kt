@@ -307,6 +307,9 @@ private fun WidgetBlock(
             if (dansVoletCarte) {
                 Text("(carte non affichable dans le volet)", style = MaterialTheme.typography.labelSmall)
             } else if (carte != null) {
+                // Position GPS (change carte-joueur-navigable, phase 2) :
+                // snapshot plateforme, absence gracieuse sans GPS.
+                val positionJoueur = com.geoplay.shared.ui.map.rememberPositionJoueur()
                 MapWidgetBlock(
                     widget = widget,
                     game = carte.game,
@@ -314,6 +317,7 @@ private fun WidgetBlock(
                     discovery = carte.discovery,
                     onOpenNode = carte.onOpenNode,
                     onPleinEcran = carte.onPleinEcran,
+                    position = positionJoueur,
                     renduVolet = { w ->
                         WidgetBlock(w, branding, moduleSlot, imageContent, styleOf(w), styleOf, onButtonAction, null, null, null, carte, dansVoletCarte = true)
                     },

@@ -96,13 +96,27 @@ export function ecranDefautModule(type: string): ScreenDefinition {
 
 // Donnees initiales d'un Module (change studio-module-first) : la forme requise
 // par le sous-schema est toujours posee (`schemaVersion` lue au registre),
-// le contenu restant a l'auteur (comme le QUIZ historique naissant avec
-// `questions: []`, invalide en contenu mais de forme complete). Les panneaux
-// savent afficher ces vides (etats incitatifs) et la validation guide la
-// suite. Types sans schema de donnees (INFO, RANDOM_POOL) : `{}`.
+// le contenu restant a l'auteur. Exception QUIZ (change clic-carte-valide) :
+// `questions` nait avec 1 question d'exemple valide (le schema exige
+// minItems 1) — vraie question assumée, énoncé générique invitant au
+// remplacement, éditable et supprimable comme toute donnée (supprimer la
+// dernière re-bloque normalement en C1). Types sans schema de donnees
+// (INFO, RANDOM_POOL) : `{}`.
 export function donneesDefautModule(type: string): Record<string, unknown> {
   const version = MODULE_REGISTRY[type]?.version;
   const base: Record<string, unknown> = version ? { schemaVersion: version } : {};
-  if (type === "QUIZ") return { ...base, questions: [] };
+  if (type === "QUIZ") {
+    return {
+      ...base,
+      questions: [
+        {
+          q: "Exemple — remplacez-moi par votre question",
+          options: ["Réponse A (exemple)", "Réponse B (exemple)"],
+          correctIndex: 0,
+          explanation: "Exemple — expliquez ici la bonne réponse.",
+        },
+      ],
+    };
+  }
   return base;
 }

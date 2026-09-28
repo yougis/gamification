@@ -1,11 +1,18 @@
 // Outils MCP du Studio (spike) : meme schema des deux cotes, rien ne sort sans validation.
 import { validateGame } from "./validate";
 import { Collecteur, messagesBloquants, type Diagnostic } from "./diagnostics";
-import { sha256Hex, compterTuiles, detecterTuilesHorsBbox, type ManifestFile } from "./pack";
+import { sha256Hex, clesTuiles, compterTuiles, detecterTuilesHorsBbox, type ManifestFile } from "./pack";
 import type { Game, GameNode, ReviewStatus, StudioMeta, HoldMode, HoldExit, NavigationModel, Discovery, Effect, GameObject, ExperienceStyle, Branding, GameMode, Difficulty, NodePosition, ScreenDefinition, ZoneContent, ZoneId, Widget, WidgetStyles, MinigameDefaults, TileStrategy, TilePackMeta } from "./types";
 
 export type { ManifestFile };
 const sha256hex = sha256Hex;
+
+/** Taille en octets UTF-8 d'un texte (change publication-empreinte-nom) :
+ * `String.length` compte des unités UTF-16 et diverge dès le premier
+ * accent — le manifest `size` et la vérification serveur parlent octets. */
+export function tailleOctets(texte: string): number {
+  return new TextEncoder().encode(texte).length;
+}
 
 export function setHoldMode(game: Game, mode: HoldMode): Game {
   const global = { ...(game.global ?? {}), holdMode: mode };
@@ -27,6 +34,29 @@ export function getHoldConfig(game: Game): { holdMode: HoldMode; holdExit?: Hold
 
 export function composeNodes(game: Game, nodes: GameNode[]): Game {
   return { ...game, nodes: [...game.nodes, ...nodes] };
+}
+
+// Noeud start vierge (change studio-nouveau-projet) : factorise le contenu du
+// `start` de jeuVide() pour le réutiliser à l'import sans nœud. Activation
+// toujours vraie à l'ouverture (requires: [] interdit en C1, minItems: 1 ;
+// isEnding explicite exigé présent par la branche non-HOME du schéma).
+export function creerNoeudStart(): GameNode {
+  return {
+    id: "start",
+    isEnding: false,
+    module: { type: "INFO", data: { schemaVersion: "1.0.0", steps: [{ text: "Bienvenue. Modifiez ce texte pour raconter le début de votre jeu." }] } },
+    activation: { requires: [{ type: "TIMER", anchor: "GAME_START", delaySeconds: 0 }] },
+    discovery: { mode: "VISIBLE_NOW" },
+  };
+}
+
+// Garantit un noeud start à l'import (change studio-nouveau-projet, spec
+// SHALL préexistante) : un fichier sans nœud charge avec le même `start` que
+// jeuVide(). Appliquée à l'import avant validation ; le chargement reste une
+// étape undoable unique ("importer").
+export function garantirStart(game: Game): Game {
+  if (game.nodes.length > 0) return game;
+  return { ...game, nodes: [creerNoeudStart()] };
 }
 
 export function setActivation(game: Game, nodeId: string, activation: GameNode["activation"]): Game {
@@ -104,8 +134,10 @@ export function retirerDoublonPool(game: Game, nodeId: string): Game {
 }
 
 export function fixEnumDefaut(game: Game, kind: "gameMode" | "difficulty" | "experienceStyle.preset"): Game {
-  if (kind === "gameMode") return { ...game, gameMode: "NORMAL" as Game["gameMode"] };
-  if (kind === "difficulty") return { ...game, difficulty: "FAMILLE" as Game["difficulty"] };
+  // Écrit dans `global` (change studio-config-gamemode-difficulty) : la racine
+  // est rejetée en C1 (additionalProperties: false).
+  if (kind === "gameMode") return setGameMode(game, "NORMAL");
+  if (kind === "difficulty") return setDifficulty(game, "FAMILLE");
   const exp = ((game.global ?? {}) as Record<string, unknown>).experienceStyle as Record<string, unknown> | undefined;
   return {
     ...game,
@@ -305,12 +337,12 @@ export async function exportPack(
   const gameJson = JSON.stringify(game, null, 2);
   const files = await Promise.all(
     manifest.map(async (m) =>
-      m.path === "game.json" ? { ...m, size: gameJson.length, sha256: await sha256hex(gameJson) } : m,
+      m.path === "game.json" ? { ...m, size: tailleOctets(gameJson), sha256: await sha256hex(gameJson) } : m,
     ),
   );
   const withGame = files.some((m) => m.path === "game.json")
     ? files
-    : [...files, { path: "game.json", version: game.schemaVersion, size: gameJson.length, sha256: await sha256hex(gameJson) }];
+    : [...files, { path: "game.json", version: game.schemaVersion, size: tailleOctets(gameJson), sha256: await sha256hex(gameJson) }];
   return { ok: true, errors: [], gameJson, manifest: { files: withGame }, diagnostics: [] };
 }
 
@@ -713,6 +745,42 @@ export function setExperienceStyle(game: Game, style: ExperienceStyle): Game {
   return { ...game, global };
 }
 
+// Migration racine → global (change studio-config-experience-style) : les jeux
+// empoisonnés par l'ancien panneau Config portent `experienceStyle` à la racine
+// (rejeté en C1). Fusion par dimension (le global gagne en cas de conflit) puis
+// retrait de la clé racine. Appliquée à l'import avant validation ; le
+// chargement reste une étape undoable unique ("importer").
+export function migrerExperienceStyleRacine(game: Game): Game {
+  const racine = (game as unknown as Record<string, unknown>).experienceStyle as Record<string, unknown> | undefined;
+  if (racine == null || typeof racine !== "object") return game;
+  const expGlobal = ((game.global ?? {}) as Record<string, unknown>).experienceStyle as Record<string, unknown> | undefined;
+  const fusionne = { ...racine, ...(expGlobal ?? {}) };
+  const nettoye = { ...(game as unknown as Record<string, unknown>) };
+  delete nettoye.experienceStyle;
+  return setExperienceStyle(nettoye as unknown as Game, fusionne as ExperienceStyle);
+}
+
+// Migration racine → global (change studio-config-gamemode-difficulty) : même
+// patron que migrerExperienceStyleRacine pour `gameMode` / `difficulty`
+// (l'ancien panneau et l'ancien fixEnumDefaut écrivaient à la racine, rejetée
+// en C1). Le `global` gagne en cas de conflit. Appliquée à l'import avant
+// validation ; le chargement reste une étape undoable unique ("importer").
+export function migrerGameModeDifficultyRacine(game: Game): Game {
+  const brut = game as unknown as Record<string, unknown>;
+  const gmRacine = typeof brut.gameMode === "string" ? brut.gameMode : undefined;
+  const diffRacine = typeof brut.difficulty === "string" ? brut.difficulty : undefined;
+  if (gmRacine == null && diffRacine == null) return game;
+  let repare = { ...brut };
+  delete repare.gameMode;
+  delete repare.difficulty;
+  let g = repare as unknown as Game;
+  const gmGlobal = ((g.global ?? {}) as Record<string, unknown>).gameMode;
+  const diffGlobal = ((g.global ?? {}) as Record<string, unknown>).difficulty;
+  if (gmRacine != null && gmGlobal == null) g = setGameMode(g, gmRacine as GameMode);
+  if (diffRacine != null && diffGlobal == null) g = setDifficulty(g, diffRacine as Difficulty);
+  return g;
+}
+
 export function setBranding(game: Game, branding: Branding): Game {
   return { ...game, branding };
 }
@@ -824,6 +892,7 @@ export async function exportPackFull(
   meta: StudioMeta,
   manifest: ManifestFile[],
   animatorMode: boolean,
+  tuiles?: { lire: (path: string) => Promise<Uint8Array | null> },
 ): Promise<ExportResult> {
   const result = validateGameFull(game);
   const errors = messagesBloquants(result.diagnostics);
@@ -884,16 +953,54 @@ export async function exportPackFull(
     /* estimation indicative : jamais bloquante */
   }
   if (errors.length) return { ok: false, errors, diagnostics };
+  // Tuiles du pack actif (change pack-tuiles-effectif phase C) : quand un
+  // lecteur d'octets est fourni ET un pack actif désigné, chaque tuile de la
+  // bbox est lue, vérifiée et ajoutée au manifest (une entrée par tuile).
+  // Sans lecteur (appelants historiques), comportement inchangé. Octet
+  // manquant = refus nommé bloquant (un pack partiel ne part jamais).
+  const packId = game.global?.tilePackId;
+  if (typeof packId === "string" && packId && tuiles) {
+    try {
+      const bboxTuiles = computeBboxFromStrategy(game);
+      const gmap = (game.global?.map as { minZoom?: number; maxZoom?: number } | undefined) ?? {};
+      const cles = bboxTuiles ? clesTuiles(bboxTuiles, gmap.minZoom ?? 12, gmap.maxZoom ?? 16) : [];
+      const manquantes: string[] = [];
+      for (const cle of cles) {
+        if (manifest.some((m) => m.path === cle)) continue;
+        let bytes: Uint8Array | null = null;
+        try {
+          bytes = await tuiles.lire(cle);
+        } catch {
+          bytes = null;
+        }
+        if (!bytes) {
+          manquantes.push(cle);
+          continue;
+        }
+        manifest = [...manifest, { path: cle, version: "1", size: bytes.length, sha256: await sha256hex(bytes) }];
+      }
+      if (manquantes.length > 0) {
+        const message = `export refuse : ${manquantes.length} tuile(s) du pack actif introuvable(s) : ${manquantes.slice(0, 5).join(", ")}${manquantes.length > 5 ? "…" : ""}`;
+        errors.push(message);
+        const avant = sig.diagnostics.length;
+        sig.signaler("TUILES_MANQUANTES", message, { champ: "manifest", attendu: "tuiles du pack actif disponibles" });
+        diagnostics.push(...sig.diagnostics.slice(avant));
+      }
+    } catch {
+      /* périmètre indicatif : un échec de calcul ne bloque jamais seul */
+    }
+  }
+  if (errors.length) return { ok: false, errors, diagnostics };
   const gameJson = JSON.stringify(game, null, 2);
   const files = await Promise.all(
     manifest.map(async (m) =>
-      m.path === "game.json" ? { ...m, size: gameJson.length, sha256: await sha256hex(gameJson) } : m,
+      m.path === "game.json" ? { ...m, size: tailleOctets(gameJson), sha256: await sha256hex(gameJson) } : m,
     ),
   );
   const withGame = files.some((m) => m.path === "game.json")
     ? files
-    : [...files, { path: "game.json", version: game.schemaVersion, size: gameJson.length, sha256: await sha256hex(gameJson) }];
-  return { ok: true, errors: [], gameJson, manifest: { files: withGame } };
+    : [...files, { path: "game.json", version: game.schemaVersion, size: tailleOctets(gameJson), sha256: await sha256hex(gameJson) }];
+  return { ok: true, errors: [], gameJson, manifest: { files: withGame }, diagnostics };
 }
 
 // --- Map/Indoor MCP operations (change studio-map-view) ---

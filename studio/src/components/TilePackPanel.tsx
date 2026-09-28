@@ -9,15 +9,18 @@ import {
   setActiveTilePack,
   setTileStrategy,
 } from "../game/mcp";
-import { estimerPackTuiles } from "../game/pack";
+import { clesTuiles, estimerPackTuiles, telechargerTuiles, type ProgresTuiles } from "../game/pack";
 import {
   creerPack,
+  depotLocal,
   listerPacks,
+  SEUIL_CONFIRMATION_TUILES,
   supprimerPack,
 } from "../game/tile-packs";
 import {
   getCatalogUrl,
   publierPackTuiles,
+  publierTuiles,
 } from "../game/catalog";
 import type { Game, StudioMeta, TileStrategy } from "../game/types";
 import { Icon } from "./icons";
@@ -40,29 +43,14 @@ export function TilePackPanel({ game, meta, edit, lectureSeule }: {
   edit: Edit;
   lectureSeule: boolean;
 }) {
-  const depot = useMemo(() => ({
-    lire() {
-      try {
-        const brut = localStorage.getItem("geoplay-tile-packs-v1");
-        if (!brut) return [];
-        const parsed = JSON.parse(brut) as { packs?: import("../game/types").TilePackMeta[] };
-        return Array.isArray(parsed.packs) ? parsed.packs : [];
-      } catch {
-        return [];
-      }
-    },
-    ecrire(packs: import("../game/types").TilePackMeta[]) {
-      try {
-        localStorage.setItem("geoplay-tile-packs-v1", JSON.stringify({ packs }));
-      } catch {
-        /* stockage indisponible : cache en mémoire seulement */
-      }
-    },
-  }), []);
+  const depot = useMemo(() => depotLocal(), []);
   const [, forcer] = useReducer((x: number) => x + 1, 0);
   const [nom, setNom] = useState("");
   const [note, setNote] = useState<string | null>(null);
   const [suppression, setSuppression] = useState<string | null>(null);
+  const [progres, setProgres] = useState<ProgresTuiles | null>(null);
+  const [confirmationVolume, setConfirmationVolume] = useState(false);
+  const [generationEnCours, setGenerationEnCours] = useState(false);
 
   const strategie = (game.global?.tileStrategy ?? "fixed") as TileStrategy;
   const map = game.global?.map ?? {};
@@ -89,33 +77,73 @@ export function TilePackPanel({ game, meta, edit, lectureSeule }: {
 
   const generer = async () => {
     setNote(null);
+    if (generationEnCours) return;
     if (!bbox || strategie === "none") {
       setNote("Aucune zone à générer : aucune position POI (ou stratégie « sans carte »).");
       return;
     }
-    const est = estimerPackTuiles(bbox, minZoom, maxZoom);
-    const pack = creerPack(depot, game.gameId, nom || `Pack ${strategie}`, {
-      provider: map.provider,
-      bbox,
-      minZoom,
-      maxZoom,
-      tileStrategy: strategie,
-      tileRadiusMeters: game.global?.tileRadiusMeters,
-    }, est.nbTuiles, est.octets);
-    // Mise en cache serveur quand le catalogue est configuré (non bloquant).
-    const url = getCatalogUrl();
-    if (url) {
-      try {
-        await publierPackTuiles(url, game.gameId, pack);
-        setNote(`Pack « ${pack.nom} » généré (${est.nbTuiles} tuiles, ${est.lisible}) et mis en cache sur le serveur.`);
-      } catch (e) {
-        setNote(`Pack « ${pack.nom} » généré en local (${est.nbTuiles} tuiles) — cache serveur injoignable : ${e instanceof Error ? e.message : e}.`);
-      }
-    } else {
-      setNote(`Pack « ${pack.nom} » généré en local (${est.nbTuiles} tuiles, ${est.lisible}). Configurez le catalogue pour le mettre en cache sur le serveur.`);
+    const cles = clesTuiles(bbox, minZoom, maxZoom);
+    if (cles.length > SEUIL_CONFIRMATION_TUILES && !confirmationVolume) {
+      setConfirmationVolume(true);
+      setNote(`Volume important : ${cles.length} tuiles (seuil ${SEUIL_CONFIRMATION_TUILES}). Cliquez à nouveau sur Générer pour confirmer.`);
+      return;
     }
-    setNom("");
-    forcer();
+    setConfirmationVolume(false);
+    setGenerationEnCours(true);
+    setProgres({ faites: 0, total: cles.length, courante: "" });
+    try {
+      // Téléchargement réel via la source d'aperçu du Studio (en ligne),
+      // throttlé (politique d'usage du provider), vérifié au SHA-256.
+      const { fichiers, octets, echecs } = await telechargerTuiles(
+        cles,
+        async (cle) => {
+          const m = /^tuiles\/(\d{1,2})\/(\d+)\/(\d+)\.png$/.exec(cle);
+          if (!m) return null;
+          const r = await fetch(`/tiles/${m[1]}/${m[2]}/${m[3]}.png`);
+          if (!r.ok) return null;
+          return new Uint8Array(await r.arrayBuffer());
+        },
+        { concurrence: 4, delaiMs: 120, essais: 3, onProgres: setProgres },
+      );
+      const taille = fichiers.reduce((s, f) => s + f.size, 0);
+      const pack = creerPack(depot, game.gameId, nom || `Pack ${strategie}`, {
+        provider: map.provider,
+        bbox,
+        minZoom,
+        maxZoom,
+        tileStrategy: strategie,
+        tileRadiusMeters: game.global?.tileRadiusMeters,
+      }, fichiers.length, taille);
+      if (echecs.length > 0) {
+        // Pack en échec nommé (jamais actif implicitement) : tuiles réussies
+        // conservées, fichier fautif nommé.
+        const enEchec = { ...pack, statut: "echec" as const, erreur: echecs[0] };
+        depot.ecrire([...depot.lire().filter((p) => p.id !== pack.id), enEchec]);
+        setNote(`Pack « ${pack.nom} » en échec : ${echecs.length} tuile(s) manquante(s), première fautive ${echecs[0]}. Les ${fichiers.length} réussies sont conservées.`);
+      } else {
+        // Mise en cache serveur quand le catalogue est configuré : méta +
+        // octets (par lots). Sans catalogue, méta locale + octets de session.
+        const url = getCatalogUrl();
+        if (url) {
+          try {
+            await publierPackTuiles(url, game.gameId, pack);
+            const { ecrites } = await publierTuiles(url, pack.id, fichiers, octets);
+            setNote(`Pack « ${pack.nom} » généré (${fichiers.length} tuiles vérifiées, ${ecrites} stockées) et mis en cache sur le serveur.`);
+          } catch (e) {
+            setNote(`Pack « ${pack.nom} » généré en local (${fichiers.length} tuiles vérifiées) — cache serveur injoignable : ${e instanceof Error ? e.message : e}.`);
+          }
+        } else {
+          setNote(`Pack « ${pack.nom} » généré en local (${fichiers.length} tuiles vérifiées). Configurez le catalogue pour le mettre en cache sur le serveur.`);
+        }
+      }
+    } catch (e) {
+      setNote(`Génération interrompue : ${e instanceof Error ? e.message : e}. Relancez : seules les tuiles manquantes repartent.`);
+    } finally {
+      setNom("");
+      setProgres(null);
+      setGenerationEnCours(false);
+      forcer();
+    }
   };
 
   const supprimer = (id: string) => {
@@ -203,10 +231,20 @@ export function TilePackPanel({ game, meta, edit, lectureSeule }: {
       {!lectureSeule && (
         <div className="flex gap-1 mt-1">
           <input className="champ flex-1" value={nom} placeholder="Nom du pack (optionnel)" onChange={(e) => setNom(e.target.value)} aria-label="Nom du pack" />
-          <button className="btn" onClick={() => void generer()} disabled={!bbox || strategie === "none"}>
-            <Icon name="ajouter" size={15} /> Générer
+          <button
+            className="btn"
+            onClick={() => void generer()}
+            disabled={!bbox || strategie === "none" || generationEnCours}
+            title={confirmationVolume ? "Volume important : cliquez à nouveau pour confirmer" : "Générer le pack de tuiles"}
+          >
+            <Icon name="ajouter" size={15} /> {generationEnCours ? "Génération…" : confirmationVolume ? "Confirmer ?" : "Générer"}
           </button>
         </div>
+      )}
+      {progres && (
+        <p className="text-[8px] mt-1" role="status">
+          Téléchargement {progres.faites}/{progres.total}{progres.courante ? ` — ${progres.courante}` : ""}
+        </p>
       )}
       {note && <p className="text-[8px] mt-1" role="status">{note}</p>}
 

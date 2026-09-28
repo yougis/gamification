@@ -110,3 +110,31 @@ fun widgetsCarteEcran(screen: com.geoplay.shared.model.ScreenDefinition?): List<
         .flatMap { it.widgets }
         .filter { it.type == "map" }
 }
+
+// --- Viewport navigable (change carte-joueur-navigable, phase 2) ---
+// État UI strictement local : pan/zoom ne produisent ni transition ni
+// event (même passivité que sélection/volet, strate 2). Toute la math est
+// pure et testée en commonTest ; le composable ne fait que l'appliquer.
+
+/** Bornes d'échelle : 1 = cadrage bbox, 8 = détail max. */
+const val ECHELLE_MIN_VIEWPORT = 1f
+const val ECHELLE_MAX_VIEWPORT = 8f
+
+/** Pas multiplicatif d'un cran de zoom bouton. */
+const val PAS_ZOOM_VIEWPORT = 1.25f
+
+/** Seuil tap-vs-drag : en dessous, un toucher = clic (même seuil que puzzle). */
+const val SEUIL_TAP_DP = 8f
+
+/** Échelle bornée dans [1, 8]. */
+fun bornerEchelle(echelle: Float): Float = echelle.coerceIn(ECHELLE_MIN_VIEWPORT, ECHELLE_MAX_VIEWPORT)
+
+/** Un cran de zoom bouton : sens +1 = avant, -1 = arrière. */
+fun cranZoom(echelle: Float, sens: Int): Float {
+    if (sens == 0) return bornerEchelle(echelle)
+    val pas = if (sens > 0) PAS_ZOOM_VIEWPORT else 1f / PAS_ZOOM_VIEWPORT
+    return bornerEchelle(echelle * pas)
+}
+
+/** Un toucher est un clic (pas un drag) si son déplacement reste sous le seuil. */
+fun estTap(deplacementDp: Float, seuilDp: Float = SEUIL_TAP_DP): Boolean = deplacementDp <= seuilDp

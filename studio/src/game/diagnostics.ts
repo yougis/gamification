@@ -101,6 +101,14 @@ export function messagesBloquants(diagnostics: Diagnostic[]): string[] {
   return diagnostics.filter((d) => d.niveau === "erreur").map((d) => d.message);
 }
 
+// Compteur pastille (change pastille-validation-source) : SEUL sélecteur
+// partagé pour le « N problèmes » — même source que les listes Valider.
+// Jamais de parsing de texte libre : un succès (« Publié », « Export OK »)
+// n'est pas un problème et ne transite même pas par ici.
+export function compterErreurs(diagnostics: Diagnostic[]): number {
+  return diagnostics.filter((d) => d.niveau === "erreur").length;
+}
+
 // Glossaire fermé non technique (change studio-validation-actionnable) :
 // « étape » (jamais « nœud »), « déclencheur » (jamais « condition »),
 // « tirage » (jamais « pool »), « fin » (jamais « isEnding »),
@@ -140,6 +148,8 @@ export function rendreDiagnostic(d: Diagnostic): string {
       return "Le rayon des tuiles doit être strictement positif en stratégie « rayon » (menu Packs de carte).";
     case "TUILES_HORS_BBOX":
       return `Tuile(s) hors de la zone du jeu (${d.attendu ?? ""}) : elles alourdissent le pack pour rien.`;
+    case "TUILES_MANQUANTES":
+      return `Tuile(s) du pack actif introuvable(s) : régénérez le pack dans le menu Packs de carte.`;
     case "REF_INCONNUE":
       return `L'étape ${etape} attend une étape qui n'existe plus. Supprime ce déclencheur ou recrée l'étape.`;
     case "CYCLE":
@@ -205,6 +215,8 @@ export function rendreDiagnostic(d: Diagnostic): string {
       return `« ${d.champ ?? "un champ"} » n'existe pas à cet endroit${d.noeud ? ` (étape ${etape})` : ""} : retire-le.`;
     case "C1_ENUM_INVALIDE":
       return `Valeur non autorisée${d.champ ? ` pour « ${d.champ} »` : ""}${d.attendu ? ` (attendu : ${d.attendu})` : ""}.`;
+    case "C1_DECLENCHEUR_SANS_VARIANTE":
+      return `${d.noeud ? `Étape ${etape} : ` : ""}déclencheur sans variante valide${d.champ ? ` (manque probablement « ${d.champ} »)` : ""} — vérifie son type et ses champs (famille « Déclenchement »).`;
     case "C1_FORME_INVALIDE":
       return d.message;
     default:

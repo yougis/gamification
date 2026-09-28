@@ -157,3 +157,66 @@ export async function supprimerPackTuiles(serviceUrl: string, packId: string): P
   if (r.status === 404) throw new Error("pack introuvable");
   if (!r.ok) throw new Error(await lireErreur(r));
 }
+
+// Octets des tuiles (change pack-tuiles-effectif phase C) : dépôt et
+// lecture par lots (limite de corps serveur), même contrat manifest que
+// /publish — chaque octet est re-haché côté serveur.
+function cheminPackTuiles(serviceUrl: string, packId: string): string {
+  return `${normaliserUrlService(serviceUrl)}/tilepacks/${packId.split("/").map(encodeURIComponent).join("/")}`;
+}
+
+function octetsVersBase64Bytes(bytes: Uint8Array): string {
+  let bin = "";
+  const TAILLE = 0x8000;
+  for (let i = 0; i < bytes.length; i += TAILLE) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + TAILLE));
+  }
+  return btoa(bin);
+}
+
+export async function publierTuiles(
+  serviceUrl: string,
+  packId: string,
+  fichiers: ManifestFile[],
+  octets: Map<string, Uint8Array> | Record<string, Uint8Array>,
+  parLot = 50,
+): Promise<{ ecrites: number }> {
+  const lire = (p: string): Uint8Array | undefined =>
+    octets instanceof Map ? octets.get(p) : (octets as Record<string, Uint8Array>)[p];
+  let ecrites = 0;
+  for (let i = 0; i < fichiers.length; i += parLot) {
+    const lot = fichiers.slice(i, i + parLot);
+    const r = await appelerService("tuiles", `${cheminPackTuiles(serviceUrl, packId)}/tuiles`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        manifest: { files: lot },
+        assets: lot.map((m) => ({ path: m.path, base64: octetsVersBase64Bytes(lire(m.path)!) })),
+      }),
+    });
+    if (!r.ok) throw new Error(await lireErreur(r));
+    ecrites += ((await r.json()) as { ecrites: number }).ecrites;
+  }
+  return { ecrites };
+}
+
+export interface PackTuilesDistant extends TilePackMeta {
+  tuiles: ManifestFile[];
+}
+
+export async function lirePackTuiles(serviceUrl: string, packId: string): Promise<PackTuilesDistant> {
+  const r = await appelerService("pack de tuiles", cheminPackTuiles(serviceUrl, packId));
+  if (r.status === 404) throw new Error("pack introuvable");
+  if (!r.ok) throw new Error(await lireErreur(r));
+  return (await r.json()) as PackTuilesDistant;
+}
+
+export async function fetchTuile(serviceUrl: string, packId: string, path: string): Promise<Uint8Array> {
+  const r = await appelerService(
+    "tuile",
+    `${cheminPackTuiles(serviceUrl, packId)}/${path.split("/").map(encodeURIComponent).join("/")}`,
+  );
+  if (r.status === 404) throw new Error("tuile introuvable");
+  if (!r.ok) throw new Error(await lireErreur(r));
+  return new Uint8Array(await r.arrayBuffer());
+}

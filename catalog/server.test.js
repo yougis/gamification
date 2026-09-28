@@ -161,3 +161,77 @@ test("packs de tuiles : publier → lister → supprimer (smart-tile-caching)", 
   const missing = await fetch(`${base}/tilepacks/${encodeURIComponent(gameId)}/abc123-1`, { method: "DELETE" });
   assert.equal(missing.status, 404);
 });
+
+test("packs de tuiles : octets upload → lecture → purge (pack-tuiles-effectif)", async () => {
+  const gameId = "Jeu Octets";
+  const pack = {
+    id: `${gameId}/oct-1`,
+    nom: "Octets",
+    config: {
+      bbox: { minLat: 48.85, minLng: 2.34, maxLat: 48.87, maxLng: 2.37 },
+      minZoom: 12, maxZoom: 12, tileStrategy: "fixed",
+    },
+    nbTuiles: 2, tailleOctets: 20, date: new Date().toISOString(), statut: "pret",
+  };
+  const t1 = Buffer.from("tuile-une");
+  const t2 = Buffer.from("tuile-deux-xxxx");
+  const manifest = {
+    files: [
+      { path: "tuiles/12/1/1.png", version: "1", size: t1.length, sha256: sha(t1) },
+      { path: "tuiles/12/1/2.png", version: "1", size: t2.length, sha256: sha(t2) },
+    ],
+  };
+  const pub = await post("/tilepacks", { gameId, pack });
+  assert.equal(pub.status, 200);
+  // Upload avec empreinte fausse → 400, rien écrit.
+  const tampered = await post(`/tilepacks/${encodeURIComponent(gameId)}/oct-1/tuiles`, {
+    manifest,
+    assets: [
+      { path: "tuiles/12/1/1.png", base64: t1.toString("base64") },
+      { path: "tuiles/12/1/2.png", base64: Buffer.from("CORROMPU").toString("base64") },
+    ],
+  });
+  assert.equal(tampered.status, 400);
+  assert.match(tampered.json.error, /empreinte/);
+  // Upload correct → 2 écrites.
+  const ok = await post(`/tilepacks/${encodeURIComponent(gameId)}/oct-1/tuiles`, {
+    manifest,
+    assets: [
+      { path: "tuiles/12/1/1.png", base64: t1.toString("base64") },
+      { path: "tuiles/12/1/2.png", base64: t2.toString("base64") },
+    ],
+  });
+  assert.equal(ok.status, 200);
+  assert.equal(ok.json.ecrites, 2);
+  // Lecture pack unique : méta + tuiles scannées avec SHA.
+  const un = await get(`/tilepacks/${encodeURIComponent(gameId)}/oct-1`);
+  assert.equal(un.status, 200);
+  assert.equal(un.json.tuiles.length, 2);
+  assert.ok(un.json.tuiles.every((t) => t.sha256 && t.size > 0));
+  // Octet brut aller-retour.
+  const raw = await get(`/tilepacks/${encodeURIComponent(gameId)}/oct-1/tuiles/12/1/2.png`);
+  assert.equal(raw.status, 200);
+  assert.deepEqual(Buffer.from(await raw.raw.arrayBuffer()), t2);
+  // Clé hors périmètre tuiles → 400.
+  const bad = await post(`/tilepacks/${encodeURIComponent(gameId)}/oct-1/tuiles`, {
+    manifest: { files: [{ path: "assets/x.png", version: "1", size: 1, sha256: sha("x") }] },
+    assets: [{ path: "assets/x.png", base64: Buffer.from("x").toString("base64") }],
+  });
+  assert.equal(bad.status, 400);
+  // Suppression → purge métas ET octets.
+  const del = await fetch(`${base}/tilepacks/${encodeURIComponent(gameId)}/oct-1`, { method: "DELETE" });
+  assert.equal(del.status, 200);
+  const gone = await get(`/tilepacks/${encodeURIComponent(gameId)}/oct-1`);
+  assert.equal(gone.status, 404);
+  const goneTile = await get(`/tilepacks/${encodeURIComponent(gameId)}/oct-1/tuiles/12/1/1.png`);
+  assert.equal(goneTile.status, 404);
+});
+
+test("publication accentuée acceptée (publication-empreinte-nom)", async () => {
+  const id = "Château du Trésor — Édition été";
+  const g = JSON.stringify({ gameId: id, schemaVersion: "1.0.0", nodes: [{ id: "départ", name: "café ☕" }] });
+  assert.ok(g.length !== Buffer.byteLength(g), "jeu discriminant (non-ASCII présent)");
+  const r = await post("/publish", { gameId: id, gameJson: g, manifest: manifestFor(g) });
+  assert.equal(r.status, 200);
+  assert.equal(r.json.gameId, id);
+});

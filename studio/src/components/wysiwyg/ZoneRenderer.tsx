@@ -9,6 +9,7 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 import type { Game, Widget, ZoneContent, ZoneId } from "../../game/types";
 import type { LigneApercu } from "../../game/apercu-accueil";
+import type { CarteSimu } from "./widgets/CarteInteractiveSimu";
 import { WidgetRenderer, lireDragSource } from "./WidgetRenderer";
 
 const LAYOUT_CLASSE: Record<string, string> = {
@@ -33,6 +34,8 @@ export function ZoneRenderer({
   hauteurMaxMedia,
   game,
   lignesApercu,
+  carteSimu,
+  masquerPleinEcran,
 }: {
   zone: ZoneContent;
   zoneId: ZoneId;
@@ -57,6 +60,14 @@ export function ZoneRenderer({
   game?: Game;
   // Snapshot d'essai (change home-phonecanvas-unique) : transmis à la carte.
   lignesApercu?: LigneApercu[];
+  // Carte simu (change carte-joueur-navigable, phase 3) : carte interactive
+  // dans le terminal simulé. Absent = aperçu auteur statique.
+  carteSimu?: CarteSimu;
+  // Plein écran (change studio-widgets-pleinecran) : quand vrai, les widgets
+  // `pleinEcran` ne sont pas rendus dans le flux — PhoneCanvas les affiche
+  // dans la couche breakout (cadre entier). Ici : fantôme de rappel en mode
+  // auteur (sélection possible), rien en lecture seule (terminal).
+  masquerPleinEcran?: boolean;
 }) {
   const widgets = zone.widgets ?? [];
   const [survol, setSurvol] = useState(false);
@@ -102,7 +113,26 @@ export function ZoneRenderer({
         </div>
       ) : (
         <div className={LAYOUT_CLASSE[zone.layout ?? "stack"]}>
-          {widgets.map((w: Widget, i: number) => (
+          {widgets.map((w: Widget, i: number) => {
+            const estPleinEcran = (w as { pleinEcran?: boolean }).pleinEcran === true;
+            if (masquerPleinEcran && estPleinEcran) {
+              // Fantôme auteur (sélectionne le widget pour le régler) ;
+              // rien en lecture seule (le breakout de PhoneCanvas l'affiche).
+              if (onSelectWidget == null) return null;
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  className={`rounded border border-dashed px-3 py-2 text-center text-xs ${selectedWidgetIndex === i ? "border-neon text-snow" : "border-line text-fog hover:border-neon hover:text-snow"}`}
+                  onClick={(e) => { e.stopPropagation(); onSelectWidget?.(zoneId, i); }}
+                  title="Widget plein écran — affiché sur tout le cadre (cliquer pour régler)"
+                  aria-label={`Widget ${w.type} plein écran`}
+                >
+                  ⛶ {w.type} plein écran
+                </button>
+              );
+            }
+            return (
             <WidgetRenderer
               key={i}
               widget={w}
@@ -119,13 +149,15 @@ export function ZoneRenderer({
               hauteurMaxMedia={hauteurMaxMedia}
               game={game}
               lignesApercu={lignesApercu}
+              carteSimu={carteSimu}
               onDropBefore={
                 dndActif
                   ? (fromZone, fromIndex, toZone, toIndex) => onMoveWidgetAcross?.(fromZone, fromIndex, toZone, toIndex)
                   : undefined
               }
             />
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

@@ -8,7 +8,7 @@
 //   `{zone, index}` ; depot sur un widget = insertion avant lui, depot sur le
 //   fond de zone = ajout en fin. Repli clavier : boutons haut/bas du panneau.
 import { useEffect, useRef, useState } from "react";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import type { Game, Widget, ZoneId } from "../../game/types";
 import type { LigneApercu } from "../../game/apercu-accueil";
 import { TextWidgetRenderer } from "./widgets/TextWidgetRenderer";
@@ -18,6 +18,7 @@ import { ProgressBarWidgetRenderer } from "./widgets/ProgressBarWidgetRenderer";
 import { ModuleWidgetRenderer } from "./widgets/ModuleWidgetRenderer";
 import { SpacerWidgetRenderer } from "./widgets/SpacerWidgetRenderer";
 import { MapWidgetRenderer } from "./widgets/MapWidgetRenderer";
+import { CarteInteractiveSimu, type CarteSimu } from "./widgets/CarteInteractiveSimu";
 
 export const DRAG_MIME = "application/x-geoplay-widget";
 
@@ -54,6 +55,7 @@ export function WidgetRenderer({
   hauteurMaxMedia,
   game,
   lignesApercu,
+  carteSimu,
 }: {
   widget: Widget;
   index: number;
@@ -84,6 +86,9 @@ export function WidgetRenderer({
   // Snapshot d'essai (change home-phonecanvas-unique) : lignes lues par la
   // carte (pastille d'état), jamais simulées ici. Absent = aperçu statique.
   lignesApercu?: LigneApercu[];
+  // Carte simu (change carte-joueur-navigable, phase 3) : carte interactive
+  // dans le terminal simulé. Absent = aperçu auteur statique.
+  carteSimu?: CarteSimu;
 }) {
   const [edition, setEdition] = useState(false);
   const [survol, setSurvol] = useState(false);
@@ -104,6 +109,14 @@ export function WidgetRenderer({
     // la navigation clavier (Entree) selectionne sans editer.
     if (estTexte && onCommitText && zoneId) setEdition(true);
   };
+
+  // Taille relative (change studio-widgets-pleinecran) : % de la zone sur le
+  // wrapper (l'image garde w-full interne). pleinEcran est géré au niveau
+  // PhoneCanvas (couche breakout) : ici on ne fait que le flux + taille.
+  const miseEnPage = widget as { largeurPct?: number; hauteurPct?: number };
+  const styleTaille: CSSProperties = {};
+  if (typeof miseEnPage.largeurPct === "number") styleTaille.width = `${miseEnPage.largeurPct}%`;
+  if (typeof miseEnPage.hauteurPct === "number") styleTaille.height = `${miseEnPage.hauteurPct}%`;
 
   return (
     <div
@@ -158,6 +171,7 @@ export function WidgetRenderer({
         }
       }}
       className={`min-w-0 max-w-full rounded ${selected ? "outline-2 outline-neon outline" : ""} ${survol ? "outline-2 outline-dashed outline-neon" : ""} ${deplacable ? "cursor-grab" : ""}`}
+      style={styleTaille}
     >
       {widget.type === "text" ? (
         <TextWidgetRenderer
@@ -175,7 +189,13 @@ export function WidgetRenderer({
       {widget.type === "progress" ? <ProgressBarWidgetRenderer widget={widget} contextePage={contextePage} /> : null}
       {widget.type === "module" ? (renderModule ? renderModule(widget) : <ModuleWidgetRenderer widget={widget} moduleType={moduleType} moduleData={moduleData} hauteurMax={hauteurMaxMedia} />) : null}
       {widget.type === "spacer" ? <SpacerWidgetRenderer widget={widget} /> : null}
-      {widget.type === "map" ? <MapWidgetRenderer widget={widget} game={game} lignes={lignesApercu} /> : null}
+      {widget.type === "map" ? (
+        carteSimu && game ? (
+          <CarteInteractiveSimu widget={widget} game={game} lignes={lignesApercu} simu={carteSimu} />
+        ) : (
+          <MapWidgetRenderer widget={widget} game={game} lignes={lignesApercu} />
+        )
+      ) : null}
     </div>
   );
 }

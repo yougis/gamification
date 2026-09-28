@@ -117,7 +117,26 @@ function bornerZoom(z: number): number {
 }
 
 function tuilesPourZoom(bbox: BboxTuiles, zoom: number): number {
-  const n = 2 ** zoom;
+  const plage = plageTuiles(bbox, zoom);
+  if (!plage) return 0;
+  return (plage.x1 - plage.x0 + 1) * (plage.y1 - plage.y0 + 1);
+}
+
+// --- Plage de tuiles pour l'aperçu auteur (change pack-tuiles-effectif
+// phase B) : indices slippy-map couvrant la bbox à un zoom donné, bornés
+// à la grille. Pur : le renderer compose les URL d'aperçu, jamais le JSON.
+export interface PlageTuiles {
+  z: number;
+  x0: number;
+  x1: number;
+  y0: number;
+  y1: number;
+}
+
+/** Plage de tuiles couvrant la bbox au zoom donné, ou null si vide. */
+export function plageTuiles(bbox: BboxTuiles, zoom: number): PlageTuiles | null {
+  const z = bornerZoom(zoom);
+  const n = 2 ** z;
   const lonVersX = (lon: number) => Math.floor(((lon + 180) / 360) * n);
   const latVersY = (lat: number) => {
     const rad = (Math.max(-85, Math.min(85, lat)) * Math.PI) / 180;
@@ -127,8 +146,116 @@ function tuilesPourZoom(bbox: BboxTuiles, zoom: number): number {
   const x1 = Math.min(n - 1, lonVersX(Math.max(bbox.minLng, bbox.maxLng)));
   const y0 = Math.max(0, latVersY(Math.max(bbox.minLat, bbox.maxLat)));
   const y1 = Math.min(n - 1, latVersY(Math.min(bbox.minLat, bbox.maxLat)));
-  if (x1 < x0 || y1 < y0) return 0;
-  return (x1 - x0 + 1) * (y1 - y0 + 1);
+  if (x1 < x0 || y1 < y0) return null;
+  return { z, x0, x1, y0, y1 };
+}
+
+/** Zoom d'aperçu : le plus détaillé dont la grille tient dans `maxTuiles`. */
+export function zoomApercu(bbox: BboxTuiles, minZoom: number, maxZoom: number, maxTuiles = 12): PlageTuiles | null {
+  const lo = bornerZoom(Math.min(minZoom, maxZoom));
+  const hi = bornerZoom(Math.max(minZoom, maxZoom));
+  let repli: PlageTuiles | null = null;
+  for (let z = lo; z <= hi; z++) {
+    const plage = plageTuiles(bbox, z);
+    if (!plage) continue;
+    repli = plage;
+    if ((plage.x1 - plage.x0 + 1) * (plage.y1 - plage.y0 + 1) > maxTuiles) break;
+  }
+  if (!repli) return null;
+  const taille = (repli.x1 - repli.x0 + 1) * (repli.y1 - repli.y0 + 1);
+  return taille <= maxTuiles ? repli : null;
+}
+
+// --- Téléchargement réel des tuiles (change pack-tuiles-effectif phase C).
+// Énumération bornée par la bbox (jamais hors zone) + téléchargement avec
+// fetcher injectable (testable sans réseau), concurrence bornée et délai
+// entre vagues (politique d'usage du provider), retries avec échec nommé,
+// vérification SHA-256 octet par octet. Le périmètre strict + l'estimation
+// pré-génération rendent l'abus structurellement difficile.
+
+/** Clés `tuiles/{z}/{x}/{y}.png` couvrant la bbox sur [minZoom, maxZoom]. */
+export function clesTuiles(bbox: BboxTuiles, minZoom: number, maxZoom: number): string[] {
+  const lo = bornerZoom(Math.min(minZoom, maxZoom));
+  const hi = bornerZoom(Math.max(minZoom, maxZoom));
+  const cles: string[] = [];
+  for (let z = lo; z <= hi; z++) {
+    const plage = plageTuiles(bbox, z);
+    if (!plage) continue;
+    for (let x = plage.x0; x <= plage.x1; x++) {
+      for (let y = plage.y0; y <= plage.y1; y++) {
+        cles.push(`tuiles/${z}/${x}/${y}.png`);
+      }
+    }
+  }
+  return cles;
+}
+
+export interface ProgresTuiles {
+  faites: number;
+  total: number;
+  courante: string;
+}
+
+export interface ResultatTuiles {
+  fichiers: ManifestFile[];
+  octets: Map<string, Uint8Array>;
+  echecs: string[];
+}
+
+/**
+ * Télécharge chaque clé via `lire`, vérifie le SHA-256, notifie la
+ * progression. Concurrence et délai bornés (défauts sobres) ; chaque clé
+ * est réessayée `essais` fois avant d'être nommée en échec — sans jamais
+ * invalider les tuiles déjà réussies.
+ */
+export async function telechargerTuiles(
+  cles: string[],
+  lire: (cle: string) => Promise<Uint8Array | null>,
+  opts?: {
+    concurrence?: number;
+    delaiMs?: number;
+    essais?: number;
+    onProgres?: (p: ProgresTuiles) => void;
+  },
+): Promise<ResultatTuiles> {
+  const concurrence = Math.max(1, Math.min(8, opts?.concurrence ?? 4));
+  const delaiMs = Math.max(0, opts?.delaiMs ?? 120);
+  const essais = Math.max(1, opts?.essais ?? 3);
+  const fichiers: ManifestFile[] = [];
+  const octets = new Map<string, Uint8Array>();
+  const echecs: string[] = [];
+  let faites = 0;
+  const notifier = (courante: string) => opts?.onProgres?.({ faites, total: cles.length, courante });
+
+  for (let i = 0; i < cles.length; i += concurrence) {
+    const vague = cles.slice(i, i + concurrence);
+    await Promise.all(
+      vague.map(async (cle) => {
+        notifier(cle);
+        let bytes: Uint8Array | null = null;
+        for (let t = 0; t < essais && !bytes; t++) {
+          try {
+            bytes = await lire(cle);
+          } catch {
+            bytes = null;
+          }
+        }
+        if (!bytes) {
+          echecs.push(cle);
+        } else {
+          fichiers.push({ path: cle, version: "1", size: bytes.length, sha256: await sha256Hex(bytes) });
+          octets.set(cle, bytes);
+        }
+        faites += 1;
+        notifier(cle);
+      }),
+    );
+    if (delaiMs > 0 && i + concurrence < cles.length) {
+      await new Promise((r) => setTimeout(r, delaiMs));
+    }
+  }
+  fichiers.sort((a, b) => (a.path < b.path ? -1 : 1));
+  return { fichiers, octets, echecs };
 }
 
 /** Nombre de tuiles couvrant la bbox sur [minZoom, maxZoom] (bornes incluses). */
@@ -157,7 +284,9 @@ export function estimerPackTuiles(
 
 const CLE_TUILE = /^(?:tuiles\/)?(\d{1,2})\/(\d+)\/(\d+)(?:\..*)?$/;
 
-function bornesTuile(z: number, x: number, y: number): BboxTuiles {
+/** Bornes géographiques d'une tuile slippy-map (change carte-joueur-navigable,
+ * phase 3 : positionnement des tuiles dans la fenêtre visible du simu). */
+export function bornesTuile(z: number, x: number, y: number): BboxTuiles {
   const n = 2 ** z;
   const minLng = (x / n) * 360 - 180;
   const maxLng = ((x + 1) / n) * 360 - 180;

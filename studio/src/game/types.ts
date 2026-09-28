@@ -107,6 +107,11 @@ export interface ImageWidget {
   height?: number | string;
   fit?: "cover" | "contain" | "fill";
   alt?: string;
+  // Mise en page relative (change studio-widgets-pleinecran) : % de la zone ;
+  // pleinEcran sort du flux (cadre entier sous l'overlay).
+  largeurPct?: number;
+  hauteurPct?: number;
+  pleinEcran?: boolean;
   styles?: WidgetStyles;
 }
 
@@ -191,6 +196,11 @@ export interface MapWidget {
   poiStyle?: PoiStyle;
   volet?: MapVolet;
   icon?: string;
+  // Mise en page relative (change studio-widgets-pleinecran) : % de la zone ;
+  // pleinEcran sort du flux (cadre entier sous l'overlay).
+  largeurPct?: number;
+  hauteurPct?: number;
+  pleinEcran?: boolean;
   styles?: WidgetStyles;
 }
 
@@ -345,6 +355,11 @@ export interface ExperienceStyle {
   voice?: Record<string, unknown>;
 }
 
+// Mode et difficulté (change studio-config-gamemode-difficulty) : meta-états du
+// runtime lus depuis `global`, jamais des conditions de graphe.
+export type GameMode = "NORMAL" | "ANIMATEUR" | "SOIREE" | "HARDCORE";
+export type Difficulty = "ENFANT" | "FAMILLE" | "EXPERT";
+
 export interface Game {
   gameId: string;
   schemaVersion: string;
@@ -356,8 +371,8 @@ export interface Game {
     navigationModel?: "BASIC" | "GUIDED" | "TREASURE_HUNT" | "ESCAPE_GAME" | "OPEN_EXPLORATION";
     presentation?: string[];
     experienceStyle?: ExperienceStyle;
-    gameMode?: "NORMAL" | "ANIMATEUR" | "SOIREE" | "HARDCORE";
-    difficulty?: "ENFANT" | "FAMILLE" | "EXPERT";
+    gameMode?: GameMode;
+    difficulty?: Difficulty;
     dureeTotale?: number;
     finDeTemps?: "terminer" | "continuer";
     indoorPlans?: IndoorPlan[];

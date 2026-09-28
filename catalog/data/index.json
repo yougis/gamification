@@ -1,0 +1,19 @@
+{
+  "codes": {
+    "1588": {
+      "gameId": "nouvelle-enquete",
+      "versions": [
+        1,
+        2,
+        3
+      ]
+    }
+  },
+  "games": {
+    "nouvelle-enquete": {
+      "code": "1588",
+      "current": 3,
+      "date": "2026-09-28T12:38:23.815Z"
+    }
+  }
+}

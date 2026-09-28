@@ -15,12 +15,12 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { validateGame, deadEnds } from "./game/validate";
-import { rendreDiagnostic, type Diagnostic } from "./game/diagnostics";
+import { compterErreurs, rendreDiagnostic, type Diagnostic } from "./game/diagnostics";
 import { evaluate, drawPool, estHorsDelai, type Sim } from "./game/evaluate";
-import { composeNodes, setActivation, registerAsset, exportPackFull, validateGameFull, canExport, addSecoursCode, importGame, addObject, setObjects, duplicateObject, setReview, removeNode, renameNode, duplicateNode, patchScreenZone, removeScreenZone, addScreenWidget, setScreenWidget as mcpSetScreenWidget, removeScreenWidget, moveScreenWidget, moveScreenWidgetAcross, setNodeScreen, setScreenBackground, setScreenStyles, setGlobalScreen, setGlobalBackground, patchGlobalZone, removeGlobalZone, addGlobalWidget, setGlobalWidget, removeGlobalWidget, moveGlobalWidget, moveGlobalWidgetAcross, setGlobalScreenStyles, setMinigameDefaults, setPresentation, migrerPreset, retirerOperator, setOperator, setMaxReentries, clampDrawCount, retirerDoublonPool, fixEnumDefaut, nettoyerReferencesOrphelines, correctifApplicable, type ManifestFile } from "./game/mcp";
+import { composeNodes, setActivation, registerAsset, exportPackFull, validateGameFull, canExport, addSecoursCode, importGame, addObject, setObjects, duplicateObject, setReview, removeNode, renameNode, duplicateNode, patchScreenZone, removeScreenZone, addScreenWidget, setScreenWidget as mcpSetScreenWidget, removeScreenWidget, moveScreenWidget, moveScreenWidgetAcross, setNodeScreen, setExperienceStyle, migrerExperienceStyleRacine, setGameMode, setDifficulty, migrerGameModeDifficultyRacine, creerNoeudStart, garantirStart, setScreenBackground, setScreenStyles, setGlobalScreen, setGlobalBackground, patchGlobalZone, removeGlobalZone, addGlobalWidget, setGlobalWidget, removeGlobalWidget, moveGlobalWidget, moveGlobalWidgetAcross, setGlobalScreenStyles, setMinigameDefaults, setPresentation, migrerPreset, retirerOperator, setOperator, setMaxReentries, clampDrawCount, retirerDoublonPool, fixEnumDefaut, nettoyerReferencesOrphelines, correctifApplicable, type ManifestFile } from "./game/mcp";
 import { emptyMeta, type Condition, type Effect, type Game, type GameNode, type GameObject, type MinigameDefaults, type Predicate, type StudioMeta, type ExperienceStyle, type Branding, type GameMode, type Difficulty, type ScreenDefinition, type ZoneContent, type ZoneId } from "./game/types";
 import { buildCompatSidecar, canExportToChannel, type ChannelId } from "./game/compat";
-import { fetchAsset, fetchPack, getCatalogUrl, listGames, publishGame, setCatalogUrl as sauvegarderCatalogUrl, type CatalogEntry } from "./game/catalog";
+import { fetchAsset, fetchPack, fetchTuile, getCatalogUrl, listGames, publishGame, setCatalogUrl as sauvegarderCatalogUrl, type CatalogEntry } from "./game/catalog";
 import { sha256Hex } from "./game/pack";
 import { FONT_OPTIONS, estPoliceConnue } from "./game/fonts";
 import {
@@ -86,14 +86,8 @@ const jeuVide = (): Game => ({
   minEngineVersion: "1.0.0",
   branding: { name: "", primaryColor: "#1a7f37", secondaryColor: "#5f3dc4", fontFamily: "system-ui" },
   global: { gpsRadiusMeters: 30, navigationModel: "BASIC", presentation: ["MAP"], gameMode: "NORMAL", difficulty: "FAMILLE", experienceStyle: { preset: "BASIC" } },
-  nodes: [
-    {
-      id: "start",
-      module: { type: "INFO", data: { schemaVersion: "1.0.0", steps: [{ text: "Bienvenue. Modifiez ce texte pour raconter le début de votre jeu." }] } },
-      activation: { requires: [] },
-      discovery: { mode: "VISIBLE_NOW" },
-    },
-  ],
+  // Start factorisé (change studio-nouveau-projet) : même contenu qu'à l'import vide.
+  nodes: [creerNoeudStart()],
 });
 
 const init: State = { past: [], present: { game: jeuVide(), meta: emptyMeta() }, future: [] };
@@ -264,7 +258,7 @@ export default function App() {  const [st, dispatch] = useReducer(reduce, undef
   const [selMulti, setSelMulti] = useState<string[]>([]);
   const [recherche, setRecherche] = useState("");
   const [positions, setPositions] = useState<Record<string, { x: number; y: number }>>({});
-  const [rapport, setRapport] = useState<string[]>([]);
+  const [, setRapport] = useState<string[]>([]);
   const [animateur, setAnimateur] = useState(false);
   const [manifest, setManifest] = useState<ManifestFile[]>([]);
   // Catalogue des jeux (change studio-game-catalog) : URL du service
@@ -364,6 +358,9 @@ export default function App() {  const [st, dispatch] = useReducer(reduce, undef
   // --- prévisualisation ---
   const [sessionId, setSessionId] = useState("session-1");
   const [sim, setSim] = useState({ present: [] as string[], dwell: [] as string[], through: [] as string[], dtMin: 0, precision: 5 });
+  // Position GPS simulée (change carte-joueur-navigable, phase 3) : lue par
+  // la carte interactive du terminal (point SIMULÉ), jamais le poste auteur.
+  const [positionSimu, setPositionSimu] = useState<{ lat: number; lng: number } | null>(null);
   const [draws, setDraws] = useState<Record<string, string[]>>({});
   const [forced, setForced] = useState<Record<string, string>>({});
   const [done, setDone] = useState<Record<string, number>>({});
@@ -960,7 +957,27 @@ const noeuds: Node[] = useMemo(
   // l'écran (la checklist reflète l'état) au lieu de repartir au Composer.
   const genererPack = async () => {
     if (bloqueExport && !animateur) return;
-    const r = await exportPackFull(game, st.present.meta, manifest, animateur);
+    // Tuiles du pack actif (change pack-tuiles-effectif phase C) : lecteur
+    // adossé au cache serveur quand configuré ; sans catalogue, export
+    // historique sans tuiles (comportement inchangé).
+    const cacheTuiles = new Map<string, Uint8Array | null>();
+    const packId = game.global?.tilePackId;
+    const lecteurTuiles =
+      catalogUrl && typeof packId === "string" && packId
+        ? {
+            lire: async (chemin: string): Promise<Uint8Array | null> => {
+              if (!cacheTuiles.has(chemin)) {
+                try {
+                  cacheTuiles.set(chemin, await fetchTuile(catalogUrl, packId, chemin));
+                } catch {
+                  cacheTuiles.set(chemin, null);
+                }
+              }
+              return cacheTuiles.get(chemin) ?? null;
+            },
+          }
+        : undefined;
+    const r = await exportPackFull(game, st.present.meta, manifest, animateur, lecteurTuiles);
     if (!r.ok) {
       setRapport(r.diagnostics.length ? r.diagnostics.map(rendreDiagnostic) : r.errors);
       setEtapeWorkflow(4);
@@ -989,7 +1006,20 @@ const noeuds: Node[] = useMemo(
       window.setTimeout(() => URL.revokeObjectURL(url), 5000);
       nbAssets++;
     }
-    setRapport([`Export OK : game.json + manifest (${r.manifest!.files.length} fichiers) + studio-meta.json${nbAssets ? ` + ${nbAssets} asset(s)` : ""}`]);
+    // Tuiles du pack actif (phase C) : octets lus via le lecteur ci-dessus,
+    // proposés au téléchargement avec le pack comme les assets.
+    let nbTuiles = 0;
+    for (const [chemin, octets] of cacheTuiles) {
+      if (!octets || !r.manifest!.files.some((m) => m.path === chemin)) continue;
+      const url = URL.createObjectURL(new Blob([octets as BlobPart], { type: "image/png" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = chemin.split("/").pop() ?? chemin;
+      a.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 5000);
+      nbTuiles++;
+    }
+    setRapport([`Export OK : game.json + manifest (${r.manifest!.files.length} fichiers) + studio-meta.json${nbAssets ? ` + ${nbAssets} asset(s)` : ""}${nbTuiles ? ` + ${nbTuiles} tuile(s)` : ""}`]);
     setDernierExport({ date: new Date().toISOString(), files: r.manifest!.files });
     setExportOk(true);
     setEtapeWorkflow(5);
@@ -1000,7 +1030,15 @@ const noeuds: Node[] = useMemo(
   const importerFichier = async (file: File | undefined) => {
     if (!file || relecture) return;
     try {
-      const g = await importGame(file);
+      const brut = await importGame(file);
+      // Répare les jeux empoisonnés par l'ancien panneau Config (clé racine
+      // experienceStyle rejetée en C1) avant validation ; le chargement reste
+      // une étape undoable unique, le retour undo restaurant le jeu précédent.
+      let g = migrerExperienceStyleRacine(brut);
+      // Même réparation pour gameMode / difficulty (change studio-config-gamemode-difficulty).
+      g = migrerGameModeDifficultyRacine(g);
+      // Fichier sans nœud : même `start` que jeuVide() (change studio-nouveau-projet).
+      g = garantirStart(g);
       const v = validateGame(g);
       if (!v.ok) {
         setRapport(v.layers.flatMap((l) => (l.diagnostics.length ? l.diagnostics.map(rendreDiagnostic) : [`Couche ${l.layer} : OK`])));
@@ -1099,7 +1137,11 @@ const noeuds: Node[] = useMemo(
     inputImportRef.current?.click();
   };
 
-  const erreurs = rapport.filter((r) => !r.includes(": OK"));
+  // Compteur pastille (change pastille-validation-source) : même source que
+  // les listes de l'écran Valider (diagnostics C1/C2 de niveau erreur).
+  // Jamais de parsing de texte libre : un succès (« Publié », « Export OK »)
+  // n'est pas un problème. `rapport` reste un simple journal d'activité.
+  const nbErreurs = compterErreurs(diagnostics);
   const nbEtapes = game.nodes.length;
   const finPresente = game.nodes.some((n) => n.isEnding);
   const nbBrouillons = game.nodes.filter((n) => (st.present.meta.status[n.id]?.state ?? "draft") === "draft").length;
@@ -1123,7 +1165,7 @@ const noeuds: Node[] = useMemo(
     1: nbEtapes > 0,
     2: nbEtapes > 0,
     3: nbEtapes > 0 && nbBrouillons === 0,
-    4: erreurs.length === 0 && nbEtapes > 0,
+    4: nbErreurs === 0 && nbEtapes > 0,
     5: exportOk,
   } as Record<EtapeWorkflow, boolean>;
 
@@ -1437,8 +1479,8 @@ const noeuds: Node[] = useMemo(
   // positions ni de la multi-sélection, ils ne re-rendent donc pas à chaque frame de drag.
   const pied = useMemo(() => (
     <footer className="flex flex-wrap items-center gap-2 border-t border-rule bg-surface px-3 py-2 text-[8px]" aria-label="État du jeu">
-      {erreurs.length ? (
-        <span className="puce puce-erreur"><Icon name="alerte" size={13} /> {erreurs.length} problème{erreurs.length > 1 ? "s" : ""}</span>
+      {nbErreurs ? (
+        <span className="puce puce-erreur"><Icon name="alerte" size={13} /> {nbErreurs} problème{nbErreurs > 1 ? "s" : ""}</span>
       ) : (
         <span className="puce puce-ok"><Icon name="ok" size={13} /> Valide</span>
       )}
@@ -1451,12 +1493,12 @@ const noeuds: Node[] = useMemo(
           <Icon name="alerte" size={13} /> {impasses.size} impasse{impasses.size > 1 ? "s" : ""} : {[...impasses].slice(0, 3).join(", ")}
         </button>
       )}
-      <span className="puce"><Icon name="exemple" size={13} /> {manifest.length} fichier{manifest.length > 1 ? "s" : ""} au manifest</span>
+      <span className="puce" title="Assets enregistrés ; game.json est ajouté automatiquement à la génération du pack"><Icon name="exemple" size={13} /> {manifest.length} asset{manifest.length > 1 ? "s" : ""} au manifest</span>
       {nbBrouillons > 0 && (
         <span className="puce"><Icon name="statut" size={13} /> {nbBrouillons} brouillon{nbBrouillons > 1 ? "s" : ""}</span>
       )}
     </footer>
-  ), [erreurs, nbEtapes, finPresente, impasses, manifest, nbBrouillons, choisirNoeud]);
+  ), [nbErreurs, nbEtapes, finPresente, impasses, manifest, nbBrouillons, choisirNoeud]);
 
   const listeErreurs = useMemo(() => {
     const items = diagnostics.filter((d) => d.niveau === "erreur");
@@ -1761,6 +1803,7 @@ const noeuds: Node[] = useMemo(
             setSessionId={setSessionId} nouvelleSession={nouvelleSession}
             reculer={reculerSim} nbTermines={Object.keys(done).length}
             holdSim={holdSim} onHoldLock={forcerHoldLock} onHoldExit={forcerHoldExit}
+            positionSimu={positionSimu} setPositionSimu={setPositionSimu}
           />
           {homeActif && (
             <ApercuAccueil
@@ -1771,6 +1814,7 @@ const noeuds: Node[] = useMemo(
               teteFile={file[0] ?? null}
               actif={activeId}
               onOuvrir={ouvrir}
+              viewport={screenViewport}
             />
           )}
           {modeJeux && activeId && game.nodes.some((n) => n.id === activeId) && (
@@ -1785,6 +1829,11 @@ const noeuds: Node[] = useMemo(
               onTerminer={() => activeId && terminer(activeId, false)}
               onAbandonner={() => activeId && terminer(activeId, true)}
               onQuitter={() => setModeJeux(false)}
+              positionSimu={positionSimu}
+              eligiblesSimu={ev.unlocked}
+              onOuvrirSimu={ouvrir}
+              viewport={screenViewport}
+              onViewport={setScreenViewport}
             />
           )}
           {modeJeux && !activeId && (
@@ -1800,6 +1849,8 @@ const noeuds: Node[] = useMemo(
                     teteFile={file[0] ?? null}
                     actif={activeId}
                     onOuvrir={ouvrir}
+                    viewport={screenViewport}
+                    onViewport={setScreenViewport}
                   />
                 </div>
               ) : (
@@ -1952,6 +2003,7 @@ const noeuds: Node[] = useMemo(
                   </button>
                   <div className="mt-4 border-t border-rule pt-3" aria-label="Publier au catalogue">
                     <div className="text-[8px] font-mono uppercase tracking-widest text-fog mb-2">Publier au catalogue</div>
+                    <p className="text-[8px] font-mono text-fog mb-2" title="Le catalogue versionne par identifiant stable : renommer l'affichage (branding) ne crée ni ne déplace l'entrée catalogue">Identifiant stable : <b>{game.gameId}</b> — le catalogue clé dessus, pas sur le nom d'affichage.</p>
                     <label className="flex flex-col gap-1 text-xs mb-2">
                       <span className="text-fog">Service catalogue</span>
                       <input
@@ -2073,12 +2125,19 @@ const noeuds: Node[] = useMemo(
           title={game.branding?.name ?? "Nom du jeu"}
           className="bg-transparent border-b border-rule text-snow font-display text-[10px] tracking-wide min-w-0 max-w-[280px] outline-none focus:border-snow placeholder:text-fog/40 disabled:opacity-40"
         />
+        <button
+          className="px-2.5 py-1 text-[7px] font-mono uppercase tracking-wider border border-fail/30 rounded text-fail hover:bg-fail/10 transition-colors disabled:opacity-40"
+          disabled={relecture}
+          onClick={effacerBrouillon}
+          title="Créer un nouveau projet (jeu vide — destructif, avec confirmation)"
+          aria-label="Nouveau projet"
+        >Nouveau projet</button>
         <div className="h-3 w-px bg-rule" />
         <div className="flex items-center gap-4 font-mono text-[8px] text-fog">
           <span><span className="text-snow">{game.nodes.length}</span> nœuds</span>
           <span><span className="text-caution">{nbBrouillons}</span> draft</span>
           <span><span className="text-pass">{game.nodes.length - nbBrouillons}</span> reviewed</span>
-          <PastilleValidation nbErreurs={erreurs.length} onVoir={() => setEcran("valider")} />
+          <PastilleValidation nbErreurs={nbErreurs} onVoir={() => setEcran("valider")} />
         </div>
         <div className="ml-auto flex items-center gap-1.5">
           <button
@@ -2259,7 +2318,7 @@ HOLD est un mode système : il se configure dans Configuration globale, pas ici.
               {onglet === "graphe" && (
                 <div className="flex min-h-0 flex-1 flex-col gap-2">
                   <div className="carte flex shrink-0 items-center gap-2 p-2">
-                    <PastilleValidation nbErreurs={erreurs.length} onVoir={() => setEcran("valider")} />
+                    <PastilleValidation nbErreurs={nbErreurs} onVoir={() => setEcran("valider")} />
                     {resetLayout}
                   </div>
                   <div className="flex min-h-0 flex-1 flex-col">{zoneGraphe}</div>
@@ -3047,10 +3106,12 @@ function ManifestForm({ manifest, setManifest, lectureSeule }: { manifest: Manif
 
 function ExperienceStylePanel({ game, edit, lectureSeule }: {
   game: Game;
-  edit: (fn: (s: { game: Game; meta: StudioMeta }) => { game: Game; meta: StudioMeta }) => void;
+  edit: (fn: (s: Snap) => Snap, op?: string) => void;
   lectureSeule: boolean;
 }) {
-  const ex = game.experienceStyle ?? { preset: "BASIC" as const };
+  // Écrit exclusivement global.experienceStyle (change studio-config-experience-style) :
+  // une clé racine serait rejetée en C1 (additionalProperties: false).
+  const ex = game.global?.experienceStyle ?? { preset: "BASIC" as const };
   const diverge = ex.preset != null && (ex.identity != null || ex.visual != null || ex.components != null || ex.media != null || ex.motion != null || ex.map != null || ex.voice != null);
   return (
     <div className="carte p-3">
@@ -3060,7 +3121,7 @@ function ExperienceStylePanel({ game, edit, lectureSeule }: {
       </h3>
       <label className="text-[8px] flex gap-1 items-center">
         Preset :
-        <select className="champ" value={ex.preset ?? "BASIC"} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, experienceStyle: { ...s.game.experienceStyle, preset: e.target.value as any } } }), "setExperienceStyle")}>
+        <select className="champ" value={ex.preset ?? "BASIC"} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, game: setExperienceStyle(s.game, { ...ex, preset: e.target.value as ExperienceStyle["preset"] }) }), "setExperienceStyle")}>
           {["BASIC", "GUIDED", "TREASURE_HUNT", "ESCAPE_GAME", "OPEN_EXPLORATION"].map((p) => <option key={p} value={p}>{p}</option>)}
         </select>
       </label>
@@ -3068,11 +3129,11 @@ function ExperienceStylePanel({ game, edit, lectureSeule }: {
         <>
           <label className="text-[8px] flex gap-1 items-center mt-1">
             Nom éditeur :
-            <input className="champ" value={ex.identity.name ?? ""} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, experienceStyle: { ...s.game.experienceStyle, identity: { ...ex.identity, name: e.target.value } } } }), "setExperienceStyle")} />
+            <input className="champ" value={ex.identity.name ?? ""} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, game: setExperienceStyle(s.game, { ...ex, identity: { name: e.target.value, publisher: ex.identity?.publisher ?? "", theme: ex.identity?.theme ?? "", ...(ex.identity?.logo != null ? { logo: ex.identity.logo } : {}) } }) }), "setExperienceStyle")} />
           </label>
           <label className="text-[8px] flex gap-1 items-center">
             Éditeur :
-            <input className="champ" value={ex.identity.publisher ?? ""} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, experienceStyle: { ...s.game.experienceStyle, identity: { ...ex.identity, publisher: e.target.value } } } }), "setExperienceStyle")} />
+            <input className="champ" value={ex.identity.publisher ?? ""} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, game: setExperienceStyle(s.game, { ...ex, identity: { name: ex.identity?.name ?? "", publisher: e.target.value, theme: ex.identity?.theme ?? "", ...(ex.identity?.logo != null ? { logo: ex.identity.logo } : {}) } }) }), "setExperienceStyle")} />
           </label>
         </>
       )}
@@ -3080,11 +3141,11 @@ function ExperienceStylePanel({ game, edit, lectureSeule }: {
         <>
           <label className="text-[8px] flex gap-1 items-center mt-1">
             Couleur primaire :
-            <input type="color" className="champ" value={ex.visual.primaryColor ?? "#1a7f37"} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, experienceStyle: { ...s.game.experienceStyle, visual: { ...ex.visual, primaryColor: e.target.value } } } }), "setExperienceStyle")} />
+            <input type="color" className="champ" value={ex.visual.primaryColor ?? "#1a7f37"} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, game: setExperienceStyle(s.game, { ...ex, visual: { primaryColor: e.target.value, secondaryColor: ex.visual?.secondaryColor ?? "#5f3dc4", fontFamily: ex.visual?.fontFamily ?? "system-ui" } }) }), "setExperienceStyle")} />
           </label>
           <label className="text-[8px] flex gap-1 items-center">
             Couleur secondaire :
-            <input type="color" className="champ" value={ex.visual.secondaryColor ?? "#5f3dc4"} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, experienceStyle: { ...s.game.experienceStyle, visual: { ...ex.visual, secondaryColor: e.target.value } } } }), "setExperienceStyle")} />
+            <input type="color" className="champ" value={ex.visual.secondaryColor ?? "#5f3dc4"} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, game: setExperienceStyle(s.game, { ...ex, visual: { primaryColor: ex.visual?.primaryColor ?? "#1a7f37", secondaryColor: e.target.value, fontFamily: ex.visual?.fontFamily ?? "system-ui" } }) }), "setExperienceStyle")} />
           </label>
         </>
       )}
@@ -3513,7 +3574,7 @@ Aucun objet défini. Crée ton premier objet ci-dessous : il apparaîtra dans la
 
 function ModePanel({ game, edit, lectureSeule }: {
   game: Game;
-  edit: (fn: (s: { game: Game; meta: StudioMeta }) => { game: Game; meta: StudioMeta }) => void;
+  edit: (fn: (s: Snap) => Snap, op?: string) => void;
   lectureSeule: boolean;
 }) {
   return (
@@ -3523,13 +3584,13 @@ function ModePanel({ game, edit, lectureSeule }: {
       </h3>
       <label className="text-[8px] flex gap-1 items-center">
         Mode :
-        <select className="champ" value={game.gameMode ?? "NORMAL"} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, gameMode: e.target.value as any } }), "setGameMode")}>
+        <select className="champ" value={game.global?.gameMode ?? "NORMAL"} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, game: setGameMode(s.game, e.target.value as GameMode) }), "setGameMode")}>
           {["NORMAL", "ANIMATEUR", "SOIREE", "HARDCORE"].map((m) => <option key={m} value={m}>{m}</option>)}
         </select>
       </label>
       <label className="text-[8px] flex gap-1 items-center mt-1">
         Difficulté :
-        <select className="champ" value={game.difficulty ?? "FAMILLE"} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, game: { ...s.game, difficulty: e.target.value as any } }), "setDifficulty")}>
+        <select className="champ" value={game.global?.difficulty ?? "FAMILLE"} disabled={lectureSeule} onChange={(e) => edit((s) => ({ ...s, game: setDifficulty(s.game, e.target.value as Difficulty) }), "setDifficulty")}>
           {[ "ENFANT", "FAMILLE", "EXPERT"].map((d) => <option key={d} value={d}>{d}</option>)}
         </select>
       </label>
@@ -3964,6 +4025,8 @@ function Apercu(props: {
   setSessionId: (s: string) => void; nouvelleSession: () => void;
   reculer: () => void; nbTermines: number;
   holdSim: "none" | "locked"; onHoldLock: () => void; onHoldExit: () => void;
+  positionSimu: { lat: number; lng: number } | null;
+  setPositionSimu: (p: { lat: number; lng: number } | null) => void;
 }) {
   const { game } = props;
   const holdMode = game.global?.holdMode ?? "none";
@@ -4006,6 +4069,11 @@ function Apercu(props: {
         </select>
         <span>partie <input className="champ min-h-10" value={props.sessionId} onChange={(e) => props.setSessionId(e.target.value)} size={10} aria-label="Identifiant de session" /></span>
         <span>temps +<input className="champ w-16 min-h-10" type="number" value={props.sim.dtMin} onChange={(e) => props.setSim((s) => ({ ...s, dtMin: Number(e.target.value) }))} aria-label="Temps écoulé en minutes" /> min</span>
+        <span title="Position GPS simulée pour la carte du terminal (SIMULÉ, jamais le poste auteur)">position simuée
+          <input className="champ w-20 min-h-10" type="number" step="0.0001" value={props.positionSimu?.lat ?? ""} placeholder="lat" onChange={(e) => { const lat = Number(e.target.value); props.setPositionSimu(Number.isFinite(lat) ? { lat, lng: props.positionSimu?.lng ?? 0 } : null); }} aria-label="Latitude simulée" />
+          <input className="champ w-20 min-h-10" type="number" step="0.0001" value={props.positionSimu?.lng ?? ""} placeholder="lng" onChange={(e) => { const lng = Number(e.target.value); props.setPositionSimu(Number.isFinite(lng) ? { lat: props.positionSimu?.lat ?? 0, lng } : null); }} aria-label="Longitude simulée" />
+          {props.positionSimu && <button className="btn min-h-8 px-2 text-[8px]" onClick={() => props.setPositionSimu(null)}>effacer</button>}
+        </span>
       </div>
       {pools.map((p) => (
         <div key={p.id} className="font-mono text-[9px] text-snow mb-1">Tirage {p.id} → [{(props.draws[p.id] ?? []).join(",")}]

@@ -117,4 +117,67 @@ class MapWidgetCommonTest {
         assertEquals("button", volet[1].type)
         assertEquals("open-step", volet[1].poiAction)
     }
+
+    // Viewport navigable (change carte-joueur-navigable, phase 2) : état UI
+    // local pur — pan/zoom ne touchent ni graphe ni états (aucun event).
+
+    @Test
+    fun echelleBornee() {
+        assertEquals(1f, bornerEchelle(0.2f))
+        assertEquals(1f, bornerEchelle(1f))
+        assertEquals(4f, bornerEchelle(4f))
+        assertEquals(8f, bornerEchelle(8f))
+        assertEquals(8f, bornerEchelle(99f))
+    }
+
+    @Test
+    fun cranZoomParPalierEtBorne() {
+        assertEquals(1.25f, cranZoom(1f, 1))
+        assertEquals(1f, cranZoom(1f, -1))
+        assertEquals(8f, cranZoom(8f, 1))
+        assertEquals(1f, cranZoom(1f, 0))
+        // Aller-retour : pas d'accumulation d'erreur hors borne.
+        var e = 1f
+        repeat(20) { e = cranZoom(e, 1) }
+        assertEquals(8f, e)
+        repeat(20) { e = cranZoom(e, -1) }
+        assertEquals(1f, e, 0.0001f)
+    }
+
+    @Test
+    fun tapContreDragSeuil() {
+        assertTrue(estTap(0f))
+        assertTrue(estTap(7.9f))
+        assertTrue(estTap(8f))
+        assertFalse(estTap(8.1f))
+        assertTrue(estTap(20f, seuilDp = 24f))
+    }
+
+    @Test
+    fun viewportSansEffetMoteur() {
+        // Le viewport ne lit que la géométrie : le jeu et les états passés
+        // en entrée ressortent inchangés (zéro transition, zéro event).
+        val etats = mapOf("a" to NodeState.UNLOCKED)
+        val avant = etats.toMap()
+        val ms = marqueursCarte(jeuDeuxPoi, etats, DiscoveryState(), "all")
+        val bbox = bboxMarqueurs(ms)!!
+        for (m in ms) positionRelative(m, bbox)
+        bornerEchelle(3f)
+        cranZoom(2f, 1)
+        assertEquals(avant, etats)
+        assertEquals(2, jeuDeuxPoi.nodes.size)
+    }
+
+    @Test
+    fun gpsAbsentSansCrash() {
+        // Position null (GPS coupé, stub, permission refusée) : marqueurs et
+        // bbox se calculent comme sans position — la carte reste complète.
+        val ms = marqueursCarte(jeuDeuxPoi, emptyMap(), DiscoveryState(), "all")
+        val bbox = bboxMarqueurs(ms)!!
+        assertEquals(2, ms.size)
+        for (m in ms) {
+            val (x, y) = positionRelative(m, bbox)
+            assertTrue(x in 0f..1f && y in 0f..1f)
+        }
+    }
 }

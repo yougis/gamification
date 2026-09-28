@@ -161,7 +161,7 @@ export default function MapView({ game, sel, onSelect, onGameChange }: MapViewPr
           ...g,
           nodes: g.nodes.map((n) =>
             n.id === sel
-              ? { ...n, activation: { ...n.activation, requires: [...n.activation.requires, { type: "GEOFENCE", lat: ll.lat, lng: ll.lng, radiusMeters: 30 }] } }
+              ? { ...n, activation: { ...n.activation, requires: [...n.activation.requires, { type: "GEOFENCE", lat: ll.lat, lng: ll.lng, radiusMeters: 30, predicate: "enter" }] } }
               : n,
           ),
         };

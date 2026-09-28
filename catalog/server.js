@@ -11,7 +11,7 @@
 //   <gameId>/v<n>/assets/...    octets des assets
 import { createServer } from "node:http";
 import { createHash } from "node:crypto";
-import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, unlinkSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, unlinkSync, rmSync } from "node:fs";
 import { join, dirname, normalize } from "node:path";
 
 export const DATA_DIR = process.env.CATALOG_DATA_DIR ?? join(dirname(new URL(import.meta.url).pathname), "data");
@@ -274,11 +274,14 @@ export function createApp() {
     }
 
   // Packs de tuiles (change smart-tile-caching) : cache serveur par projet.
-  // Le serveur ne stocke que les métas (config snapshot, taille, statut) :
-  // les tuiles restent des fichiers du pack (manifest SHA-256).
+  // Métas + OCTETS (change pack-tuiles-effectif phase C) : les tuiles sont
+  // des fichiers du pack comme les autres (manifest SHA-256).
   // POST /tilepacks {gameId, pack} → {id}
   // GET /tilepacks?gameId=<nom> → [pack] (triés par date décroissante)
-  // DELETE /tilepacks/<gameId>/<reste…> → {ok: true}
+  // GET /tilepacks/<gameId>/<reste…> → meta + tuiles [{path,size,sha256}]
+  // POST /tilepacks/<gameId>/<reste…>/tuiles {manifest, assets} → {ecrites}
+  // GET /tilepacks/<gameId>/<reste…>/tuiles/<z>/<x>/<y>.png → octets
+  // DELETE /tilepacks/<gameId>/<reste…> → {ok: true} (métas ET octets)
   const STRATEGIES_TUILES = ["fixed", "viewport", "radius", "none"];
   const packValide = (gameId, pack) => {
     if (!pack || typeof pack !== "object") return "pack requis";
@@ -367,7 +370,146 @@ export function createApp() {
       return;
     }
     unlinkSync(fp);
+    // Purge des octets (phase C) : le dossier tuiles part avec la méta.
+    rmSync(join(DATA_DIR, gameId, "tilepacks", rel), { recursive: true, force: true });
     send(res, 200, { ok: true });
+    return;
+  }
+
+  // Chemins de packs décodés une fois pour les routes octets (phase C).
+  const cheminPack = () => {
+    try {
+      const gameId = decodeURIComponent(parts[1]);
+      const rel = safeAssetPath(parts.slice(2).map((p) => decodeURIComponent(p)).join("/"));
+      if (!gameId || !rel || gameId.includes("..")) return null;
+      return { gameId, rel };
+    } catch {
+      return null;
+    }
+  };
+  const CLE_TUILE = /^tuiles\/\d{1,2}\/\d+\/\d+\.png$/;
+
+  // GET pack unique : méta + liste des tuiles stockées (scannées, jamais crues).
+  if (req.method === "GET" && parts.length >= 3 && parts[0] === "tilepacks" && !parts.includes("tuiles")) {
+    const c = cheminPack();
+    if (!c) {
+      send(res, 400, { error: "chemin invalide" });
+      return;
+    }
+    const fp = join(DATA_DIR, c.gameId, "tilepacks", `${c.rel}.json`);
+    if (!existsSync(fp)) {
+      send(res, 404, { error: "pack introuvable" });
+      return;
+    }
+    let pack;
+    try {
+      pack = JSON.parse(readFileSync(fp, "utf8"));
+    } catch {
+      send(res, 500, { error: "méta illisible" });
+      return;
+    }
+    const tuiles = [];
+    const tdir = join(DATA_DIR, c.gameId, "tilepacks", c.rel, "tuiles");
+    const balayer = (dir, prefix) => {
+      if (!existsSync(dir)) return;
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        if (e.isDirectory()) balayer(join(dir, e.name), `${prefix}${e.name}/`);
+        else if (e.name.endsWith(".png")) {
+          const p = `tuiles/${prefix}${e.name}`;
+          if (!CLE_TUILE.test(p)) continue;
+          const bytes = readFileSync(join(dir, e.name));
+          tuiles.push({ path: p, version: "1", size: bytes.length, sha256: sha256hex(bytes) });
+        }
+      }
+    };
+    balayer(tdir, "");
+    tuiles.sort((a, b) => (a.path < b.path ? -1 : 1));
+    send(res, 200, { ...pack, tuiles });
+    return;
+  }
+
+  // POST octets : {manifest: {files}, assets: [{path, base64}]} — même
+  // contrat que /publish, scopé aux tuiles. Chaque octet est re-haché.
+  if (req.method === "POST" && parts.length >= 4 && parts[0] === "tilepacks" && parts[parts.length - 1] === "tuiles") {
+    const c = (() => {
+      try {
+        const gameId = decodeURIComponent(parts[1]);
+        const rel = safeAssetPath(parts.slice(2, -1).map((p) => decodeURIComponent(p)).join("/"));
+        if (!gameId || !rel || gameId.includes("..")) return null;
+        return { gameId, rel };
+      } catch {
+        return null;
+      }
+    })();
+    if (!c) {
+      send(res, 400, { error: "chemin invalide" });
+      return;
+    }
+    let body;
+    try {
+      body = JSON.parse(await readBody(req));
+    } catch {
+      send(res, 400, { error: "JSON invalide ou trop volumineux" });
+      return;
+    }
+    const files = body?.manifest?.files;
+    if (!Array.isArray(files) || files.length === 0) {
+      send(res, 400, { error: "manifest.files requis" });
+      return;
+    }
+    const recus = new Map((body?.assets ?? []).map((a) => [a?.path, a?.base64]));
+    let ecrites = 0;
+    for (const m of files) {
+      const rel = typeof m?.path === "string" && CLE_TUILE.test(m.path) ? safeAssetPath(m.path) : null;
+      const b64 = rel ? recus.get(m.path) : undefined;
+      if (!rel || typeof b64 !== "string") {
+        send(res, 400, { error: `tuile absente du dépôt : ${m?.path}` });
+        return;
+      }
+      const bytes = Buffer.from(b64, "base64");
+      if (bytes.length !== m.size || sha256hex(bytes) !== String(m.sha256).toLowerCase()) {
+        send(res, 400, { error: `empreinte incohérente : ${m.path}` });
+        return;
+      }
+      const dest = join(DATA_DIR, c.gameId, "tilepacks", c.rel, rel);
+      mkdirSync(dirname(dest), { recursive: true });
+      writeFileSync(dest, bytes);
+      ecrites += 1;
+    }
+    send(res, 200, { ecrites });
+    return;
+  }
+
+  // GET octet : tuile brute.
+  if (req.method === "GET" && parts.length >= 7 && parts[0] === "tilepacks" && parts.includes("tuiles")) {
+    const idx = parts.indexOf("tuiles");
+    const c = (() => {
+      try {
+        const gameId = decodeURIComponent(parts[1]);
+        const rel = safeAssetPath(parts.slice(2, idx).map((p) => decodeURIComponent(p)).join("/"));
+        const tui = safeAssetPath(["tuiles", ...parts.slice(idx + 1).map((p) => decodeURIComponent(p))].join("/"));
+        if (!gameId || !rel || !tui || !CLE_TUILE.test(tui)) return null;
+        return { gameId, rel, tui };
+      } catch {
+        return null;
+      }
+    })();
+    if (!c) {
+      send(res, 400, { error: "chemin invalide" });
+      return;
+    }
+    const fp = join(DATA_DIR, c.gameId, "tilepacks", c.rel, c.tui);
+    if (!existsSync(fp)) {
+      send(res, 404, { error: "tuile introuvable" });
+      return;
+    }
+    const bytes = readFileSync(fp);
+    res.writeHead(200, {
+      "content-type": "image/png",
+      "content-length": bytes.length,
+      "access-control-allow-origin": "*",
+    });
+    res.end(bytes);
     return;
   }
 

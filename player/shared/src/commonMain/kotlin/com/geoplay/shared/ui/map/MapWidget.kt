@@ -18,9 +18,15 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.transformable
+import androidx.compose.foundation.layout.Row
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -29,8 +35,11 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.geoplay.shared.game.DiscoveryState
+import com.geoplay.shared.game.ECHELLE_MIN_VIEWPORT
 import com.geoplay.shared.game.accesPoi
 import com.geoplay.shared.game.bboxMarqueurs
+import com.geoplay.shared.game.bornerEchelle
+import com.geoplay.shared.game.cranZoom
 import com.geoplay.shared.game.iconePoi
 import com.geoplay.shared.game.marqueursCarte
 import com.geoplay.shared.game.positionRelative
@@ -39,6 +48,8 @@ import com.geoplay.shared.model.Game
 import com.geoplay.shared.model.MapPoiStyle
 import com.geoplay.shared.model.NodeState
 import com.geoplay.shared.model.ScreenWidget
+import com.geoplay.shared.providers.LocationProvider
+import com.geoplay.shared.providers.defaultLocationProvider
 
 // Widget carte joueur (change widget-cartographie) : fond schématique uni
 // (les tuiles natives viendront par-dessus quand le shell les fournira),
@@ -58,6 +69,24 @@ fun symboleEtat(icone: String, etat: NodeState): String {
         NodeState.UNLOCKED -> "●"
         NodeState.ACTIVE -> "▶"
         NodeState.COMPLETED -> "✓"
+    }
+}
+
+// Position joueur (change carte-joueur-navigable, phase 2) : snapshot de la
+// source plateforme, absence gracieuse (stub/fallback, permission refusée,
+// exception → null = carte complète sans point, jamais bloquant). Le
+// snapshot est repris à chaque recomposition liée au jeu/états.
+@Composable
+fun rememberPositionJoueur(
+    provider: LocationProvider = remember { defaultLocationProvider() },
+): Pair<Double, Double>? {
+    return remember(provider) {
+        try {
+            val fix = provider.currentPosition()
+            if (fix.fallback) null else fix.lat to fix.lng
+        } catch (_: Exception) {
+            null
+        }
     }
 }
 
@@ -84,6 +113,15 @@ fun MapWidgetBlock(
         marqueursCarte(game, states, discovery, widget.source?.filter)
     }
     var selection by remember(widget) { mutableStateOf<String?>(null) }
+    // Viewport navigable (change carte-joueur-navigable, phase 2) : état UI
+    // strictement local — pan/zoom ne produisent ni transition ni event.
+    // Échelle 1 = cadrage bbox ; boutons par cran ; recentrage = réinitialise.
+    var echelle by remember(widget) { mutableFloatStateOf(1f) }
+    var decalagePx by remember(widget) { mutableStateOf(Offset.Zero) }
+    val transformable = rememberTransformableState { zoomChange, panChange, _ ->
+        echelle = bornerEchelle(echelle * zoomChange)
+        decalagePx += panChange
+    }
     val bbox = remember(marqueurs) { bboxMarqueurs(marqueurs) }
     val fond = when (widget.background) {
         "indoor-plan" -> Color(0xFF1A1A2E)
@@ -97,9 +135,37 @@ fun MapWidgetBlock(
         if (widget.icon != null && onPleinEcran != null) {
             TextButton(onClick = { onPleinEcran(widget) }) { Text("⤢ Carte") }
         }
+        Row {
+            TextButton(
+                onClick = { echelle = cranZoom(echelle, -1) },
+                modifier = Modifier.semantics { contentDescription = "Zoom arrière" },
+            ) { Text("−") }
+            TextButton(
+                onClick = { echelle = cranZoom(echelle, 1) },
+                modifier = Modifier.semantics { contentDescription = "Zoom avant" },
+            ) { Text("+") }
+            TextButton(
+                onClick = { echelle = ECHELLE_MIN_VIEWPORT; decalagePx = Offset.Zero },
+                modifier = Modifier.semantics { contentDescription = "Recentrer la carte" },
+            ) { Text("◎") }
+        }
         BoxWithConstraints(
             modifier = Modifier.fillMaxWidth().height(220.dp).background(fond),
         ) {
+            // Projection unique (marqueurs + position) : relatif bbox puis
+            // zoom centré + pan. Marqueurs, cercles et volet suivent le
+            // viewport ; le volet (hors cadre) est inchangé.
+            val densite = LocalDensity.current
+            val dx = with(densite) { decalagePx.x.toDp() }
+            val dy = with(densite) { decalagePx.y.toDp() }
+            fun projeter(relX: Float, relY: Float): Pair<Dp, Dp> {
+                val cx = maxWidth / 2
+                val cy = maxHeight / 2
+                val px = cx + (maxWidth * relX - cx) * echelle + dx
+                val py = cy + (maxHeight * relY - cy) * echelle + dy
+                return px to py
+            }
+            Box(modifier = Modifier.matchParentSize().transformable(transformable)) {
             if (marqueurs.isEmpty() || bbox == null) {
                 Text(
                     "Aucune étape positionnée",
@@ -111,9 +177,10 @@ fun MapWidgetBlock(
                 for (m in marqueurs) {
                     val (x, y) = positionRelative(m, bbox)
                     val etat = states[m.id] ?: NodeState.LOCKED
+                    val (px, py) = projeter(x, y)
                     Pastille(
-                        xDp = maxWidth * x.coerceIn(0f, 1f),
-                        yDp = maxHeight * y.coerceIn(0f, 1f),
+                        xDp = px,
+                        yDp = py,
                         symbole = symboleEtat(iconePoi(styles, etat), etat),
                         nom = m.id,
                         selectionne = selection == m.id,
@@ -125,13 +192,15 @@ fun MapWidgetBlock(
                     val dLng = (bbox.maxLng - bbox.minLng).coerceAtLeast(1e-9)
                     val x = ((position.second - bbox.minLng) / dLng).toFloat().coerceIn(0f, 1f)
                     val y = (1.0 - (position.first - bbox.minLat) / dLat).toFloat().coerceIn(0f, 1f)
+                    val (px, py) = projeter(x, y)
                     Box(
                         modifier = Modifier
-                            .offset(x = maxWidth * x - 6.dp, y = maxHeight * y - 6.dp)
+                            .offset(x = px - 6.dp, y = py - 6.dp)
                             .size(12.dp)
                             .background(Color(0xFF4DA3FF), CircleShape),
                     )
                 }
+            }
             }
         }
         val sel = selection?.let { id -> marqueurs.find { it.id == id } }

@@ -163,12 +163,15 @@ fun GeoPlayApp(
             // ni event. Un seul à la fois (remplacement, pas de file).
             Column(modifier = Modifier.weight(1f)) {
                 TextButton(onClick = { cartePleinEcran = null }) { Text("← Accueil") }
+                // Position GPS (change carte-joueur-navigable, phase 2).
+                val positionJoueur = com.geoplay.shared.ui.map.rememberPositionJoueur()
                 MapWidgetBlock(
                     widget = carteActive,
                     game = game,
                     states = states,
                     onOpenNode = ::openNode,
                     onPleinEcran = null,
+                    position = positionJoueur,
                 )
             }
         } else {
