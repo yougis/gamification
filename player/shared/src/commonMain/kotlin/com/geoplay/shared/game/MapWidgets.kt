@@ -111,6 +111,27 @@ fun widgetsCarteEcran(screen: com.geoplay.shared.model.ScreenDefinition?): List<
         .filter { it.type == "map" }
 }
 
+// --- Strates fond / flottant (change carte-fond-flottant, phase 2) ---
+// Un widget `pleinEcran` + `arrierePlan` peint en strate fond (sous le
+// flottant) au lieu de la couche par-dessus ; `pleinEcran` seul garde le
+// comportement historique. Pur et testé en commonTest ; les composables
+// ne font qu'appliquer cette partition (zéro transition, zéro event).
+
+/** Widgets de la strate fond (arrière-plan interactif) : toutes zones hors overlay. */
+fun widgetsFondEcran(screen: com.geoplay.shared.model.ScreenDefinition?): List<ScreenWidget> {
+    val zones = screen?.zones ?: return emptyList()
+    return listOfNotNull(zones.header, zones.content, zones.footer)
+        .flatMap { it.widgets }
+        .filter { it.pleinEcran == true && it.arrierePlan == true }
+}
+
+/** Retire les widgets de fond d'une zone (le flottant ne les rejoue pas). */
+fun sansFond(zone: com.geoplay.shared.model.ZoneContent?): com.geoplay.shared.model.ZoneContent? {
+    if (zone == null) return null
+    if (zone.widgets.none { it.pleinEcran == true && it.arrierePlan == true }) return zone
+    return zone.copy(widgets = zone.widgets.filterNot { it.pleinEcran == true && it.arrierePlan == true })
+}
+
 // --- Viewport navigable (change carte-joueur-navigable, phase 2) ---
 // État UI strictement local : pan/zoom ne produisent ni transition ni
 // event (même passivité que sélection/volet, strate 2). Toute la math est

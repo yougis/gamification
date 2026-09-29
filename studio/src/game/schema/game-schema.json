@@ -522,6 +522,7 @@
             "largeurPct": {"type": "number", "minimum": 0, "maximum": 100},
             "hauteurPct": {"type": "number", "minimum": 0, "maximum": 100},
             "pleinEcran": {"type": "boolean", "default": false},
+            "arrierePlan": {"type": "boolean", "default": false},
             "styles": {"$ref": "#/definitions/widgetStyles"}
           }
         },
@@ -602,6 +603,7 @@
             "largeurPct": {"type": "number", "minimum": 0, "maximum": 100},
             "hauteurPct": {"type": "number", "minimum": 0, "maximum": 100},
             "pleinEcran": {"type": "boolean", "default": false},
+            "arrierePlan": {"type": "boolean", "default": false},
             "styles": {"$ref": "#/definitions/widgetStyles"}
           }
         }

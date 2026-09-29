@@ -36,6 +36,11 @@ export function ZoneRenderer({
   lignesApercu,
   carteSimu,
   masquerPleinEcran,
+  flottant = false,
+  // Traversant (change carte-fond-flottant) : édition ciblée fond — même
+  // les widgets laissent passer les pointeurs vers la carte du fond.
+  // Défaut false = comportement historique (widgets opaques en flottant).
+  traversant = false,
 }: {
   zone: ZoneContent;
   zoneId: ZoneId;
@@ -68,6 +73,12 @@ export function ZoneRenderer({
   // dans la couche breakout (cadre entier). Ici : fantôme de rappel en mode
   // auteur (sélection possible), rien en lecture seule (terminal).
   masquerPleinEcran?: boolean;
+  // Flottant (change carte-fond-flottant) : hors édition avec un fond présent,
+  // la zone laisse passer les pointeurs dans les creux (widgets opaques sauf
+  // traversée explicite) vers la carte du fond. En édition ciblée fond,
+  // `traversant` laisse tout passer pour atteindre la carte.
+  flottant?: boolean;
+  traversant?: boolean;
 }) {
   const widgets = zone.widgets ?? [];
   const [survol, setSurvol] = useState(false);
@@ -105,7 +116,7 @@ export function ZoneRenderer({
             }
           : undefined
       }
-      className={`rounded p-2 ${selected ? "outline-2 outline-neon outline" : "outline-1 outline-dashed outline-transparent hover:outline-line"} ${survol ? "outline-2 outline-dashed outline-neon" : ""}`}
+      className={`rounded p-2 ${flottant ? "pointer-events-none" : ""} ${selected ? "outline-2 outline-neon outline" : "outline-1 outline-dashed outline-transparent hover:outline-line"} ${survol ? "outline-2 outline-dashed outline-neon" : ""}`}
     >
       {widgets.length === 0 ? (
         <div className="rounded border border-dashed border-line px-3 py-4 text-center text-xs text-fog">
@@ -150,6 +161,8 @@ export function ZoneRenderer({
               game={game}
               lignesApercu={lignesApercu}
               carteSimu={carteSimu}
+              flottant={flottant}
+              traversant={traversant}
               onDropBefore={
                 dndActif
                   ? (fromZone, fromIndex, toZone, toIndex) => onMoveWidgetAcross?.(fromZone, fromIndex, toZone, toIndex)

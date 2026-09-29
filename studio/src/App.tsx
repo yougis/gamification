@@ -64,7 +64,7 @@ import { ChevronRepli, RailReplie } from "./components/Repli";
 import { Accordeon, useAccordeon } from "./components/Accordeon";
 import MapView from "./components/MapView";
 import { TilePackPanel } from "./components/TilePackPanel";
-import { PhoneCanvas, VIEWPORTS, type ViewportId } from "./components/wysiwyg/PhoneCanvas";
+import { PhoneCanvas, VIEWPORTS, CALQUES_DEFAUT, type Calques, type CalqueId, type ViewportId } from "./components/wysiwyg/PhoneCanvas";
 import { enregistrerAssetSession } from "./components/wysiwyg/image-files";
 import { ImagePicker } from "./components/wysiwyg/ImagePicker";
 import { PropertiesPanel } from "./components/wysiwyg/PropertiesPanel";
@@ -249,6 +249,61 @@ function BarreViewports({ viewport, onChoisir }: { viewport: ViewportId; onChois
   );
 }
 
+// Barre des calques (change carte-fond-flottant) : strate active pour le
+// routage des pointeurs en édition (fond = la carte reçoit les clics) +
+// œil par strate (visibilité locale). Même pattern P2 replié que viewports.
+// Persistance locale uniquement, jamais dans le JSON.
+function BarreCalques({ calques, fondDispo, onActif, onMasque }: {
+  calques: Calques;
+  fondDispo: boolean;
+  onActif: (c: CalqueId) => void;
+  onMasque: (c: CalqueId, masque: boolean) => void;
+}) {
+  const [ouvert, basculer] = useAccordeon("apercu-calques", false);
+  const STRATES: { id: CalqueId; nom: string; aide: string }[] = [
+    { id: "fond", nom: "Fond", aide: "Arrière-plan interactif (carte du fond)" },
+    { id: "flottant", nom: "Flottant", aide: "Contenu par-dessus (zones header/content/footer)" },
+    { id: "overlay", nom: "Surimpression", aide: "Surimpression modale au sommet" },
+  ];
+  return (
+    <Accordeon
+      id="apercu-calques"
+      titre="Calques"
+      badge={<span className="puce">{STRATES.find((s) => s.id === calques.actif)?.nom}</span>}
+      ouvert={ouvert}
+      onToggle={basculer}
+    >
+      <div className="flex shrink-0 items-center gap-1" role="toolbar" aria-label="Calque actif et visibilité">
+        {STRATES.map((s) => (
+          <span key={s.id} className="inline-flex items-center gap-0.5">
+            <button
+              type="button"
+              className={`btn min-h-9 px-2.5 ${calques.actif === s.id ? "btn-active" : ""}`}
+              aria-pressed={calques.actif === s.id}
+              aria-label={`Calque ${s.nom}`}
+              title={`${s.aide}${s.id === "fond" && !fondDispo ? " (aucun widget en strate fond sur cet écran)" : ""}`}
+              disabled={s.id === "fond" && !fondDispo}
+              onClick={() => onActif(s.id)}
+            >
+              {s.nom}
+            </button>
+            <button
+              type="button"
+              className="btn min-h-9 px-1.5"
+              aria-pressed={!calques.masques[s.id]}
+              aria-label={`${calques.masques[s.id] ? "Afficher" : "Masquer"} la strate ${s.nom} (local, non persisté dans le jeu)`}
+              title={`${calques.masques[s.id] ? "Afficher" : "Masquer"} la strate ${s.nom} (local uniquement)`}
+              onClick={() => onMasque(s.id, !calques.masques[s.id])}
+            >
+              <Icon name="oeil" size={14} />
+            </button>
+          </span>
+        ))}
+      </div>
+    </Accordeon>
+  );
+}
+
 export default function App() {  const [st, dispatch] = useReducer(reduce, undefined, initDraft);
   const { game } = st.present;
   const [sel, setSel] = useState<string | null>(null);
@@ -349,6 +404,27 @@ export default function App() {  const [st, dispatch] = useReducer(reduce, undef
   // Viewport d'apercu (change studio-screen-editor, design D1) : etat local
   // d'edition, jamais persiste dans le JSON ni dans le brouillon.
   const [screenViewport, setScreenViewport] = useState<ViewportId>("phone-portrait");
+  // Calques du canvas auteur (change carte-fond-flottant) : strate active +
+  // visibilité, persistés en localStorage, jamais dans le JSON.
+  const [calques, setCalques] = useState<Calques>(() => {
+    try {
+      const raw = localStorage.getItem("geoplay-calques");
+      if (!raw) return CALQUES_DEFAUT;
+      const p = JSON.parse(raw) as Partial<Calques>;
+      const actif: CalqueId = p.actif === "fond" || p.actif === "overlay" ? p.actif : "flottant";
+      const b = (v: unknown) => v === true;
+      return { actif, masques: { fond: b(p.masques?.fond), flottant: b(p.masques?.flottant), overlay: b(p.masques?.overlay) } };
+    } catch {
+      return CALQUES_DEFAUT;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem("geoplay-calques", JSON.stringify(calques));
+    } catch {
+      /* stockage indisponible : préférence en mémoire seulement */
+    }
+  }, [calques]);
   // Fond d'ecran selectionne (clic sur une zone vide du canvas) : editeur de fond
   const [screenBg, setScreenBg] = useState(false);
   // Thème sombre/clair, persisté dans localStorage.
@@ -1430,6 +1506,24 @@ const noeuds: Node[] = useMemo(
         <div className="relative flex-1 overflow-hidden bg-surface flex flex-col">
           <div className="shrink-0 px-2 py-1 border-b border-rule">
             <BarreViewports viewport={screenViewport} onChoisir={setScreenViewport} />
+            {(() => {
+              const montre = selAccueil && homeActif ? game.global?.screen : etape?.screen;
+              const zones = montre?.zones;
+              const fondDispo = (["header", "content", "footer"] as const).some((z) =>
+                (zones?.[z]?.widgets ?? []).some((w) => {
+                  const m = w as { pleinEcran?: boolean; arrierePlan?: boolean };
+                  return m.pleinEcran === true && m.arrierePlan === true;
+                }),
+              );
+              return (
+                <BarreCalques
+                  calques={calques}
+                  fondDispo={fondDispo}
+                  onActif={(c) => setCalques((s) => ({ ...s, actif: c }))}
+                  onMasque={(c, m) => setCalques((s) => ({ ...s, masques: { ...s.masques, [c]: m } }))}
+                />
+              );
+            })()}
           </div>
           {selAccueil && homeActif ? (
             <div className="shrink-0 px-2 py-1 border-b border-rule bg-neon/5" aria-label="Écran global">
@@ -1448,6 +1542,7 @@ const noeuds: Node[] = useMemo(
                 selectedWidgetIndex={screenWidget}
                 viewport={screenViewport}
                 scale={scaleEcran}
+                calques={calques}
               onSelectZone={(z) => { setScreenZone(z); setScreenWidget(null); setScreenBg(z === null); }}
               onSelectWidget={(z, i) => { setScreenZone(z); setScreenWidget(i); setScreenBg(false); }}
               onCommitText={(z, i, text) => editGame((g) => {
@@ -1485,6 +1580,7 @@ const noeuds: Node[] = useMemo(
                 selectedWidgetIndex={screenWidget}
                 viewport={screenViewport}
                 scale={scaleEcran}
+                calques={calques}
               onSelectZone={(z) => { setScreenZone(z); setScreenWidget(null); setScreenBg(z === null); }}
               onSelectWidget={(z, i) => { setScreenZone(z); setScreenWidget(i); setScreenBg(false); }}
               onCommitText={(z, i, text) => editGame((g) => {

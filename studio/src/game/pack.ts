@@ -150,8 +150,14 @@ export function plageTuiles(bbox: BboxTuiles, zoom: number): PlageTuiles | null 
   return { z, x0, x1, y0, y1 };
 }
 
+/** Budget tuiles de l'aperçu schématique (bandeau). */
+export const MAX_TUILES_APERCU = 12;
+/** Budget tuiles plein écran (change carte-plein-ecran-hauteur) : ~4x la
+ * surface du bandeau h-40 pour un cadre téléphone — même finesse relative. */
+export const MAX_TUILES_PLEIN_ECRAN = 48;
+
 /** Zoom d'aperçu : le plus détaillé dont la grille tient dans `maxTuiles`. */
-export function zoomApercu(bbox: BboxTuiles, minZoom: number, maxZoom: number, maxTuiles = 12): PlageTuiles | null {
+export function zoomApercu(bbox: BboxTuiles, minZoom: number, maxZoom: number, maxTuiles = MAX_TUILES_APERCU): PlageTuiles | null {
   const lo = bornerZoom(Math.min(minZoom, maxZoom));
   const hi = bornerZoom(Math.max(minZoom, maxZoom));
   let repli: PlageTuiles | null = null;

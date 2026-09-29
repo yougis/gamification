@@ -175,6 +175,119 @@ assert.equal(validateGame(jeuCarte).ok, true, JSON.stringify(validateGame(jeuCar
 assert.ok(!JSON.stringify(jeuCarte).includes("http"), "pack-only strict : aucune URL dans le JSON");
 console.log("2.3 JSON sans URL après aperçu (pack-only) : OK");
 
+// carte-plein-ecran-hauteur 1.2 : hauteur pleine en breakout, h-40 en flux.
+{
+  const { createElement: ce2 } = await import("react");
+  const { renderToStaticMarkup: render2 } = await import("react-dom/server");
+  const { MapWidgetRenderer: MapR } = await import("./src/components/wysiwyg/widgets/MapWidgetRenderer.tsx");
+  const { CarteInteractiveSimu: SimuR } = await import("./src/components/wysiwyg/widgets/CarteInteractiveSimu.tsx");
+  const { WidgetRenderer: WR } = await import("./src/components/wysiwyg/WidgetRenderer.tsx");
+  const carte = { type: "map", source: { kind: "steps" }, background: "pack-tiles" } as never;
+  const flux = render2(ce2(MapR as never, { widget: carte, game: jeu3poi } as never));
+  assert.ok(flux.includes("h-40") && !flux.includes("h-full"), "flux garde h-40");
+  const plein = render2(ce2(MapR as never, { widget: carte, game: jeu3poi, hauteurPleine: true } as never));
+  assert.ok(plein.includes("h-full") && !plein.includes("h-40"), "breakout en h-full");
+  const simuFlux = render2(ce2(SimuR as never, { widget: carte, game: jeu3poi, simu: { position: null, eligible: () => false, onOuvrir: () => {} } } as never));
+  assert.ok(simuFlux.includes("h-40") && !simuFlux.includes("h-full"), "simu flux garde h-40");
+  const simuPlein = render2(ce2(SimuR as never, { widget: carte, game: jeu3poi, simu: { position: null, eligible: () => false, onOuvrir: () => {} }, hauteurPleine: true } as never));
+  assert.ok(simuPlein.includes("h-full") && !simuPlein.includes("h-40"), "simu breakout en h-full");
+  const wr = render2(ce2(WR as never, { widget: carte, index: 0, game: jeu3poi, pleinEcran: true } as never));
+  assert.ok(wr.includes("h-full"), "chaîne WidgetRenderer en h-full");
+  console.log("carte-plein-ecran-hauteur : h-full en breakout, h-40 en flux : OK");
+
+// carte-plein-ecran-hauteur 2.1 : budget plein écran (48) plus fin que bandeau (12).
+{
+  const { zoomApercu: za, compterTuiles: ct, MAX_TUILES_APERCU: B12, MAX_TUILES_PLEIN_ECRAN: B48 } = await import("./src/game/pack.ts");
+  assert.equal(B12, 12);
+  assert.equal(B48, 48);
+  const g12 = za(bbox, 10, 16, B12)!;
+  const g48 = za(bbox, 10, 16, B48)!;
+  assert.ok(g48.z >= g12.z, `zoom plein écran ${g48.z} >= bandeau ${g12.z} (même finesse relative)`);
+  const n48 = ct({ minLat: 48.8539, minLng: 2.3459, maxLat: 48.8627, maxLng: 2.3591 }, g48.z, g48.z);
+  assert.ok(n48 <= B48, `${n48} tuiles dans le budget plein écran`);
+  console.log("carte-plein-ecran-hauteur : budget 48 plus fin sans explosion : OK");
+
+// carte-fond-flottant 1.2 : strate fond sous flottant, creux vers la carte.
+{
+  const { createElement: ce3 } = await import("react");
+  const { renderToStaticMarkup: render3 } = await import("react-dom/server");
+  const { PhoneCanvas: PC } = await import("./src/components/wysiwyg/PhoneCanvas.tsx");
+  const ecranFond = {
+    zones: {
+      content: {
+        layout: "stack",
+        widgets: [
+          { type: "map", source: { kind: "steps" }, background: "pack-tiles", pleinEcran: true, arrierePlan: true },
+          { type: "text", text: "Titre flottant", style: "heading" },
+        ],
+      },
+    },
+  } as never;
+  const jeuFond = {
+    gameId: "t", schemaVersion: "1.0.0", minEngineVersion: "1.0.0", nodes: [],
+    global: { map: { provider: "osm" } },
+  } as never;
+  // Lecture seule (terminal) : fond interactif, flottant transparent sauf widgets.
+  const html = render3(ce3(PC as never, { screen: ecranFond, game: jeuFond } as never));
+  const iFond = html.indexOf('aria-label="Arrière-plan"');
+  const iTitre = html.indexOf("Titre flottant");
+  assert.ok(iFond >= 0 && iTitre > iFond, "fond peint avant le flottant");
+  assert.ok(html.includes("pointer-events-none"), "zones flottantes transparentes");
+  assert.ok(html.includes("pointer-events-auto"), "widgets flottants opaques");
+  // Édition (callbacks présents) : pas de transparence, fond non-interactif.
+  const htmlEdit = render3(
+    ce3(PC as never, { screen: ecranFond, game: jeuFond, onSelectZone: () => {}, onCreateZone: () => {} } as never),
+  );
+  assert.ok(htmlEdit.indexOf('aria-label="Arrière-plan"') >= 0, "fond présent en édition");
+  assert.ok(!htmlEdit.includes("pointer-events-auto"), "pas de transparence en édition");
+  // Sans arrierePlan : aucun changement (breakout historique par-dessus).
+  const ecranBreak = {
+    zones: { content: { layout: "stack", widgets: [{ type: "map", source: { kind: "steps" }, pleinEcran: true }] } },
+  } as never;
+  const htmlBreak = render3(ce3(PC as never, { screen: ecranBreak, game: jeuFond } as never));
+  assert.ok(htmlBreak.includes('aria-label="Widgets plein écran"'), "breakout historique conservé");
+  assert.ok(!htmlBreak.includes('aria-label="Arrière-plan"'), "pas de strate fond sans flag");
+  console.log("carte-fond-flottant : fond sous flottant, creux vers carte, breakout intact : OK");
+
+  // carte-fond-flottant 1.3 : sélecteur de calques (édition).
+  const CAL_FOND = { actif: "fond", masques: { fond: false, flottant: false, overlay: false } } as never;
+  const htmlCalque = render3(ce3(PC as never, {
+    screen: ecranFond, game: jeuFond, onSelectZone: () => {}, onCreateZone: () => {}, calques: CAL_FOND,
+  } as never));
+  assert.ok(htmlCalque.includes('aria-label="Arrière-plan"'), "fond rendu");
+  assert.ok(!htmlCalque.slice(htmlCalque.indexOf('aria-label="Arrière-plan"'), htmlCalque.indexOf('aria-label="Arrière-plan"') + 200).includes("pointer-events-none"), "fond interactif ciblé");
+  // Fond masqué → absent ; overlay masqué → modale absente.
+  const htmlMasque = render3(ce3(PC as never, {
+    screen: { zones: { content: { layout: "stack", widgets: [{ type: "text", text: "x" }] }, overlay: { layout: "stack", widgets: [{ type: "text", text: "y" }] } } },
+    game: jeuFond, onSelectZone: () => {}, onCreateZone: () => {},
+    calques: { actif: "flottant", masques: { fond: true, flottant: false, overlay: true } },
+  } as never));
+  assert.ok(!htmlMasque.includes('aria-label="Arrière-plan"'), "fond masqué absent");
+  assert.ok(!htmlMasque.includes("bg-black/50"), "overlay masquée absente");
+  assert.ok(htmlMasque.includes(">x<"), "flottant visible");
+  console.log("carte-fond-flottant : calques édition (ciblage fond, œil par strate) : OK");
+
+  // carte-fond-flottant 1.4 : terminal = lecture seule, stacking hérité.
+  const { PlayerTerminal: PT } = await import("./src/components/wysiwyg/PlayerTerminal.tsx");
+  const noeudFond = {
+    id: "n1",
+    module: { type: "INFO", data: { schemaVersion: "1.0.0", steps: [{ text: "bonjour" }] } },
+    activation: { requires: [{ type: "TIMER", anchor: "GAME_START", delaySeconds: 0 }] },
+    screen: ecranFond,
+  } as never;
+  const noop = () => {};
+  const htmlTerm = render3(ce3(PT as never, {
+    node: noeudFond, game: jeuFond, holdMode: "none",
+    onCompleteNode: noop, onTerminer: noop, onAbandonner: noop, onQuitter: noop,
+  } as never));
+  assert.ok(htmlTerm.includes('aria-label="Arrière-plan"'), "fond rendu dans le terminal");
+  assert.ok(htmlTerm.includes("Titre flottant"), "flottant par-dessus dans le terminal");
+  assert.ok(htmlTerm.includes("SIMULÉ") || htmlTerm.includes("Terminal joueur simulé"), "chrome simu intact");
+  console.log("carte-fond-flottant : terminal hérite du stacking, simu intacte : OK");
+}
+}
+}
+
 // 3.1/3.2/3.3 (carte-joueur-navigable) : carte interactive simulée —
 // marqueurs cliquables, point SIMULÉ, volet fermé au repos, JSON intact.
 {

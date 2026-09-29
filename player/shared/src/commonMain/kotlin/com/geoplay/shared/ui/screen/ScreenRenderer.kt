@@ -37,6 +37,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.geoplay.shared.game.paginateContent
+import com.geoplay.shared.game.sansFond
+import com.geoplay.shared.game.widgetsFondEcran
 import com.geoplay.shared.model.Branding
 import com.geoplay.shared.model.Game
 import com.geoplay.shared.model.NodeState
@@ -132,7 +134,11 @@ fun ScreenRenderer(
     var overlayDismissed by remember(screen) { mutableStateOf(false) }
     // Sous-pages du content (change screen-subpages) : état local, jamais
     // persisté. Sans pagination demandée ou page unique : rendu inchangé.
-    val widgetsContenu = zones?.content?.widgets ?: emptyList()
+    // Strate fond (change carte-fond-flottant, phase 2) : collecte AVANT
+    // pagination (fond stable sur les sous-pages), exclue du flux.
+    val fond = remember(screen) { widgetsFondEcran(screen) }
+    val contenuSansFond = remember(zones?.content) { sansFond(zones?.content) }
+    val widgetsContenu = contenuSansFond?.widgets ?: emptyList()
     val pages = remember(widgetsContenu, sousPages) {
         if (sousPages) paginateContent(widgetsContenu) else listOf(widgetsContenu)
     }
@@ -154,8 +160,29 @@ fun ScreenRenderer(
         if ((scrim ?: 0.0) > 0.0) {
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = scrim!!.toFloat().coerceIn(0f, 1f))))
         }
+        // Strate fond : peinte en premier (sous le flottant), navigable
+        // (viewport local du widget), sans transition ni event.
+        if (fond.isNotEmpty()) {
+            Box(Modifier.fillMaxSize()) {
+                for (w in fond) {
+                    WidgetBlock(
+                        widget = w,
+                        branding = branding,
+                        moduleSlot = moduleSlot,
+                        imageContent = imageContent,
+                        style = styleOf(w),
+                        styleOf = styleOf,
+                        onButtonAction = onButtonAction,
+                        progressFraction = progressFraction,
+                        pageIndex = idxProgress,
+                        pageTotal = totalProgress,
+                        carte = carte,
+                    )
+                }
+            }
+        }
         Column(Modifier.fillMaxSize()) {
-            zones?.header?.let { ZoneBlock(it, branding, moduleSlot, imageContent, styleOf, onButtonAction, progressFraction, idxProgress, totalProgress, carte) }
+            sansFond(zones?.header)?.let { ZoneBlock(it, branding, moduleSlot, imageContent, styleOf, onButtonAction, progressFraction, idxProgress, totalProgress, carte) }
             Box(
                 Modifier.weight(1f).fillMaxWidth()
                     .pointerInput(paginer, pageSure) {
@@ -167,9 +194,9 @@ fun ScreenRenderer(
                     },
             ) {
                 val zonePage = if (paginer) {
-                    (zones?.content ?: ZoneContent()).copy(widgets = pages[pageSure])
+                    (contenuSansFond ?: ZoneContent()).copy(widgets = pages[pageSure])
                 } else {
-                    zones?.content
+                    contenuSansFond
                 }
                 zonePage?.let {
                     ZoneBlock(it, branding, moduleSlot, imageContent, styleOf, onButtonAction, progressFraction, idxProgress, totalProgress, carte)
@@ -194,7 +221,7 @@ fun ScreenRenderer(
                     }) { Text(if (pageSure >= pages.size - 1) "Terminer" else "Suivant →") }
                 }
             }
-            zones?.footer?.let { ZoneBlock(it, branding, moduleSlot, imageContent, styleOf, onButtonAction, progressFraction, idxProgress, totalProgress, carte) }
+            sansFond(zones?.footer)?.let { ZoneBlock(it, branding, moduleSlot, imageContent, styleOf, onButtonAction, progressFraction, idxProgress, totalProgress, carte) }
         }
         val overlay = zones?.overlay
         if (overlay != null && !overlayDismissed) {

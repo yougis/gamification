@@ -136,11 +136,24 @@ function MiseEnPageWidget({
         <input
           type="checkbox"
           checked={widget.pleinEcran === true}
-          onChange={(e) => onChange({ ...widget, pleinEcran: e.target.checked ? true : undefined })}
+          onChange={(e) => onChange(e.target.checked ? { ...widget, pleinEcran: true } : { ...widget, pleinEcran: undefined, arrierePlan: undefined })}
         />
         <span className="flex items-center gap-1">
           Plein écran (cadre entier, sous la surimpression)
-          <RetourDefaut visible={widget.pleinEcran === true} titre="plein écran" onReset={() => onChange({ ...widget, pleinEcran: undefined })} />
+          <RetourDefaut visible={widget.pleinEcran === true} titre="plein écran" onReset={() => onChange({ ...widget, pleinEcran: undefined, arrierePlan: undefined })} />
+        </span>
+      </label>
+      <label className="flex items-center gap-2 text-xs" title={widget.pleinEcran === true ? "Arrière-plan interactif sous le contenu flottant" : "Exige le plein écran"}>
+        <input
+          type="checkbox"
+          disabled={widget.pleinEcran !== true}
+          checked={widget.pleinEcran === true && widget.arrierePlan === true}
+          onChange={(e) => onChange({ ...widget, arrierePlan: e.target.checked ? true : undefined })}
+          aria-label="Arrière-plan (sous le contenu flottant)"
+        />
+        <span className="flex items-center gap-1">
+          Arrière-plan (sous le contenu flottant)
+          <RetourDefaut visible={widget.arrierePlan === true} titre="arrière-plan" onReset={() => onChange({ ...widget, arrierePlan: undefined })} />
         </span>
       </label>
       <div className="flex gap-1">

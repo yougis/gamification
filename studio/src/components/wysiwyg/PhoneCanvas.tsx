@@ -23,6 +23,19 @@ export const VIEWPORTS: { id: ViewportId; libelle: string; largeur: number; haut
   { id: "tablet-landscape", libelle: "Tablette paysage", largeur: 1024, hauteur: 768 },
 ];
 
+// Calques (change carte-fond-flottant) : strate active pour le routage des
+// pointeurs en édition + visibilité par strate. Persistance locale côté
+// appelant, jamais dans le JSON. Absent = comportement historique.
+export type CalqueId = "fond" | "flottant" | "overlay";
+export interface Calques {
+  actif: CalqueId;
+  masques: Record<CalqueId, boolean>;
+}
+export const CALQUES_DEFAUT: Calques = {
+  actif: "flottant",
+  masques: { fond: false, flottant: false, overlay: false },
+};
+
 // Slot fantome : zone absente dessinee en pointilles, jamais serialisee.
 // Un clic cree la zone vide et la selectionne (via `onCreateZone`).
 function FantomeZone({ libelle, zoneId, onCreate }: { libelle: string; zoneId: ZoneId; onCreate: (zoneId: ZoneId) => void }) {
@@ -64,6 +77,7 @@ export function PhoneCanvas({
   couleurMessage,
   afficherPagination = true,
   carteSimu,
+  calques,
 }: {
   screen: ScreenDefinition;
   // Jeu courant (change widget-cartographie) : contexte de lecture pour les
@@ -105,6 +119,9 @@ export function PhoneCanvas({
   // Carte simu (change carte-joueur-navigable, phase 3) : carte interactive
   // dans le terminal simulé. Absent = aperçu auteur statique.
   carteSimu?: CarteSimu;
+  // Calques (change carte-fond-flottant) : routage pointeurs + visibilité
+  // par strate en édition. Absent = comportement historique.
+  calques?: Calques;
 }) {
   const zones = screen.zones ?? {};
   const format = VIEWPORTS.find((v) => v.id === viewport) ?? VIEWPORTS[0];
@@ -168,41 +185,69 @@ export function PhoneCanvas({
   // content) : callbacks bruts, comme les zones. En mode auteur la couche est
   // non-interactive (le fantôme en zone sélectionne) ; en lecture seule les
   // widgets restent actifs (ex. carte simu du terminal).
+  // Strate fond (change carte-fond-flottant) : les widgets `pleinEcran` +
+  // `arrierePlan` peignent en PREMIER (sous le flottant) au lieu de la couche
+  // par-dessus ; le flottant (zones) reste transparent avec creux cliquables
+  // vers le fond hors édition (voir prop `flottant` transmise aux zones).
   const edition = onSelectZone != null || onCreateZone != null;
-  const visuelsPleinEcran: { zoneId: ZoneId; widget: Widget; index: number }[] = [];
+  type VisuelSorti = { zoneId: ZoneId; widget: Widget; index: number; fond: boolean };
+  const visuelsPleinEcran: VisuelSorti[] = [];
   for (const zid of ["header", "content", "footer"] as ZoneId[]) {
     const rendus = zid === "content" ? (sousPages[indexSur] ?? []) : (zones[zid]?.widgets ?? []);
     const base = zid === "content" ? decalage : 0;
     rendus.forEach((w, i) => {
-      if ((w as { pleinEcran?: boolean }).pleinEcran === true) visuelsPleinEcran.push({ zoneId: zid, widget: w, index: base + i });
+      if ((w as { pleinEcran?: boolean }).pleinEcran !== true) return;
+      const fond = (w as { arrierePlan?: boolean }).arrierePlan === true;
+      visuelsPleinEcran.push({ zoneId: zid, widget: w, index: base + i, fond });
     });
   }
   const dndBreakout = onMoveWidgetAcross != null;
+  // Strates (change carte-fond-flottant) : `cal` vaut les défauts quand la
+  // prop est absente — comportement strictement historique dans ce cas.
+  const cal = calques ?? CALQUES_DEFAUT;
+  const masque = (c: CalqueId) => cal.masques[c] === true;
+  const fondPresent = visuelsPleinEcran.some((v) => v.fond);
+  // Interactivité du fond : lecture seule (terminal) comme avant, plus
+  // édition ciblée sur le calque fond via le sélecteur de calques.
+  const fondInteractif = !edition || cal.actif === "fond";
+  // Transparence des zones : legacy hors édition, ou édition ciblée fond
+  // (les clics traversent vers la carte). Widgets opaques sauf traversée
+  // explicite (édition ciblée fond : tout traverse).
+  const zonesTransparentes = (!edition && fondPresent) || (edition && fondPresent && cal.actif === "fond");
+  const widgetsTraversants = edition && fondPresent && cal.actif === "fond";
+  const rendreSorti = ({ zoneId, widget, index }: VisuelSorti, interactif: boolean) => (
+    <div key={`${zoneId}-${index}`} className={`absolute inset-0 h-full ${interactif ? "" : "pointer-events-none"}`}>
+      <WidgetRenderer
+        widget={widget}
+        index={index}
+        zoneId={zoneId}
+        moduleType={moduleType}
+        moduleData={moduleData}
+        selected={selectedZoneId === zoneId && selectedWidgetIndex === index}
+        deplacable={dndBreakout && widget.type === "text"}
+        onSelect={(i) => onSelectWidget?.(zoneId, i)}
+        onCommitText={onCommitText}
+        renderModule={renderModule}
+        contextePage={contextePage}
+        hauteurMaxMedia={hauteurMaxMedia}
+        game={game}
+        lignesApercu={lignesApercu}
+        carteSimu={carteSimu}
+        pleinEcran
+        onDropBefore={dndBreakout ? (fz, fi, tz, ti) => onMoveWidgetAcross?.(fz, fi, tz, ti) : undefined}
+      />
+    </div>
+  );
+  const coucheFond =
+    !fondPresent || masque("fond") ? null : (
+      <div className="absolute inset-0" aria-label="Arrière-plan">
+        {visuelsPleinEcran.filter((v) => v.fond).map((v) => rendreSorti(v, fondInteractif))}
+      </div>
+    );
   const couchePleinEcran =
-    visuelsPleinEcran.length === 0 ? null : (
+    !visuelsPleinEcran.some((v) => !v.fond) ? null : (
       <div className="absolute inset-0" aria-label="Widgets plein écran">
-        {visuelsPleinEcran.map(({ zoneId, widget, index }) => (
-          <div key={`${zoneId}-${index}`} className={`absolute inset-0 ${edition ? "pointer-events-none" : ""}`}>
-            <WidgetRenderer
-              widget={widget}
-              index={index}
-              zoneId={zoneId}
-              moduleType={moduleType}
-              moduleData={moduleData}
-              selected={selectedZoneId === zoneId && selectedWidgetIndex === index}
-              deplacable={dndBreakout && widget.type === "text"}
-              onSelect={(i) => onSelectWidget?.(zoneId, i)}
-              onCommitText={onCommitText}
-              renderModule={renderModule}
-              contextePage={contextePage}
-              hauteurMaxMedia={hauteurMaxMedia}
-              game={game}
-              lignesApercu={lignesApercu}
-              carteSimu={carteSimu}
-              onDropBefore={dndBreakout ? (fz, fi, tz, ti) => onMoveWidgetAcross?.(fz, fi, tz, ti) : undefined}
-            />
-          </div>
-        ))}
+        {visuelsPleinEcran.filter((v) => !v.fond).map((v) => rendreSorti(v, !edition))}
       </div>
     );
 
@@ -224,7 +269,8 @@ export function PhoneCanvas({
           {screen.background?.overlay != null ? (
             <div className="pointer-events-none absolute inset-0 bg-black" style={{ opacity: screen.background.overlay }} />
           ) : null}
-          {zones.header ? (
+          {coucheFond}
+          {!masque("flottant") && zones.header ? (
             <div className="relative shrink-0 border-b border-line/50">
               <ZoneRenderer
                 zone={zones.header}
@@ -242,15 +288,18 @@ export function PhoneCanvas({
                 hauteurMaxMedia={hauteurMaxMedia}
                 game={game}
                 lignesApercu={lignesApercu}
+                flottant={zonesTransparentes}
+                traversant={widgetsTraversants}
                 carteSimu={carteSimu}
                 masquerPleinEcran
               />
             </div>
-          ) : showGhosts && onCreateZone ? (
+          ) : !masque("flottant") && showGhosts && onCreateZone ? (
             <div className="relative shrink-0 border-b border-line/50 px-2 py-1">
               <FantomeZone libelle="+ En-tête" zoneId="header" onCreate={onCreateZone} />
             </div>
           ) : null}
+          {!masque("flottant") ? (
           <div className="relative min-h-0 flex-1 overflow-y-auto">
             {paginer ? (
               <div
@@ -315,16 +364,19 @@ export function PhoneCanvas({
                 hauteurMaxMedia={hauteurMaxMedia}
                 game={game}
                 lignesApercu={lignesApercu}
+                flottant={zonesTransparentes}
+                traversant={widgetsTraversants}
                 carteSimu={carteSimu}
                 masquerPleinEcran
             />
           </div>
+          ) : null}
           {!zones.overlay && showGhosts && onCreateZone ? (
             <div className="relative shrink-0 px-2 py-1">
               <FantomeZone libelle="+ Surimpression" zoneId="overlay" onCreate={onCreateZone} />
             </div>
           ) : null}
-          {zones.footer ? (
+          {!masque("flottant") && zones.footer ? (
             <div className="relative shrink-0 border-t border-line/50">
               <ZoneRenderer
                 zone={zones.footer}
@@ -342,17 +394,19 @@ export function PhoneCanvas({
                 hauteurMaxMedia={hauteurMaxMedia}
                 game={game}
                 lignesApercu={lignesApercu}
+                flottant={zonesTransparentes}
+                traversant={widgetsTraversants}
                 carteSimu={carteSimu}
                 masquerPleinEcran
               />
             </div>
-          ) : showGhosts && onCreateZone ? (
+          ) : !masque("flottant") && showGhosts && onCreateZone ? (
             <div className="relative shrink-0 border-t border-line/50 px-2 py-1">
               <FantomeZone libelle="+ Pied de page" zoneId="footer" onCreate={onCreateZone} />
             </div>
           ) : null}
           {couchePleinEcran}
-          {zones.overlay && (!overlayMasquee || !oeil) && !(dissimulable && masqueJoueur) ? (
+          {zones.overlay && !masque("overlay") && (!overlayMasquee || !oeil) && !(dissimulable && masqueJoueur) ? (
             <div
               className="absolute inset-0 flex items-center justify-center bg-black/50 p-6"
               onClick={dissimulable ? () => setMasqueJoueur(true) : undefined}
@@ -404,6 +458,8 @@ export function PhoneCanvas({
                   hauteurMaxMedia={hauteurMaxMedia}
                   game={game}
                   lignesApercu={lignesApercu}
+                  flottant={zonesTransparentes}
+                  traversant={widgetsTraversants}
                   carteSimu={carteSimu}
                 />
               </div>

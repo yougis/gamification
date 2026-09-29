@@ -112,6 +112,9 @@ export interface ImageWidget {
   largeurPct?: number;
   hauteurPct?: number;
   pleinEcran?: boolean;
+  // Strate fond (change carte-fond-flottant) : avec pleinEcran, arriere-plan
+  // interactif sous le contenu flottant ; absent = breakout actuel par-dessus.
+  arrierePlan?: boolean;
   styles?: WidgetStyles;
 }
 
@@ -201,6 +204,9 @@ export interface MapWidget {
   largeurPct?: number;
   hauteurPct?: number;
   pleinEcran?: boolean;
+  // Strate fond (change carte-fond-flottant) : avec pleinEcran, arriere-plan
+  // interactif sous le contenu flottant ; absent = breakout actuel par-dessus.
+  arrierePlan?: boolean;
   styles?: WidgetStyles;
 }
 

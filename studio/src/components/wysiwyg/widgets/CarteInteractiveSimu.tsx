@@ -6,7 +6,7 @@
 // naviguer ne produit rien, Ouvrir passe par onOuvrir (simu existant).
 import { useMemo, useRef, useState } from "react";
 import { computeBbox } from "../../../game/mcp";
-import { bornesTuile, zoomApercu, type BboxTuiles } from "../../../game/pack";
+import { MAX_TUILES_APERCU, MAX_TUILES_PLEIN_ECRAN, bornesTuile, zoomApercu, type BboxTuiles } from "../../../game/pack";
 import { iconePoiDefaut, marqueursCarte } from "../../../game/map-widget";
 import type { LigneApercu } from "../../../game/apercu-accueil";
 import type { Game, MapWidget } from "../../../game/types";
@@ -22,11 +22,14 @@ export interface CarteSimu {
 
 const SEUIL_TAP_PX = 8;
 
-export function CarteInteractiveSimu({ widget, game, lignes, simu }: {
+export function CarteInteractiveSimu({ widget, game, lignes, simu, hauteurPleine = false }: {
   widget: MapWidget;
   game: Game;
   lignes?: LigneApercu[];
   simu: CarteSimu;
+  // Contexte breakout (change carte-plein-ecran-hauteur) : hauteur pleine
+  // du cadre au lieu du bandeau h-40 ; la navigation reste locale.
+  hauteurPleine?: boolean;
 }) {
   const marqueurs = useMemo(() => marqueursCarte(game), [game]);
   const etats = useMemo(() => new Map((lignes ?? []).map((l) => [l.id, l])), [lignes]);
@@ -67,9 +70,14 @@ export function CarteInteractiveSimu({ widget, game, lignes, simu }: {
   }, [bbox, centre.x, centre.y, echelle]);
   const grille = useMemo(() => {
     if (!fenetreLatLng || !enLigne || tuilesKO) return null;
-    return zoomApercu(fenetreLatLng, map.minZoom ?? 12, map.maxZoom ?? 16);
+    return zoomApercu(
+      fenetreLatLng,
+      map.minZoom ?? 12,
+      map.maxZoom ?? 16,
+      hauteurPleine ? MAX_TUILES_PLEIN_ECRAN : MAX_TUILES_APERCU,
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fenetreLatLng, enLigne, tuilesKO, map.minZoom, map.maxZoom]);
+  }, [fenetreLatLng, enLigne, tuilesKO, map.minZoom, map.maxZoom, hauteurPleine]);
 
   const projeter = (rel: { x: number; y: number }): { x: number; y: number } => ({
     x: ((rel.x - fenetreRel.x0) / Math.max(fenetreRel.x1 - fenetreRel.x0, 1e-9)) * 100,
@@ -100,7 +108,7 @@ export function CarteInteractiveSimu({ widget, game, lignes, simu }: {
   const selEtat = sel ? (etats.get(sel.id)?.etat ?? "LOCKED") : null;
 
   return (
-    <div className="w-full" aria-label="Carte simulée interactive">
+    <div className={`w-full ${hauteurPleine ? "flex h-full flex-col" : ""}`} aria-label="Carte simulée interactive">
       <div className="mb-1 flex items-center gap-1">
         <button className="btn min-h-9" title="Zoom arrière" aria-label="Zoom arrière" onClick={() => setEchelle((e) => Math.max(1, e / 1.25))}>−</button>
         <button className="btn min-h-9" title="Zoom avant" aria-label="Zoom avant" onClick={() => setEchelle((e) => Math.min(8, e * 1.25))}>+</button>
@@ -110,7 +118,7 @@ export function CarteInteractiveSimu({ widget, game, lignes, simu }: {
       </div>
       <div
         ref={cadreRef}
-        className="relative h-40 w-full cursor-grab overflow-hidden rounded border border-line active:cursor-grabbing"
+        className={`relative w-full cursor-grab overflow-hidden rounded border border-line active:cursor-grabbing ${hauteurPleine ? "min-h-0 flex-1" : "h-40"}`}
         style={grille ? undefined : { background: fondUni }}
         onPointerDown={demarrerGlisse}
         onPointerMove={poursuivreGlisse}

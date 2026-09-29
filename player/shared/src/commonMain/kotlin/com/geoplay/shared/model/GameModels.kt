@@ -240,6 +240,11 @@ data class ScreenWidget(
     val background: String? = null,
     val poiStyle: MapPoiStyle? = null,
     val volet: ZoneContent? = null,
+    // Mise en page (change carte-fond-flottant) : pleinEcran sort du flux ;
+    // avec arrierePlan, strate fond interactive sous le contenu flottant.
+    // Absents = comportement historique (flux / breakout par-dessus).
+    val pleinEcran: Boolean? = null,
+    val arrierePlan: Boolean? = null,
     val styles: WidgetStyles? = null
 )
 

@@ -1,0 +1,192 @@
+{
+  "gameId": "home-runtime-2pts",
+  "schemaVersion": "1.0.0",
+  "minEngineVersion": "1.0.0",
+  "branding": {
+    "name": "HOME carte 2 points"
+  },
+  "global": {
+    "navigationModel": "BASIC",
+    "presentation": [
+      "MAP",
+      "HOME"
+    ],
+    "experienceStyle": {
+      "preset": "BASIC"
+    },
+    "map": {
+      "provider": "osm",
+      "bbox": {
+        "minLat": 48.005,
+        "minLng": 2.005,
+        "maxLat": 48.025,
+        "maxLng": 2.025
+      },
+      "minZoom": 10,
+      "maxZoom": 18
+    },
+    "screen": {
+      "layout": "map-fullscreen",
+      "background": {
+        "type": "color",
+        "value": "#14141f"
+      },
+      "zones": {
+        "content": {
+          "layout": "stack",
+          "widgets": [
+            {
+              "type": "map",
+              "source": {
+                "kind": "steps"
+              },
+              "background": "pack-tiles",
+              "volet": {
+                "widgets": [
+                  {
+                    "type": "text",
+                    "text": "POI",
+                    "style": "heading"
+                  },
+                  {
+                    "type": "button",
+                    "label": "Ouvrir",
+                    "poiAction": "open-step",
+                    "variant": "primary"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    "tilePackId": "home-runtime-2pts/mulrexl9-1"
+  },
+  "nodes": [
+    {
+      "id": "point-a",
+      "module": {
+        "type": "QUIZ",
+        "data": {
+          "schemaVersion": "1.0.0",
+          "questions": [
+            {
+              "q": "Point A : quelle couleur ?",
+              "options": [
+                "Rouge",
+                "Bleu"
+              ],
+              "correctIndex": 0
+            }
+          ]
+        }
+      },
+      "activation": {
+        "requires": [
+          {
+            "type": "GEOFENCE",
+            "lat": 48.01,
+            "lng": 2.01,
+            "radiusMeters": 30,
+            "predicate": "enter"
+          }
+        ]
+      },
+      "screen": {
+        "layout": "quiz-focus",
+        "zones": {
+          "content": {
+            "layout": "stack",
+            "widgets": [
+              {
+                "type": "text",
+                "text": "Point A",
+                "style": "heading"
+              },
+              {
+                "type": "module"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "point-b",
+      "module": {
+        "type": "QUIZ",
+        "data": {
+          "schemaVersion": "1.0.0",
+          "questions": [
+            {
+              "q": "Point B : quelle couleur ?",
+              "options": [
+                "Vert",
+                "Jaune"
+              ],
+              "correctIndex": 1
+            }
+          ]
+        }
+      },
+      "activation": {
+        "requires": [
+          {
+            "type": "GEOFENCE",
+            "lat": 48.02,
+            "lng": 2.02,
+            "radiusMeters": 30,
+            "predicate": "enter"
+          }
+        ]
+      },
+      "screen": {
+        "layout": "quiz-focus",
+        "zones": {
+          "content": {
+            "layout": "stack",
+            "widgets": [
+              {
+                "type": "text",
+                "text": "Point B",
+                "style": "heading"
+              },
+              {
+                "type": "module"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "fin",
+      "isEnding": true,
+      "module": {
+        "type": "INFO",
+        "data": {
+          "schemaVersion": "1.0.0",
+          "steps": [
+            {
+              "text": "Parcours termine."
+            }
+          ]
+        }
+      },
+      "activation": {
+        "requires": [
+          {
+            "type": "NODE_COMPLETED",
+            "nodeId": "point-a"
+          },
+          {
+            "type": "NODE_COMPLETED",
+            "nodeId": "point-b"
+          }
+        ],
+        "operator": "OR"
+      }
+    }
+  ]
+}

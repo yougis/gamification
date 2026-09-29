@@ -9,7 +9,7 @@ import { useMemo, useState } from "react";
 import { Icon, type IconName } from "../../icons";
 import { aFondCarte, fondEffectifWidget, iconePoiDefaut, marqueursCarte, widgetsVoletApercu } from "../../../game/map-widget";
 import { packActif } from "../../../game/mcp";
-import { zoomApercu } from "../../../game/pack";
+import { MAX_TUILES_APERCU, MAX_TUILES_PLEIN_ECRAN, zoomApercu } from "../../../game/pack";
 import { depotLocal, listerPacks } from "../../../game/tile-packs";
 import { mmss } from "../../../game/apercu-accueil";
 import type { LigneApercu } from "../../../game/apercu-accueil";
@@ -54,7 +54,14 @@ function ApercuVolet({ widgets }: { widgets: Widget[] | undefined }) {
   );
 }
 
-export function MapWidgetRenderer({ widget, game, lignes }: { widget: MapWidget; game?: Game; lignes?: LigneApercu[] }) {
+export function MapWidgetRenderer({ widget, game, lignes, hauteurPleine = false }: {
+  widget: MapWidget;
+  game?: Game;
+  lignes?: LigneApercu[];
+  // Contexte breakout (change carte-plein-ecran-hauteur) : hauteur pleine
+  // du cadre au lieu du bandeau h-40 d'aperçu en flux.
+  hauteurPleine?: boolean;
+}) {
   const fond = widget.background ?? "pack-tiles";
   const marqueurs = game ? marqueursCarte(game) : [];
   const etats = new Map((lignes ?? []).map((l) => [l.id, l]));
@@ -82,7 +89,12 @@ export function MapWidgetRenderer({ widget, game, lignes }: { widget: MapWidget;
   const enLigne = typeof navigator === "undefined" || typeof navigator.onLine !== "boolean" ? true : navigator.onLine;
   const grille =
     pack != null && fond === "pack-tiles" && pack.statut === "pret" && enLigne && !tuilesKO
-      ? zoomApercu(pack.config.bbox, pack.config.minZoom, pack.config.maxZoom)
+      ? zoomApercu(
+          pack.config.bbox,
+          pack.config.minZoom,
+          pack.config.maxZoom,
+          hauteurPleine ? MAX_TUILES_PLEIN_ECRAN : MAX_TUILES_APERCU,
+        )
       : null;
   const titreFond =
     fond === "indoor-plan"
@@ -93,9 +105,9 @@ export function MapWidgetRenderer({ widget, game, lignes }: { widget: MapWidget;
           ? `Pack actif « ${pack.nom} » (${pack.nbTuiles} tuiles)`
           : "Tuiles du pack (aperçu schématique)";
   return (
-    <div className="pointer-events-none w-full" aria-label="Aperçu carte (statique)">
+    <div className={`pointer-events-none w-full ${hauteurPleine ? "h-full" : ""}`} aria-label="Aperçu carte (statique)">
       <div
-        className="relative h-40 w-full overflow-hidden rounded border border-line"
+        className={`relative w-full overflow-hidden rounded border border-line ${hauteurPleine ? "h-full" : "h-40"}`}
         style={grille ? undefined : { background: effectif === "solid" ? "#1a1a2e" : "#14141f" }}
         title={titreFond}
       >

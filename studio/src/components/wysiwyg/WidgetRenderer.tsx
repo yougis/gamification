@@ -56,6 +56,9 @@ export function WidgetRenderer({
   game,
   lignesApercu,
   carteSimu,
+  pleinEcran = false,
+  flottant = false,
+  traversant = false,
 }: {
   widget: Widget;
   index: number;
@@ -89,6 +92,15 @@ export function WidgetRenderer({
   // Carte simu (change carte-joueur-navigable, phase 3) : carte interactive
   // dans le terminal simulé. Absent = aperçu auteur statique.
   carteSimu?: CarteSimu;
+  // Flottant (change carte-fond-flottant) : dans une zone flottante, le
+  // widget redevient opaque aux pointeurs (la zone laisse passer les creux),
+  // sauf `traversant` (édition ciblée fond : tout passe vers la carte).
+  flottant?: boolean;
+  traversant?: boolean;
+  // Contexte breakout (change carte-plein-ecran-hauteur) : true quand rendu
+  // dans la couche plein écran PhoneCanvas. Seul ce chemin donne h-full ;
+  // en flux, les hauteurs d'aperçu (ex. h-40 carte) restent inchangées.
+  pleinEcran?: boolean;
 }) {
   const [edition, setEdition] = useState(false);
   const [survol, setSurvol] = useState(false);
@@ -170,7 +182,7 @@ export function WidgetRenderer({
           onSelect?.(index);
         }
       }}
-      className={`min-w-0 max-w-full rounded ${selected ? "outline-2 outline-neon outline" : ""} ${survol ? "outline-2 outline-dashed outline-neon" : ""} ${deplacable ? "cursor-grab" : ""}`}
+      className={`min-w-0 max-w-full rounded ${pleinEcran ? "h-full" : ""} ${flottant && !traversant ? "pointer-events-auto" : ""} ${selected ? "outline-2 outline-neon outline" : ""} ${survol ? "outline-2 outline-dashed outline-neon" : ""} ${deplacable ? "cursor-grab" : ""}`}
       style={styleTaille}
     >
       {widget.type === "text" ? (
@@ -191,9 +203,9 @@ export function WidgetRenderer({
       {widget.type === "spacer" ? <SpacerWidgetRenderer widget={widget} /> : null}
       {widget.type === "map" ? (
         carteSimu && game ? (
-          <CarteInteractiveSimu widget={widget} game={game} lignes={lignesApercu} simu={carteSimu} />
+          <CarteInteractiveSimu widget={widget} game={game} lignes={lignesApercu} simu={carteSimu} hauteurPleine={pleinEcran} />
         ) : (
-          <MapWidgetRenderer widget={widget} game={game} lignes={lignesApercu} />
+          <MapWidgetRenderer widget={widget} game={game} lignes={lignesApercu} hauteurPleine={pleinEcran} />
         )
       ) : null}
     </div>

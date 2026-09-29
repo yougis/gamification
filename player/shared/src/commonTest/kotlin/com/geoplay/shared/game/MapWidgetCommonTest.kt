@@ -10,6 +10,10 @@ import com.geoplay.shared.model.GameNode
 import com.geoplay.shared.model.MapPoiStyle
 import com.geoplay.shared.model.ModuleData
 import com.geoplay.shared.model.NodeState
+import com.geoplay.shared.model.ScreenDefinition
+import com.geoplay.shared.model.ScreenWidget
+import com.geoplay.shared.model.ScreenZones
+import com.geoplay.shared.model.ZoneContent
 import com.geoplay.shared.model.RandomPool
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -178,5 +182,60 @@ class MapWidgetCommonTest {
             val (x, y) = positionRelative(m, bbox)
             assertTrue(x in 0f..1f && y in 0f..1f)
         }
+    }
+}
+
+class StratesFondFlottantTest {
+
+    private fun carte(fond: Boolean = false, pleinEcran: Boolean = true) = ScreenWidget(
+        type = "map",
+        pleinEcran = pleinEcran,
+        arrierePlan = fond,
+    )
+
+    private fun texte() = ScreenWidget(type = "text", text = "Titre")
+
+    private val ecran = ScreenDefinition(
+        zones = ScreenZones(
+            header = ZoneContent(widgets = listOf(texte())),
+            content = ZoneContent(widgets = listOf(carte(fond = true), texte())),
+            footer = ZoneContent(widgets = listOf(carte(fond = false))),
+        ),
+    )
+
+    @Test
+    fun fondCollecteToutesZonesHorsOverlay() {
+        val fond = widgetsFondEcran(ecran)
+        assertEquals(1, fond.size)
+        assertEquals(true, fond[0].arrierePlan)
+    }
+
+    @Test
+    fun pleinEcranSeulResteEnBreakout() {
+        // pleinEcran sans arrierePlan : ni fond, ni exclu du flux.
+        assertTrue(widgetsFondEcran(ecran).none { it.arrierePlan != true })
+        val footer = sansFond(ecran.zones?.footer)!!
+        assertEquals(1, footer.widgets.size)
+    }
+
+    @Test
+    fun fluxExclutLeFond() {
+        val contenu = sansFond(ecran.zones?.content)!!
+        assertEquals(listOf("text"), contenu.widgets.map { it.type })
+        val header = sansFond(ecran.zones?.header)!!
+        assertEquals(1, header.widgets.size)
+    }
+
+    @Test
+    fun sansFondIdempotentEtNulSansDanger() {
+        assertEquals(null, sansFond(null))
+        val zone = ZoneContent(widgets = listOf(texte()))
+        assertTrue(sansFond(zone) === zone)
+    }
+
+    @Test
+    fun ecranSansFondVide() {
+        assertTrue(widgetsFondEcran(null).isEmpty())
+        assertTrue(widgetsFondEcran(ScreenDefinition()).isEmpty())
     }
 }
