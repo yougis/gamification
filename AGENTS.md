@@ -32,7 +32,7 @@ projet :
    fixture de test.
 7. **Separation des responsabilites** : discovery, activation, progression
    et presentation sont conceptuellement independantes. Le cycle
-   `LOCKED → UNLOCKED → ACTIVE → COMPLETED` reste valide pour tous les
+   `LOCKED → UNLOCKED →  COMPLETED` reste valide pour tous les
    modeles de navigation.
 8. **Donnees jamais en dur** : rayon GPS, overrides, seuils capteurs, URLs,
    bbox/zooms, tout lu depuis le JSON du jeu.
@@ -97,5 +97,5 @@ Les skills suivants sont disponibles pour l'agent :
 - `openspec-explore` — Explorer des ideas
 - `kmp-native-boundary` - développer le  runtime Player (android et Ios) avec de modules parfois natifs.
 - `impeccable` — Amelioration d'interface
-- `codegraph-search` — Interroger l'index sémantique SQLite pour cartographier les dépendances du code
-- `codegraph-analyze` — Analyser les chaînes d'appel et impacts sur la frontière KMP (`kmp-native-boundary`)
+- `geoplay-compose-engine` 
+- `geoplay-wasm-architect`

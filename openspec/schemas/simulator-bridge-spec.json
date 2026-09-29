@@ -1,0 +1,91 @@
+{
+  "$schema": "http://json-schema.org",
+  "title": "SimulatorBridgeSpec",
+  "description": "Spécification formelle du protocole d'échange de messages et d'ACK entre le Studio d'authoring et le simulateur Compose Multiplatform Wasm.",
+  "type": "object",
+  "required": ["sessionId", "type", "timestamp", "payload"],
+  "properties": {
+    "sessionId": {
+      "type": "string",
+      "description": "Identifiant unique de la session de jeu ou d'édition en cours, partagé entre le Studio et le runtime natif/simulation."
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "STUDIO_UPDATE_SCREEN",
+        "ENGINE_ACK_SUCCESS",
+        "ENGINE_ACK_ERROR"
+      ],
+      "description": "Type d'événement transitant sur le pont postMessage. Les types ENGINE_ACK proviennent exclusivement du moteur de rendu."
+    },
+    "timestamp": {
+      "type": "integer",
+      "description": "Timestamp Unix en millisecondes pour synchroniser et ordonnancer les paquets."
+    },
+    "payload": {
+      "type": "object",
+      "oneOf": [
+        {
+          "description": "Structure reçue lorsque type = STUDIO_UPDATE_SCREEN. Contient la spécification de l'écran (Nœud GeoPlay) configuré dans le Studio.",
+          "required": ["nodeId", "widgetType", "settings"],
+          "properties": {
+            "nodeId": {
+              "type": "string",
+              "description": "Identifiant unique du Noeud dans le graphe orienté du jeu (ex: POI_Chateau_Quiz)."
+            },
+            "widgetType": {
+              "type": "string",
+              "enum": ["QUIZ", "DIFFERENCE_GAME", "PUZZLE", "AR_MARKER", "BOUSSOLE"],
+              "description": "Le type de module enregistré dans le registre extensible de GeoPlay."
+            },
+            "settings": {
+              "type": "object",
+              "description": "Données spécifiques du module lues dynamiquement par le JSON, sans constantes en dur.",
+              "properties": {
+                "branding": {
+                  "type": "object",
+                  "properties": {
+                    "bgColor": { "type": "string", "pattern": "^#([A-Fa-f0-9]{6})$" },
+                    "textColor": { "type": "string", "pattern": "^#([A-Fa-f0-9]{6})$" }
+                  }
+                },
+                "moduleData": {
+                  "type": "object",
+                  "description": "Payload propre au composant de destination (ex: questions pour un QUIZ, masques alpha pour un 7-erreurs)."
+                }
+              }
+            }
+          }
+        },
+        {
+          "description": "Structure renvoyée par le simulateur Wasm lorsque type = ENGINE_ACK_SUCCESS.",
+          "required": ["processedNodeId", "status"],
+          "properties": {
+            "processedNodeId": {
+              "type": "string",
+              "description": "Le nodeId qui a été interprété avec succès par le moteur Compose."
+            },
+            "status": {
+              "type": "string",
+              "enum": ["LOCKED", "UNLOCKED", "COMPLETED"],
+              "description": "L'état courant du nœud simulé dans l'orchestrateur de l'application."
+            }
+          }
+        },
+        {
+          "description": "Structure renvoyée par le simulateur Wasm lorsque type = ENGINE_ACK_ERROR.",
+          "required": ["failedNodeId", "errorReason"],
+          "properties": {
+            "failedNodeId": {
+              "type": "string"
+            },
+            "errorReason": {
+              "type": "string",
+              "description": "Description textuelle de l'échec de parsing JSON, de violation du schéma de registre ou d'erreur graphique."
+            }
+          }
+        }
+      ]
+    }
+  }
+}

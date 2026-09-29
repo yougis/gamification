@@ -83,6 +83,11 @@ rules:
       parcours joueur ; si oui, justifier l'exception a l'offline-first.
     - Indiquer la dependance a un change precedent non encore archive
       (ex. depend de 000-framework-architecture).
+    - Le code de rendu graphique des modules (QUIZ, BOUSSOLE, etc.) doit être écrit exclusivement en `commonMain` avec Compose Multiplatform.
+    - L'Iframe de simulation Web doit exécuter le moteur compilé en Kotlin/Wasm et écouter les paquets JSON via l'interopérabilité JavaScript.
+    - Le simulateur Web (wasmJsMain) doit appliquer un fallback logiciel clavier/souris pour les capteurs physiques (GPS, Gyro, Boussole) indisponibles sur ordinateur.
+    - Toute modification du schéma JSON OpenSpec doit être validée par AJV côté Studio et être immédiatement consommable par le parseur Kotlin du runtime.
+
   specs:
     - Toute spec touchant aux mini-jeux doit referencer les types via le registre
       (jamais de liste fermee en dur) et nommer Nœud vs Module vs condition.
@@ -103,6 +108,7 @@ rules:
           validateur applicatif (cycles, atteignabilite, pools, reentry, terminaison).
         - Ne pas introduire de dependance reseau bloquante dans le parcours joueur
           post-telechargement ; stockage natif fichiers+SQLite, manifest SHA-256 verifie.
+        
     archive:
       guidance:
         - Resumer dans le changelog l'impact sur le schema graphe/registre s'il a ete
@@ -124,3 +130,11 @@ pipeline:
 infrastructure:
   code_mapping: codegraph
   database_path: ".codegraph/db.sqlite"
+
+
+architecture:
+  framework: "Kotlin Multiplatform (KMP) + Compose Multiplatform"
+  target_platforms: ["Android", "iOS", "WebAssembly (Wasm)"]
+  paradigm: "Spec-Driven UI Runtime Interpreter (Skiko Graphics Canvas Rendering)"
+  state_management: "Orchestrateur de graphe orienté natif (LOCKED -> UNLOCKED -> ACTIVE -> COMPLETED)"
+  simulation_bridge: "Kotlin/Wasm interopJs Window PostMessage API"
