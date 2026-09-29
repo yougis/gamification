@@ -63,7 +63,7 @@ function windowExpire(nodeId: string, n: GameNode, sim: Sim): boolean {
 }
 
 // Durée globale (change game-temps-global-fenetres) : mêmes formules que les
-// moteurs KMP/PWA (elapsed local, GAME_START = 0, reprise exacte).
+// moteurs KMP natifs (elapsed local, GAME_START = 0, reprise exacte).
 export function dureeTotaleMs(game: Game): number | null {
   const d = game.global?.dureeTotale;
   return typeof d === "number" && d >= 0 ? d * 1000 : null;

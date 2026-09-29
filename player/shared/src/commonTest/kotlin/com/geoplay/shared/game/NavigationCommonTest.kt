@@ -36,7 +36,7 @@ class NavigationCommonTest {
 
     @Test
     fun modeVueDepuisEtatMoteur() {
-        // Change home-player-runtime (3.1.3, 7.2 : ACTIVE supprime).
+        // Change simulateur-compose-sans-pwa (cycle sans etat intermediaire).
         assertEquals(VueMode.JOUABLE, modeVue(NodeState.UNLOCKED))
         assertEquals(VueMode.RELECTURE, modeVue(NodeState.COMPLETED))
         assertEquals(VueMode.APERCU, modeVue(NodeState.LOCKED))

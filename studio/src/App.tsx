@@ -373,10 +373,9 @@ export default function App() {  const [st, dispatch] = useReducer(reduce, undef
   const [etapeWorkflow, setEtapeWorkflow] = useState<EtapeWorkflow>(1);
   const [onglet, setOnglet] = useState<Onglet>("graphe");
   const [ecran, setEcran] = useState<Ecran>("composer");
-  // Canal d'export (change player-pwa-shell) : NATIVE par défaut, PWA pour
-  // la coquille web. Le verdict de compatibilité est affiché à l'écran
-  // Exporter et embarqué (compat.json) ; un canal refusé bloque son export.
-  const [canalExport, setCanalExport] = useState<ChannelId>("NATIVE");
+  // Canal d'export unique (change simulateur-compose-sans-pwa) : player natif.
+  // Le verdict de compatibilité est affiché à l'écran
+  // Exporter et embarqué (compat.json) ; un refus bloque l'export.
   // Verdicts C1/C2 pour la barre globale (null = couche non exécutée).
   const [couches, setCouches] = useState<{ c1: boolean; c2: boolean | null }>({ c1: true, c2: true });
   // Détail par couche pour l'écran Valider (erreurs brutes, groupées au rendu).
@@ -439,19 +438,6 @@ export default function App() {  const [st, dispatch] = useReducer(reduce, undef
   // Position GPS simulée (change carte-joueur-navigable, phase 3) : lue par
   // la carte interactive du terminal (point SIMULÉ), jamais le poste auteur.
   const [positionSimu, setPositionSimu] = useState<{ lat: number; lng: number } | null>(null);
-  // Émulation PWA (change preview-pwa-iframe) : cible configurable (persistée),
-  // URL d'iframe montée à la demande, erreur explicite. Aucun état de jeu ni
-  // d'essai n'est touché (lecture seule + POST dev-server).
-  const [ciblePwa, setCiblePwa] = useState<string>(() => {
-    try {
-      return localStorage.getItem("geoplay-pwa-url") ?? "";
-    } catch {
-      return "";
-    }
-  });
-  const [emulationUrl, setEmulationUrl] = useState<string | null>(null);
-  const [emulationErreur, setEmulationErreur] = useState<string | null>(null);
-  const [emulationBusy, setEmulationBusy] = useState(false);
   const [draws, setDraws] = useState<Record<string, string[]>>({});
   const [forced, setForced] = useState<Record<string, string>>({});
   const [done, setDone] = useState<Record<string, number>>({});
@@ -953,19 +939,18 @@ const noeuds: Node[] = useMemo(
     journal(`retour ${last} : étape rouverte`);
   };
   const ouvrir = (id: string) => {
-    // Snapshot t0 (change home-player-runtime, 4.2) : fige les eligibles a
+    // Snapshot t0 (change simulateur-compose-sans-pwa) : fige les eligibles a
     // l'entree pour le droit a finir ; l'ouverture reste navigation pure.
     setOuvertures((o) => ({ ...o, [id]: snapshotOuverture(id, sim.dtMin * 60000, ev.unlocked) }));
     setActiveId(id);
     journal(`ouverture ${id}`);
   };
-  // Entrée MODE JEUX (change studio-lot-correctifs, home-player-runtime 3.1.2) :
-  // sans étape ouverte (`nav.vue !== "etape"`), on ouvre la tête proposée
-  // (`suggestion.tete`, identique à `file[0]` ici : sans actif,
-  // `file === ev.unlocked` et la tête suggérée est `unlocked[0]`) au lieu de
-  // la salle d'attente ; l'ouverture est journalée comme toute ouverture
-  // manuelle. File vide = salle d'attente inchangée. L'enchaînement reste
-  // l'avance auto existante (reprise en 4.x).
+  // Entrée MODE JEUX (change simulateur-compose-sans-pwa) :
+  // sans étape ouverte, on ouvre l'éligible suggéré (`suggestion.tete`,
+  // premier des eligibles) au lieu de la salle d'attente ; l'ouverture est
+  // journalée comme toute ouverture manuelle. Sans éligible = salle
+  // d'attente inchangée. L'enchaînement suit l'ordre des eligibles, sans
+  // file imposée ni avance auto.
   const entrerModeJeux = () => {
     if (nav.vue !== "etape" && suggestion.tete) ouvrir(suggestion.tete);
     // Mention session sans fin (change player-home-solo) : jeu vide sous
@@ -975,77 +960,10 @@ const noeuds: Node[] = useMemo(
     }
     setModeJeux(true);
   };
-  // Émulation PWA (change preview-pwa-iframe) : pousse le jeu courant vers
-  // /emulate/snapshot (dev-server, mémoire) puis monte l'iframe sur la cible
-  // configurée avec ?game=&cheat=1&session=. Lecture seule côté jeu/essai.
-  const pousserEmulation = async (): Promise<boolean> => {
-    try {
-      const gameJson = JSON.stringify(game);
-      const entreeJeu = {
-        path: "game.json",
-        version: game.schemaVersion,
-        size: tailleOctets(gameJson),
-        sha256: await sha256Hex(gameJson),
-      };
-      const entrees = manifest.some((m) => m.path === "game.json")
-        ? manifest.map((m) => (m.path === "game.json" ? entreeJeu : m))
-        : [...manifest, entreeJeu];
-      const assets: { path: string; base64: string }[] = [];
-      for (const [chemin, fichier] of assetsSession.current) {
-        const octets = new Uint8Array(await fichier.arrayBuffer());
-        assets.push({ path: chemin, base64: octetsVersBase64(octets) });
-      }
-      const r = await fetch("/emulate/snapshot", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          gameJson,
-          manifest: { files: entrees },
-          compat: JSON.stringify(buildCompatSidecar(game)),
-          assets,
-        }),
-      });
-      if (!r.ok) {
-        setEmulationErreur(`Snapshot refusé : HTTP ${r.status} — le dev-server tourne-t-il (vite dev) ?`);
-        return false;
-      }
-      setEmulationErreur(null);
-      return true;
-    } catch (e) {
-      setEmulationErreur(`Snapshot impossible : ${e instanceof Error ? e.message : String(e)} — vérifiez que le service Studio tourne (vite dev).`);
-      return false;
-    }
-  };
-  const ouvrirEmulation = async () => {
-    const cible = ciblePwa.replace(/\/+$/, "");
-    if (!cible) {
-      setEmulationErreur("Cible PWA non configurée : renseignez l'URL déployée (ou le build local).");
-      return;
-    }
-    try {
-      localStorage.setItem("geoplay-pwa-url", ciblePwa);
-    } catch {
-      /* stockage indisponible : cible en mémoire seulement */
-    }
-    setEmulationBusy(true);
-    try {
-      if (!(await pousserEmulation())) return;
-      const jeu = `${window.location.origin}/emulate/game.json`;
-      setEmulationUrl(
-        `${cible}/?game=${encodeURIComponent(jeu)}&cheat=1&session=${encodeURIComponent(`studio-${sessionId}`)}`,
-      );
-    } finally {
-      setEmulationBusy(false);
-    }
-  };
-  const fermerEmulation = () => {
-    setEmulationUrl(null);
-    setEmulationErreur(null);
-  };
-  // Valider/Abandonner sur verdicts + retour HOME (change home-player-runtime,
-  // 4.2) : fin de l'avance auto. Valider = une ecriture COMPLETED (droit a
-  // finir + hors-delai), Abandonner = ecriture ABANDON budgetee, les deux
-  // journalisees SIMULE. Seule la proposition (tete) est journalisee.
+  // Valider/Abandonner (change simulateur-compose-sans-pwa) : Valider = une
+  // ecriture COMPLETED en memoire (droit a finir + hors-delai), Abandonner =
+  // ecriture ABANDON budgetee, les deux journalisees SIMULE sans toucher au
+  // JSON. Seule la proposition (premier eligible) est journalisee.
   const terminer = (id: string, abandon: boolean) => {
     const n = game.nodes.find((m) => m.id === id)!;
     const ouverture = ouvertures[id] ?? snapshotOuverture(id, sim.dtMin * 60000, ev.unlocked);
@@ -2107,57 +2025,6 @@ const noeuds: Node[] = useMemo(
               <button className="btn min-h-9" onClick={() => setModeJeux(false)}>Quitter (Échap)</button>
             </div>
           )}
-          <div className="carte mt-4 p-3" aria-label="Émulation PWA">
-            <h3 className="flex items-center gap-1.5 font-bold text-[13px]">
-              <Icon name="essai" size={15} /> Émulation PWA — le vrai player dans Prévisualiser
-            </h3>
-            <p className="text-[8px] text-fog">La PWA tourne ici avec le jeu courant (snapshot poussé vers le dev-server) : carte navigable, volet Ouvrir, modules, triche pré-ouverte. Sessions namespacées — jamais de pollution des vraies parties. Exige le réseau (PC dev), jamais le terrain.</p>
-            <div className="mt-1 flex flex-wrap items-center gap-1">
-              <label className="flex min-w-0 flex-1 items-center gap-1 text-[8px]">
-                Cible PWA
-                <input
-                  className="champ min-w-0 flex-1"
-                  value={ciblePwa}
-                  onChange={(e) => setCiblePwa(e.target.value)}
-                  placeholder="https://pwa-deployee.exemple.fr (ou build local)"
-                  type="url"
-                  aria-label="URL cible de la PWA émulée"
-                />
-              </label>
-              {!emulationUrl ? (
-                <button className="btn min-h-9" onClick={() => void ouvrirEmulation()} disabled={emulationBusy}>
-                  {emulationBusy ? "Poussée…" : "▶ Émuler la PWA"}
-                </button>
-              ) : (
-                <>
-                  <button className="btn min-h-9" onClick={() => void ouvrirEmulation()} disabled={emulationBusy} title="Repousser le jeu courant (après modification)">
-                    ↻ Actualiser
-                  </button>
-                  <button className="btn min-h-9" onClick={fermerEmulation}>Quitter (Échap)</button>
-                </>
-              )}
-            </div>
-            {emulationErreur && <p className="mt-1 text-[8px] text-fail" role="alert">{emulationErreur}</p>}
-            {emulationUrl && (() => {
-              const fmt = VIEWPORTS.find((v) => v.id === screenViewport) ?? VIEWPORTS[0];
-              return (
-                <div
-                  className="mt-2 overflow-auto"
-                  tabIndex={0}
-                  onKeyDown={(e) => { if (e.key === "Escape") fermerEmulation(); }}
-                  aria-label="PWA émulée — Échap pour quitter"
-                >
-                  <iframe
-                    title="PWA émulée"
-                    src={emulationUrl}
-                    sandbox="allow-scripts allow-same-origin"
-                    style={{ width: fmt.largeur, height: fmt.hauteur, maxWidth: "100%", border: "1px solid var(--line-forte)", borderRadius: 12 }}
-                  />
-                  <p className="mt-1 text-[8px] text-fog">Cadre {fmt.libelle} ({fmt.largeur}×{fmt.hauteur}) — même sélecteur que le canvas. Sortie sans effet sur le JSON ni l'essai.</p>
-                </div>
-              );
-            })()}
-          </div>
         </div>
       )}
       {ecran === "exporter" && (
@@ -2205,41 +2072,22 @@ const noeuds: Node[] = useMemo(
                 ));
               })()}
             </div>
-            <div className="text-[8px] font-mono uppercase tracking-widest text-fog mb-2">Canal player (compatibilité)</div>
+            <div className="text-[8px] font-mono uppercase tracking-widest text-fog mb-2">Canal player natif (compatibilité)</div>
             {(() => {
-              const verdicts = (["NATIVE", "PWA"] as ChannelId[]).map((c) => ({ canal: c, ...canExportToChannel(game, c) }));
-              const courant = verdicts.find((v) => v.canal === canalExport)!;
+              const v = { canal: "NATIVE" as ChannelId, ...canExportToChannel(game, "NATIVE") };
               return (
                 <div className="bg-panel border border-rule rounded-md overflow-hidden mb-5">
-                  <div className="flex gap-2 px-4 py-3 border-b border-rule/40" role="radiogroup" aria-label="Canal d'export">
-                    {(["NATIVE", "PWA"] as ChannelId[]).map((c) => (
-                      <button
-                        key={c}
-                        role="radio"
-                        aria-checked={canalExport === c}
-                        className={`btn min-h-8 px-2.5 text-[8px] ${canalExport === c ? "btn-active" : ""}`}
-                        onClick={() => setCanalExport(c)}
-                      >
-                        {c === "NATIVE" ? "Natif" : "PWA"}
-                      </button>
+                  <div className="px-4 py-2 border-b border-rule/40 last:border-0">
+                    <span className={`puce ${v.ok ? "puce-ok" : "puce-erreur"}`}>
+                      {v.canal} : {v.ok ? "compatible" : "refusé"}
+                    </span>
+                    {v.motifs.map((m, i) => (
+                      <p key={i} className="text-[10px] text-fail mt-1">• {m}</p>
                     ))}
                   </div>
-                  {verdicts.map((v) => (
-                    <div key={v.canal} className="px-4 py-2 border-b border-rule/40 last:border-0">
-                      <span className={`puce ${v.ok ? (v.replis.length ? "puce-caution" : "puce-ok") : "puce-erreur"}`}>
-                        {v.canal} : {v.ok ? (v.replis.length ? "dégradé" : "compatible") : "refusé"}
-                      </span>
-                      {v.motifs.map((m, i) => (
-                        <p key={i} className="text-[10px] text-fail mt-1">• {m}</p>
-                      ))}
-                      {v.replis.map((r, i) => (
-                        <p key={i} className="text-[10px] text-caution mt-1">• repli : {r}</p>
-                      ))}
-                    </div>
-                  ))}
-                  {!courant.ok && (
+                  {!v.ok && (
                     <p className="px-4 py-2 text-[10px] text-fail" role="alert">
-                      Export {courant.canal} bloqué : corriger les motifs ci-dessus ou choisir l'autre canal.
+                      Export {v.canal} bloqué : corriger les motifs ci-dessus.
                     </p>
                   )}
                 </div>

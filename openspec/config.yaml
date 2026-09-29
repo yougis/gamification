@@ -21,16 +21,16 @@ context: |
   Graphe et orchestrateur (socle v0) :
   - Conditions : GEOFENCE (rayon + predicat in|out|dwell|through + dwell + hysteresis),
     NODE_COMPLETED, TIMER (delai minimum ancre GAME_START|NODE_COMPLETION + anchorNodeId),
-    POOL_DRAWN. RANDOM_POOL = noeud structurel LOCKED -> COMPLETED sans ACTIVE.
+    POOL_DRAWN. RANDOM_POOL = noeud structurel LOCKED -> COMPLETED direct.
     CONDITIONAL (gamebook) + WINDOW (fenetre horaire absolue) reserves dans l'enum,
     non outilles par le Studio au socle.
   - Fan-in : operator AND|OR obligatoire des que requires a >=2 conditions (if/then
-    Draft-07), interdit si <=1. Fan-out : UNLOCKED (eligible) vs ACTIVE (presente),
-    1 modale ACTIVE max, file d'attente, auto (GEOFENCE/TIMER) vs choix (graphe/POOL).
-  - Etats : LOCKED -> UNLOCKED -> ACTIVE -> COMPLETED. latch par noeud : true = reste
+    Draft-07), interdit si <=1. Fan-out : UNLOCKED = eligible et presentable, sans
+    modale imposee ni file d'attente ; plusieurs eligibles simultanes, choix joueur libre.
+  - Etats : LOCKED -> UNLOCKED -> COMPLETED. latch par noeud : true = reste
     UNLOCKED une fois debloque, false = retour LOCKED si conditions revocables retombent
-    (ex. sortie geofence). ACTIVE latche une fois la modale ouverte (ne se ferme pas
-    a la sortie de zone). Seules GEOFENCE/WINDOW sont revocables.
+    (ex. sortie geofence). L'ecran ouvert survit a la sortie de zone (ni expulsion,
+    ni re-entree). Seules GEOFENCE/WINDOW sont revocables.
   - Cycles : allowCycle=false par defaut sur toute condition a nodeId. Validateur ignore
     les aretes allowCycle:true et rejette tout cycle residuel. onReentry: ignore par
     defaut ; replay exige maxReentries + scoreOnReplay (defaut false, seule la 1ere
@@ -84,7 +84,7 @@ rules:
     - Indiquer la dependance a un change precedent non encore archive
       (ex. depend de 000-framework-architecture).
     - Le code de rendu graphique des modules (QUIZ, BOUSSOLE, etc.) doit être écrit exclusivement en `commonMain` avec Compose Multiplatform.
-    - L'Iframe de simulation Web doit exécuter le moteur compilé en Kotlin/Wasm et écouter les paquets JSON via l'interopérabilité JavaScript.
+    - Le simulateur Studio consomme le renderer `commonMain` en appel direct (jeu en memoire, etat simule injecte, sans session ni protocole). Seul player : le natif Android/iOS.
     - Le simulateur Web (wasmJsMain) doit appliquer un fallback logiciel clavier/souris pour les capteurs physiques (GPS, Gyro, Boussole) indisponibles sur ordinateur.
     - Toute modification du schéma JSON OpenSpec doit être validée par AJV côté Studio et être immédiatement consommable par le parseur Kotlin du runtime.
 
@@ -92,7 +92,7 @@ rules:
     - Toute spec touchant aux mini-jeux doit referencer les types via le registre
       (jamais de liste fermee en dur) et nommer Nœud vs Module vs condition.
     - Utiliser le format Given/When/Then pour les scenarios d'activation
-      (GEOFENCE, NODE_COMPLETED, TIMER, POOL_DRAWN, latch/desactivation, file ACTIVE,
+      (GEOFENCE, NODE_COMPLETED, TIMER, POOL_DRAWN, latch/desactivation,
       cycles/reentry, terminaison).
     - Toute valeur de configuration (rayon GPS et overrides, predicats in|out|dwell|
       through, seuils capteurs, URLs, bbox/zooms) doit etre decrite comme lue depuis
@@ -134,7 +134,8 @@ infrastructure:
 
 architecture:
   framework: "Kotlin Multiplatform (KMP) + Compose Multiplatform"
-  target_platforms: ["Android", "iOS", "WebAssembly (Wasm)"]
+  target_platforms: ["Android", "iOS"]
+  wasm_instrumental: "wasmJs (cible instrumentale reservee au simulateur Studio, jamais distribuee)"
   paradigm: "Spec-Driven UI Runtime Interpreter (Skiko Graphics Canvas Rendering)"
-  state_management: "Orchestrateur de graphe orienté natif (LOCKED -> UNLOCKED -> ACTIVE -> COMPLETED)"
-  simulation_bridge: "Kotlin/Wasm interopJs Window PostMessage API"
+  state_management: "Orchestrateur de graphe oriente natif (LOCKED -> UNLOCKED -> COMPLETED, eligibles sans file)"
+  simulation_bridge: "Appel direct du renderer commonMain (jeu en memoire, sans session)"

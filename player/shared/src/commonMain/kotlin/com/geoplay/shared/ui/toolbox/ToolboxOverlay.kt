@@ -28,7 +28,8 @@ fun ToolboxIconButton(
     states: Map<String, NodeState>,
     onOpen: () -> Unit,
     modifier: Modifier = Modifier,
-    // Etape vue (change home-player-runtime, 7.2 : ACTIVE supprime) : le
+    // Etape vue (change simulateur-compose-sans-pwa : cycle sans etat
+    // intermediaire) : le
     // masquage `inventoryAccess: false` s'applique a l'ecran vu. Defaut =
     // comportement sans epreuve (icone selon objets + TOOLBOX).
     viewedId: String? = null,

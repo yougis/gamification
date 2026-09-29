@@ -83,7 +83,8 @@ fun GeoPlayApp(
     // Id du nœud en cours hoisté (pas d'arguments de route : `Bundle.getString`
     // n'existe pas en commonMain navigation-compose).
     var selectedNodeId by remember { mutableStateOf<String?>(null) }
-    // Navigation explicite (change home-player-runtime, 7.2 : ACTIVE supprime) :
+    // Navigation explicite (change simulateur-compose-sans-pwa : cycle sans
+    // etat intermediaire) :
     // `nav` est la position vue (HOME ou etape + mode). Aucune ouverture
     // auto, aucune avance auto : Valider/Abandonner reviennent ici via le shell.
     val nav: Navigation = remember(selectedNodeId, states) {

@@ -48,4 +48,5 @@ rootProject.name = "GeoPlayPlayer"
 include(":app")
 include(":shared")
 include(":persistence")
-include(":web")
+// NOTE (change simulateur-compose-sans-pwa) : module ":web" (coquille PWA)
+// supprime — le WebAssembly reste une cible instrumentale de ":shared".

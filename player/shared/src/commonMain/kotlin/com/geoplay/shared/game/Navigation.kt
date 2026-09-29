@@ -16,8 +16,8 @@ sealed interface Navigation {
 
 fun navigationInitiale(): Navigation = Navigation.Home
 
-// Mode vue depuis l'etat moteur (change home-player-runtime, 3.1.3, 7.2 :
-// ACTIVE supprime) : pur et teste. UNLOCKED affichee = JOUABLE, COMPLETED
+// Mode vue depuis l'etat moteur (change simulateur-compose-sans-pwa) :
+// pur et teste. UNLOCKED affichee = JOUABLE, COMPLETED
 // relue = RELECTURE, sinon (LOCKED, inconnu) = APERCU. REJEU en 4.x.
 fun modeVue(etat: NodeState?): VueMode = when (etat) {
     NodeState.UNLOCKED -> VueMode.JOUABLE

@@ -32,7 +32,7 @@ projet :
    fixture de test.
 7. **Separation des responsabilites** : discovery, activation, progression
    et presentation sont conceptuellement independantes. Le cycle
-   `LOCKED → UNLOCKED →  COMPLETED` reste valide pour tous les
+   `LOCKED → UNLOCKED → COMPLETED` reste valide pour tous les
    modeles de navigation.
 8. **Donnees jamais en dur** : rayon GPS, overrides, seuils capteurs, URLs,
    bbox/zooms, tout lu depuis le JSON du jeu.
@@ -97,5 +97,5 @@ Les skills suivants sont disponibles pour l'agent :
 - `openspec-explore` — Explorer des ideas
 - `kmp-native-boundary` - développer le  runtime Player (android et Ios) avec de modules parfois natifs.
 - `impeccable` — Amelioration d'interface
-- `geoplay-compose-engine` 
-- `geoplay-wasm-architect`
+- `geoplay-compose-engine` — Interpreteur d'ecrans Compose en `commonMain` (rendu des noeuds via le registre, jamais de code plateforme)
+- `geoplay-wasm-architect` — Simulateur web Compose-Wasm du Studio (`wasmJsMain`, mocks capteurs clavier/souris, sans PWA)

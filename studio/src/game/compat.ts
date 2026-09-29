@@ -1,4 +1,4 @@
-// Compatibilité jeu × canal player (change player-pwa-shell, design D3).
+// Compatibilité jeu × canal player unique (change simulateur-compose-sans-pwa).
 // Lecture du graphe, aucun nouveau champ : conditions (GEOFENCE fond,
 // PROXIMITY_MASTER → BLE), besoins du registre (needsGPS/needsCompass/
 // needsCamera/needsMap/needsLock), holdMode et matrice versionnée.
@@ -9,7 +9,7 @@ import capabilities from "./channel-capabilities.json";
 import { MODULE_REGISTRY_BASE as MODULE_REGISTRY } from "./module-registry";
 import type { Condition, Game } from "./types";
 
-export type ChannelId = "NATIVE" | "PWA";
+export type ChannelId = "NATIVE";
 export type CompatVerdict = "compatible" | "degrade" | "refuse";
 
 export interface ChannelCaps {
@@ -105,7 +105,8 @@ export function evaluateCompatibility(game: Game, canal: ChannelId): ChannelComp
   return { canal, verdict, motifs, replis };
 }
 
-// Porte d'export : un canal refusé bloque, un canal dégradé avertit.
+// Porte d'export : un refus bloque. Le canal natif déclare toutes les
+// capacités, donc aucun repli ne s'applique en pratique.
 export function canExportToChannel(game: Game, canal: ChannelId): { ok: boolean; motifs: string[]; replis: string[] } {
   const v = evaluateCompatibility(game, canal);
   return { ok: v.verdict !== "refuse", motifs: v.motifs, replis: v.replis };
@@ -117,7 +118,6 @@ export function buildCompatSidecar(game: Game): CompatSidecar {
     matrixVersion: matrixVersion(),
     verdicts: {
       NATIVE: evaluateCompatibility(game, "NATIVE"),
-      PWA: evaluateCompatibility(game, "PWA"),
     },
   };
 }
