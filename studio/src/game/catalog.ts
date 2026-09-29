@@ -77,7 +77,7 @@ async function lireErreur(r: Response): Promise<string> {
   }
 }
 
-function octetsVersBase64(bytes: Uint8Array): string {
+export function octetsVersBase64(bytes: Uint8Array): string {
   let bin = "";
   const TAILLE = 0x8000;
   for (let i = 0; i < bytes.length; i += TAILLE) {

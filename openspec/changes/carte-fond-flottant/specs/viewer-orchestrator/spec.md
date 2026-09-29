@@ -2,7 +2,7 @@
 
 ### Requirement: Strates player avec parité natif/PWA
 
-Le player (natif via le partagé KMP, et PWA, via leurs renderers respectifs) SHALL rendre le même empilement à 3 strates que le Studio : FOND (widget d'arrière-plan déclaré, navigable : drag/zoom tactiles et boutons), FLOTTANT (contenu par-dessus, lisible, carte visible dans les creux), OVERLAY (modale existante au sommet). Le fond SHALL rester interactif sous le flottant : un geste démarrant sur un creux (ni widget, ni volet, ni contrôle) SHALL naviguer la carte ; un geste démarrant sur un widget SHALL aller au widget. Naviguer SHALL ne produire ni transition d'état ni event, comme toute interaction strate 2. Le rendu SHALL rester offline (fonds pack-only existants).
+Le player (natif et PWA via le partagé KMP — la PWA rejoue les mêmes composables `ScreenRenderer`/`MapWidgetBlock`, sans renderer propre) SHALL rendre le même empilement à 3 strates que le Studio : FOND (widget d'arrière-plan déclaré, navigable : drag/zoom tactiles et boutons), FLOTTANT (contenu par-dessus, lisible, carte visible dans les creux), OVERLAY (modale existante au sommet). Le fond SHALL rester interactif sous le flottant : un geste démarrant sur un creux (ni widget, ni volet, ni contrôle) SHALL naviguer la carte ; un geste démarrant sur un widget SHALL aller au widget. Naviguer SHALL ne produire ni transition d'état ni event, comme toute interaction strate 2. Le rendu SHALL rester offline (fonds pack-only existants). La compilation croisée wasmJs du partagé avec les strates SHALL rester verte (parité PWA par construction).
 
 #### Scenario: Drag dans un creux navigue
 
@@ -16,8 +16,8 @@ Le player (natif via le partagé KMP, et PWA, via leurs renderers respectifs) SH
 - **WHEN** le joueur touche le widget texte
 - **THEN** le texte réagit (sélection/lecture) et la carte ne bouge pas
 
-#### Scenario: Parité des trois rendus
+#### Scenario: Parité des rendus
 
 - **GIVEN** un écran à strates validé
-- **WHEN** il s'affiche dans le Studio, le natif et la PWA
-- **THEN** l'ordre fond → flottant → overlay est identique partout (test de parité : même écran, 3 rendus comparés)
+- **WHEN** il s'affiche dans le Studio et via le partagé (natif, et PWA par les mêmes composables — compilation wasmJs verte)
+- **THEN** l'ordre fond → flottant → overlay est identique partout (test de parité : même écran, rendus Studio et partagé comparés ; PWA visible en prévisualisation via le change preview-pwa-iframe)

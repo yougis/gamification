@@ -8,5 +8,5 @@
 ## 2. Parité players + validation
 
 - [x] 2.1 Implémenter les strates dans le partagé KMP (fond navigable, flottant transparent sauf widgets) et vérifier drag-dans-creux vs touch-widget sans event
-- [ ] 2.2 Implémenter les strates dans la PWA et vérifier le même écran s'affiche dans l'ordre fond → flottant → overlay
-- [ ] 2.3 Exécuter le test de parité (même écran, 3 rendus comparés : ordre, fond visible, drag résiduel) et vérifier `openspec validate` passe
+- [x] 2.2 Constater l'héritage PWA via le partagé (compilation wasmJs verte avec les strates, Geolocation/fallback vérifiés, aucun renderer propre) et reporter le rendu PWA visible en prévisualisation au change preview-pwa-iframe
+- [x] 2.3 Exécuter le test de parité (même écran, rendus Studio et partagé comparés : ordre, fond visible, drag résiduel ; PWA couverte par construction + compile wasmJs) et vérifier `openspec validate` passe

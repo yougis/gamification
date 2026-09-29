@@ -19,10 +19,10 @@ import { compterErreurs, rendreDiagnostic, type Diagnostic } from "./game/diagno
 import { evaluate, drawPool, estHorsDelai, type Sim } from "./game/evaluate";
 import { suggest, snapshotOuverture, verdictValider, verdictAbandonner, regimeCompletion, cleOuverture, type Ouverture } from "./game/runtime";
 import { navigationInitiale, modeOuverture, type Navigation, type VueMode } from "./game/navigation";
-import { composeNodes, setActivation, registerAsset, exportPackFull, validateGameFull, canExport, addSecoursCode, importGame, addObject, setObjects, duplicateObject, setReview, removeNode, renameNode, duplicateNode, patchScreenZone, removeScreenZone, addScreenWidget, setScreenWidget as mcpSetScreenWidget, removeScreenWidget, moveScreenWidget, moveScreenWidgetAcross, setNodeScreen, setExperienceStyle, migrerExperienceStyleRacine, setGameMode, setDifficulty, migrerGameModeDifficultyRacine, creerNoeudStart, garantirStart, setScreenBackground, setScreenStyles, setGlobalScreen, setGlobalBackground, patchGlobalZone, removeGlobalZone, addGlobalWidget, setGlobalWidget, removeGlobalWidget, moveGlobalWidget, moveGlobalWidgetAcross, setGlobalScreenStyles, setMinigameDefaults, setPresentation, migrerPreset, retirerOperator, setOperator, setMaxReentries, clampDrawCount, retirerDoublonPool, fixEnumDefaut, nettoyerReferencesOrphelines, correctifApplicable, type ManifestFile } from "./game/mcp";
+import { composeNodes, setActivation, registerAsset, exportPackFull, validateGameFull, canExport, addSecoursCode, importGame, addObject, setObjects, duplicateObject, setReview, removeNode, renameNode, duplicateNode, patchScreenZone, removeScreenZone, addScreenWidget, setScreenWidget as mcpSetScreenWidget, removeScreenWidget, moveScreenWidget, moveScreenWidgetAcross, setNodeScreen, setExperienceStyle, migrerExperienceStyleRacine, setGameMode, setDifficulty, migrerGameModeDifficultyRacine, creerNoeudStart, garantirStart, setScreenBackground, setScreenStyles, setGlobalScreen, setGlobalBackground, patchGlobalZone, removeGlobalZone, addGlobalWidget, setGlobalWidget, removeGlobalWidget, moveGlobalWidget, moveGlobalWidgetAcross, setGlobalScreenStyles, setMinigameDefaults, setPresentation, migrerPreset, retirerOperator, setOperator, setMaxReentries, clampDrawCount, retirerDoublonPool, fixEnumDefaut, nettoyerReferencesOrphelines, correctifApplicable, tailleOctets, type ManifestFile } from "./game/mcp";
 import { emptyMeta, type Condition, type Effect, type Game, type GameNode, type GameObject, type MinigameDefaults, type Predicate, type StudioMeta, type ExperienceStyle, type Branding, type GameMode, type Difficulty, type ScreenDefinition, type ZoneContent, type ZoneId } from "./game/types";
 import { buildCompatSidecar, canExportToChannel, type ChannelId } from "./game/compat";
-import { fetchAsset, fetchPack, fetchTuile, getCatalogUrl, listGames, publishGame, setCatalogUrl as sauvegarderCatalogUrl, type CatalogEntry } from "./game/catalog";
+import { fetchAsset, fetchPack, fetchTuile, getCatalogUrl, listGames, octetsVersBase64, publishGame, setCatalogUrl as sauvegarderCatalogUrl, type CatalogEntry } from "./game/catalog";
 import { sha256Hex } from "./game/pack";
 import { FONT_OPTIONS, estPoliceConnue } from "./game/fonts";
 import {
@@ -439,6 +439,19 @@ export default function App() {  const [st, dispatch] = useReducer(reduce, undef
   // Position GPS simulée (change carte-joueur-navigable, phase 3) : lue par
   // la carte interactive du terminal (point SIMULÉ), jamais le poste auteur.
   const [positionSimu, setPositionSimu] = useState<{ lat: number; lng: number } | null>(null);
+  // Émulation PWA (change preview-pwa-iframe) : cible configurable (persistée),
+  // URL d'iframe montée à la demande, erreur explicite. Aucun état de jeu ni
+  // d'essai n'est touché (lecture seule + POST dev-server).
+  const [ciblePwa, setCiblePwa] = useState<string>(() => {
+    try {
+      return localStorage.getItem("geoplay-pwa-url") ?? "";
+    } catch {
+      return "";
+    }
+  });
+  const [emulationUrl, setEmulationUrl] = useState<string | null>(null);
+  const [emulationErreur, setEmulationErreur] = useState<string | null>(null);
+  const [emulationBusy, setEmulationBusy] = useState(false);
   const [draws, setDraws] = useState<Record<string, string[]>>({});
   const [forced, setForced] = useState<Record<string, string>>({});
   const [done, setDone] = useState<Record<string, number>>({});
@@ -961,6 +974,73 @@ const noeuds: Node[] = useMemo(
       journal("session sans fin (HOME seul) — sortie par Quitter");
     }
     setModeJeux(true);
+  };
+  // Émulation PWA (change preview-pwa-iframe) : pousse le jeu courant vers
+  // /emulate/snapshot (dev-server, mémoire) puis monte l'iframe sur la cible
+  // configurée avec ?game=&cheat=1&session=. Lecture seule côté jeu/essai.
+  const pousserEmulation = async (): Promise<boolean> => {
+    try {
+      const gameJson = JSON.stringify(game);
+      const entreeJeu = {
+        path: "game.json",
+        version: game.schemaVersion,
+        size: tailleOctets(gameJson),
+        sha256: await sha256Hex(gameJson),
+      };
+      const entrees = manifest.some((m) => m.path === "game.json")
+        ? manifest.map((m) => (m.path === "game.json" ? entreeJeu : m))
+        : [...manifest, entreeJeu];
+      const assets: { path: string; base64: string }[] = [];
+      for (const [chemin, fichier] of assetsSession.current) {
+        const octets = new Uint8Array(await fichier.arrayBuffer());
+        assets.push({ path: chemin, base64: octetsVersBase64(octets) });
+      }
+      const r = await fetch("/emulate/snapshot", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          gameJson,
+          manifest: { files: entrees },
+          compat: JSON.stringify(buildCompatSidecar(game)),
+          assets,
+        }),
+      });
+      if (!r.ok) {
+        setEmulationErreur(`Snapshot refusé : HTTP ${r.status} — le dev-server tourne-t-il (vite dev) ?`);
+        return false;
+      }
+      setEmulationErreur(null);
+      return true;
+    } catch (e) {
+      setEmulationErreur(`Snapshot impossible : ${e instanceof Error ? e.message : String(e)} — vérifiez que le service Studio tourne (vite dev).`);
+      return false;
+    }
+  };
+  const ouvrirEmulation = async () => {
+    const cible = ciblePwa.replace(/\/+$/, "");
+    if (!cible) {
+      setEmulationErreur("Cible PWA non configurée : renseignez l'URL déployée (ou le build local).");
+      return;
+    }
+    try {
+      localStorage.setItem("geoplay-pwa-url", ciblePwa);
+    } catch {
+      /* stockage indisponible : cible en mémoire seulement */
+    }
+    setEmulationBusy(true);
+    try {
+      if (!(await pousserEmulation())) return;
+      const jeu = `${window.location.origin}/emulate/game.json`;
+      setEmulationUrl(
+        `${cible}/?game=${encodeURIComponent(jeu)}&cheat=1&session=${encodeURIComponent(`studio-${sessionId}`)}`,
+      );
+    } finally {
+      setEmulationBusy(false);
+    }
+  };
+  const fermerEmulation = () => {
+    setEmulationUrl(null);
+    setEmulationErreur(null);
   };
   // Valider/Abandonner sur verdicts + retour HOME (change home-player-runtime,
   // 4.2) : fin de l'avance auto. Valider = une ecriture COMPLETED (droit a
@@ -2027,6 +2107,57 @@ const noeuds: Node[] = useMemo(
               <button className="btn min-h-9" onClick={() => setModeJeux(false)}>Quitter (Échap)</button>
             </div>
           )}
+          <div className="carte mt-4 p-3" aria-label="Émulation PWA">
+            <h3 className="flex items-center gap-1.5 font-bold text-[13px]">
+              <Icon name="essai" size={15} /> Émulation PWA — le vrai player dans Prévisualiser
+            </h3>
+            <p className="text-[8px] text-fog">La PWA tourne ici avec le jeu courant (snapshot poussé vers le dev-server) : carte navigable, volet Ouvrir, modules, triche pré-ouverte. Sessions namespacées — jamais de pollution des vraies parties. Exige le réseau (PC dev), jamais le terrain.</p>
+            <div className="mt-1 flex flex-wrap items-center gap-1">
+              <label className="flex min-w-0 flex-1 items-center gap-1 text-[8px]">
+                Cible PWA
+                <input
+                  className="champ min-w-0 flex-1"
+                  value={ciblePwa}
+                  onChange={(e) => setCiblePwa(e.target.value)}
+                  placeholder="https://pwa-deployee.exemple.fr (ou build local)"
+                  type="url"
+                  aria-label="URL cible de la PWA émulée"
+                />
+              </label>
+              {!emulationUrl ? (
+                <button className="btn min-h-9" onClick={() => void ouvrirEmulation()} disabled={emulationBusy}>
+                  {emulationBusy ? "Poussée…" : "▶ Émuler la PWA"}
+                </button>
+              ) : (
+                <>
+                  <button className="btn min-h-9" onClick={() => void ouvrirEmulation()} disabled={emulationBusy} title="Repousser le jeu courant (après modification)">
+                    ↻ Actualiser
+                  </button>
+                  <button className="btn min-h-9" onClick={fermerEmulation}>Quitter (Échap)</button>
+                </>
+              )}
+            </div>
+            {emulationErreur && <p className="mt-1 text-[8px] text-fail" role="alert">{emulationErreur}</p>}
+            {emulationUrl && (() => {
+              const fmt = VIEWPORTS.find((v) => v.id === screenViewport) ?? VIEWPORTS[0];
+              return (
+                <div
+                  className="mt-2 overflow-auto"
+                  tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === "Escape") fermerEmulation(); }}
+                  aria-label="PWA émulée — Échap pour quitter"
+                >
+                  <iframe
+                    title="PWA émulée"
+                    src={emulationUrl}
+                    sandbox="allow-scripts allow-same-origin"
+                    style={{ width: fmt.largeur, height: fmt.hauteur, maxWidth: "100%", border: "1px solid var(--line-forte)", borderRadius: 12 }}
+                  />
+                  <p className="mt-1 text-[8px] text-fog">Cadre {fmt.libelle} ({fmt.largeur}×{fmt.hauteur}) — même sélecteur que le canvas. Sortie sans effet sur le JSON ni l'essai.</p>
+                </div>
+              );
+            })()}
+          </div>
         </div>
       )}
       {ecran === "exporter" && (

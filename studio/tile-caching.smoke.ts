@@ -284,6 +284,27 @@ console.log("2.3 JSON sans URL après aperçu (pack-only) : OK");
   assert.ok(htmlTerm.includes("Titre flottant"), "flottant par-dessus dans le terminal");
   assert.ok(htmlTerm.includes("SIMULÉ") || htmlTerm.includes("Terminal joueur simulé"), "chrome simu intact");
   console.log("carte-fond-flottant : terminal hérite du stacking, simu intacte : OK");
+
+  // carte-fond-flottant 2.3 : parité d'ordre fond → flottant → overlay.
+  // Jambe partagée (natif+PWA) : partition pure déjà couverte en jvmTest +
+  // compilation wasmJs ; ici la jambe Studio sur le même écran.
+  const ecranStrates = {
+    zones: {
+      header: { layout: "stack", widgets: [{ type: "text", text: "Titre flottant", style: "heading" }] },
+      content: {
+        layout: "stack",
+        widgets: [{ type: "map", source: { kind: "steps" }, background: "pack-tiles", pleinEcran: true, arrierePlan: true }],
+      },
+      overlay: { layout: "stack", widgets: [{ type: "text", text: "Message overlay", style: "body" }] },
+    },
+  } as never;
+  const htmlStrates = render3(ce3(PC as never, { screen: ecranStrates, game: jeuFond } as never));
+  const iF = htmlStrates.indexOf('aria-label="Arrière-plan"');
+  const iT = htmlStrates.indexOf("Titre flottant");
+  const iO = htmlStrates.indexOf("Message overlay");
+  assert.ok(iF >= 0 && iT > iF && iO > iT, "ordre fond → flottant → overlay");
+  assert.ok(htmlStrates.includes("bg-black/50"), "overlay modale au sommet");
+  console.log("carte-fond-flottant : parité d'ordre fond → flottant → overlay (jambe Studio) : OK");
 }
 }
 }

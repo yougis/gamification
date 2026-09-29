@@ -27,6 +27,11 @@ import com.geoplay.shared.game.dureeTotaleMs
 import com.geoplay.shared.game.estHorsDelai
 import com.geoplay.shared.game.partieTermineeParTemps
 import com.geoplay.shared.game.verrouillageDansMs
+import com.geoplay.shared.web.cleSessionEmulee
+import com.geoplay.shared.web.decoderParamQuery
+import com.geoplay.shared.web.namespaceSession
+import com.geoplay.shared.web.trichePreOuverte
+import com.geoplay.shared.web.urlJeuEmulation
 import com.geoplay.shared.game.InventoryState
 import com.geoplay.shared.game.timerRemainingMs
 import com.geoplay.shared.game.drawPool
@@ -97,7 +102,22 @@ private data class WebSession(
     val inventory: Map<String, Int> = emptyMap(),
 )
 
-private fun sessionKey(gameId: String) = "geoplay.web.session.$gameId"
+// Sessions émulées namespacées (change preview-pwa-iframe) : le namespace
+// ne s'applique QUE si `?game=` ou `?session=` est présent — les vraies
+// parties gardent exactement `geoplay.web.session.<gameId>` (reprise intacte).
+private fun sessionNamespace(): String? = try {
+    val search = window.location.search
+    if (urlJeuEmulation(search).isNotBlank() || decoderParamQuery(search, "session").isNotBlank())
+        namespaceSession(search)
+    else null
+} catch (_: Exception) {
+    null
+}
+
+private fun sessionKey(gameId: String): String {
+    val ns = sessionNamespace()
+    return if (ns == null) "geoplay.web.session.$gameId" else cleSessionEmulee(ns, gameId)
+}
 
 private fun loadSession(gameId: String): WebSession? = try {
     WebStorage.get(sessionKey(gameId))?.let { sessionJson.decodeFromString(WebSession.serializer(), it) }
@@ -382,28 +402,10 @@ private fun WebApp() {
 
     // Pré-remplissage QR/lien (change studio-game-catalog, D3) : ?code=4217&service=<https>
     // encode {urlService, code} et remplit l'écran d'import existant.
-    fun queryParam(name: String): String {
-        val search = window.location.search
-        val raw = search.split("&", "?").firstOrNull { it.startsWith("$name=") }
-            ?.substringAfter("=") ?: return ""
-        // Décodage percent-encoding pur Kotlin (pas d'interop JS).
-        val out = StringBuilder()
-        var i = 0
-        while (i < raw.length) {
-            val c = raw[i]
-            if (c == '%' && i + 2 < raw.length) {
-                val hex = raw.substring(i + 1, i + 3)
-                val v = hex.toIntOrNull(16)
-                if (v != null) {
-                    out.append(v.toChar())
-                    i += 3
-                    continue
-                }
-            }
-            out.append(if (c == '+') ' ' else c)
-            i++
-        }
-        return out.toString()
+    fun queryParam(name: String): String = try {
+        decoderParamQuery(window.location.search, name)
+    } catch (_: Exception) {
+        ""
     }
 
     var serviceUrl by remember {
@@ -421,29 +423,44 @@ private fun WebApp() {
         WebStorage.set("geoplay.web.catalogUrl", url)
     }
 
+    // Chargement URL factorisé (change preview-pwa-iframe) : même pipeline
+    // pour le bouton manuel et l'auto-chargement `?game=<url>`.
+    fun loadUrlPack(url: String) {
+        busy = true
+        val base = url.substringBeforeLast("/") + "/"
+        fetchText(url,
+            onOk = { gameText ->
+                fetchText(base + "manifest.json",
+                    onOk = { manifestText ->
+                        fetchText(base + "compat.json",
+                            onOk = { compatText -> ingest(gameText, manifestText, compatText, "URL") },
+                            onErr = { ingest(gameText, manifestText, null, "URL (sans compat)") },
+                        )
+                    },
+                    onErr = { ingest(gameText, null, null, "URL (sans manifest)") },
+                )
+            },
+            onErr = ::fail,
+        )
+    }
+
+    // Auto-chargement `?game=<url>` (change preview-pwa-iframe) : une seule
+    // fois à l'ouverture, jamais après sortie de pack (pas de re-déclenchement).
+    LaunchedEffect(Unit) {
+        val auto = try {
+            urlJeuEmulation(window.location.search)
+        } catch (_: Exception) {
+            ""
+        }
+        if (auto.isNotBlank()) loadUrlPack(auto)
+    }
+
     if (pack == null) {
         ImportScreen(
             status = status,
             busy = busy,
             onPickFile = { pickFile { _, text -> ingest(text, null, null, "fichier") } },
-            onLoadUrl = { url ->
-                busy = true
-                val base = url.substringBeforeLast("/") + "/"
-                fetchText(url,
-                    onOk = { gameText ->
-                        fetchText(base + "manifest.json",
-                            onOk = { manifestText ->
-                                fetchText(base + "compat.json",
-                                    onOk = { compatText -> ingest(gameText, manifestText, compatText, "URL") },
-                                    onErr = { ingest(gameText, manifestText, null, "URL (sans compat)") },
-                                )
-                            },
-                            onErr = { ingest(gameText, null, null, "URL (sans manifest)") },
-                        )
-                    },
-                    onErr = ::fail,
-                )
-            },
+            onLoadUrl = { url -> loadUrlPack(url) },
             serviceUrl = serviceUrl,
             onServiceUrl = ::saveServiceUrl,
             code = code,
@@ -537,7 +554,18 @@ private fun RunScreen(game: Game, avertissements: List<String>, onExit: () -> Un
     // Triche animateur (change parite-player) : simulation locale, repliée
     // par défaut, jamais persistée comme telle ni écrite dans le JSON.
     // Chaque complétion sous triche est marquée SIMULÉE (journal local).
-    var cheatOpen by remember { mutableStateOf(false) }
+    // Triche pré-ouverte (change preview-pwa-iframe) : `?cheat=1` strict.
+    // Les flags d'events existent déjà (cheatedIds) : rien d'autre à toucher.
+    // Lecture directe (RunScreen ne voit pas le helper local de WebApp).
+    var cheatOpen by remember {
+        mutableStateOf(
+            try {
+                trichePreOuverte(decoderParamQuery(window.location.search, "cheat"))
+            } catch (_: Exception) {
+                false
+            },
+        )
+    }
     var cheatBypass by remember(game.gameId) { mutableStateOf(false) }
     var simLat by remember(game.gameId) { mutableStateOf("") }
     var simLng by remember(game.gameId) { mutableStateOf("") }
