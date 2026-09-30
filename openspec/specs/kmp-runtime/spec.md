@@ -15,6 +15,8 @@ Le module SHALL compiler pour les cibles suivantes :
 - `iosArm64` (iOS device)
 - `iosSimulatorArm64` (iOS simulateur)
 
+Le WebAssembly (`wasmJs`) SHALL rester une cible de compilation instrumentale reservee au simulateur Studio : il ne SHALL jamais produire un player distribuable, installable ni offline.
+
 #### Scenario: Compilation Android
 - **WHEN** le module `shared` est compilé pour Android
 - **THEN** le module produit un AAR utilisable par l'application Android
@@ -23,9 +25,9 @@ Le module SHALL compiler pour les cibles suivantes :
 - **WHEN** le module `shared` est compilé pour iOS
 - **THEN** le module produit un framework utilisable par l'application iOS
 
-### Requirement: Game Engine en commonMain
+### Requirement: Moteur de jeu en commonMain sans ACTIVE
 
-Le moteur de jeu (machine à états LOCKED→UNLOCKED→ACTIVE→COMPLETED, évaluation des conditions, latch, file FIFO) SHALL vivre entièrement en `commonMain`, sans dépendance à une plateforme spécifique.
+Le moteur de jeu (machine à états LOCKED→UNLOCKED→COMPLETED, évaluation des conditions, latch) SHALL vivre entièrement en `commonMain`, sans dépendance à une plateforme spécifique.
 
 Le moteur SHALL supporter :
 - Les conditions GEOFENCE, NODE_COMPLETED, TIMER, POOL_DRAWN
@@ -42,9 +44,9 @@ Le moteur SHALL supporter :
 - **WHEN** le moteur évalue une condition NODE_COMPLETED et que le nœud source est COMPLETED
 - **THEN** la condition est considérée comme vraie
 
-#### Scenario: File FIFO avec modale unique
+#### Scenario: Eligibles simultanes sans file
 - **WHEN** deux nœuds deviennent UNLOCKED simultanément
-- **THEN** seul le premier est présenté au joueur, le second attend en file
+- **THEN** les deux sont presentables et le joueur choisit librement, sans file imposee
 
 ### Requirement: Import de pack multiplateforme
 
@@ -102,11 +104,11 @@ Les écrans natifs (caméra AR, boussole) restent en `expect/actual` pour l'inst
 
 #### Scenario: Affichage du graphe sur Android
 - **WHEN** le joueur ouvre une partie sur Android
-- **THEN** le graphe de nœuds est affiché avec les états LOCKED/UNLOCKED/ACTIVE/COMPLETED
+- **THEN** le graphe de nœuds est affiché avec les états LOCKED/UNLOCKED/COMPLETED
 
 #### Scenario: Affichage du graphe sur iOS
 - **WHEN** le joueur ouvre une partie sur iOS
-- **THEN** le graphe de nœuds est affiché avec les états LOCKED/UNLOCKED/ACTIVE/COMPLETED
+- **THEN** le graphe de nœuds est affiché avec les états LOCKED/UNLOCKED/COMPLETED
 
 ### Requirement: Stubs expect/actual pour modules natifs
 
@@ -127,12 +129,12 @@ Les interfaces attendues :
 - **WHEN** le moteur demande le cap et que le module natif n'est pas chargé
 - **THEN** le stub retourne 0° avec un flag "fallback"
 
-### Requirement: Tests communs (commonTest)
+### Requirement: Tests communs sans ACTIVE
 
 Le module `shared` SHALL inclure des tests unitaires communs (`commonTest`) qui vérifient la logique métier indépendamment de la plateforme.
 
 Les tests SHALL couvrir au minimum :
-- Machine à états (LOCKED→UNLOCKED→ACTIVE→COMPLETED)
+- Machine à états (LOCKED→UNLOCKED→COMPLETED)
 - Évaluation des conditions (GEOFENCE, NODE_COMPLETED, TIMER, POOL_DRAWN)
 - Import et vérification de pack
 - Persistence SQLite (via fake)
@@ -144,3 +146,4 @@ Les tests SHALL couvrir au minimum :
 #### Scenario: Test évaluation condition
 - **WHEN** un test vérifie une condition NODE_COMPLETED
 - **THEN** le test passe avec un fake du moteur
+

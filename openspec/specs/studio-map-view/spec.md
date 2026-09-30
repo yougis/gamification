@@ -159,8 +159,7 @@ Le bbox calculé SHALL être proposé à l'auteur avant application (pas appliqu
 
 Les marqueurs de nœuds sur la carte/plan SHALL refléter leur état dans la machine à états :
 - `LOCKED` : marqueur gris, désactivé
-- `UNLOCKED` : marqueur coloré, prêt
-- `ACTIVE` : marqueur animé (pulsation)
+- `UNLOCKED` : marqueur coloré, prêt (pulsation quand l'écran est ouvert)
 - `COMPLETED` : marqueur avec checkmark
 
 L'indicateur d'état SHALL être calculé en temps réel à partir de l'état du jeu (mode preview).
@@ -169,3 +168,4 @@ L'indicateur d'état SHALL être calculé en temps réel à partir de l'état du
 - **GIVEN** un nœud en état COMPLETED
 - **WHEN** l'auteur affiche la vue carte
 - **THEN** le marqueur affiche un checkmark vert
+

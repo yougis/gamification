@@ -9,6 +9,7 @@ import { Icon } from "../icons";
 import { PhoneCanvas, VIEWPORTS, type ViewportId } from "./PhoneCanvas";
 import { PlayerFallback } from "./PlayerFallback";
 import type { CarteSimu } from "./widgets/CarteInteractiveSimu";
+import type { LigneApercu } from "../../game/apercu-accueil";
 import { getPlayer } from "../../game/module-screen-plugin";
 import { resolveScreen } from "../../game/screen-utils";
 import type { VueMode } from "../../game/navigation";
@@ -35,6 +36,7 @@ export function PlayerTerminal({
   positionSimu,
   eligiblesSimu,
   onOuvrirSimu,
+  lignesApercu,
   viewport = "phone-portrait",
   onViewport,
   modeVue = "jouable",
@@ -57,6 +59,10 @@ export function PlayerTerminal({
   positionSimu?: { lat: number; lng: number } | null;
   eligiblesSimu?: string[];
   onOuvrirSimu?: (id: string) => void;
+  // Lignes d'essai (change simu-carte-puzzle-viewports) : états simulés
+  // transmis à la carte (pastille + Ouvrir). Absent = tout verrouillé
+  // (comportement historique).
+  lignesApercu?: LigneApercu[];
   // Viewport d'aperçu (change studio-modejeux-viewports) : mêmes 4 formats que
   // Screen, état partagé depuis App. Absent de onViewport = pas de sélecteur
   // (comportement historique portrait pour les autres appelants).
@@ -160,6 +166,7 @@ export function PlayerTerminal({
         <PhoneCanvas
           screen={screen}
           game={game}
+          lignesApercu={lignesApercu}
           moduleType={node.module.type}
           moduleData={data}
           viewport={viewport}

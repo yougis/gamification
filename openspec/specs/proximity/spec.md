@@ -13,7 +13,7 @@ Toute condition `PROXIMITY_MASTER` SHALL lire depuis le JSON : `masterId`,
 SHALL etre une constante du code. Le MASTER est temporaire (telephone
 animateur, Arduino BLE ou equivalent pose en zone) ; aucun identifiant
 sensible ne SHALL y figurer, la rotation se fait au Studio. `PROXIMITY_MASTER`
-est revocable comme `GEOFENCE` : `latch`, hysteresis, `dwell` et file ACTIVE
+est revocable comme `GEOFENCE` : `latch`, hysteresis et `dwell`
 s'y appliquent tels quels. Le validateur la traite comme condition
 environnementale sous hypothese favorable.
 
@@ -27,7 +27,7 @@ environnementale sous hypothese favorable.
 
 - **GIVEN** un sas `PROXIMITY_MASTER latch:false` devenu `UNLOCKED`
 - **WHEN** le signal retombe sous le seuil avec hysteresis depassee
-- **THEN** le Noeud retourne `LOCKED` et sort de la file
+- **THEN** le Noeud retourne `LOCKED`
 
 ### Requirement: Methodes declaratives via modules sans changement de schema
 
@@ -63,3 +63,4 @@ SHALL etre revocable par rotation au Studio sans republier l'app.
 - **GIVEN** un MASTER telephone en hotspot + BLE toute la journee
 - **WHEN** le Studio prepare le kit animateur
 - **THEN** la checklist exige une batterie externe dediee
+

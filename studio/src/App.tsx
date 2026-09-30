@@ -59,6 +59,7 @@ import Splitter from "./components/Splitter";
 import { WorkflowStepper, type EtapeWorkflow } from "./components/WorkflowStepper";
 import { NodeList } from "./components/NodeList";
 import { ApercuAccueil } from "./components/ApercuAccueil";
+import { calculerApercu } from "./game/apercu-accueil";
 import { BlocsAcces } from "./components/BlocsAcces";
 import { ChevronRepli, RailReplie } from "./components/Repli";
 import { Accordeon, useAccordeon } from "./components/Accordeon";
@@ -910,6 +911,14 @@ const noeuds: Node[] = useMemo(
   // (identique a activeId : nav etape ⟺ actif), jamais de la file.
   const actifNav = nav.vue === "etape" ? nav.id : null;
   const suggestion = suggest(ev.unlocked, []);
+  // Lignes d'essai pour le terminal (change simu-carte-puzzle-viewports) :
+  // mêmes entrées que l'aperçu du tableau, lues en mémoire, sans écriture.
+  const lignesTerminal = useMemo(
+    () =>
+      calculerApercu(game, sim.dtMin * 60000, new Set(Object.keys(done)), ev.unlocked, file[0] ?? null, actifNav).lignes,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [game, sim.dtMin, done, ev.unlocked, file, actifNav],
+  );
 
   const journal = (msg: string) => setLog((l) => [...l, `[${sessionId}] ${msg} (triche, hold=${game.global?.holdMode ?? "none"})`]);
   // HOLD simulé (prévisualisation uniquement, jamais écrit dans le JSON).
@@ -1975,6 +1984,7 @@ const noeuds: Node[] = useMemo(
               actif={actifNav}
               onOuvrir={ouvrir}
               viewport={screenViewport}
+              positionSimu={positionSimu}
             />
           )}
           {modeJeux && activeId && game.nodes.some((n) => n.id === activeId) && (
@@ -1993,6 +2003,7 @@ const noeuds: Node[] = useMemo(
               positionSimu={positionSimu}
               eligiblesSimu={ev.unlocked}
               onOuvrirSimu={ouvrir}
+              lignesApercu={lignesTerminal}
               viewport={screenViewport}
               onViewport={setScreenViewport}
             />
@@ -2012,6 +2023,7 @@ const noeuds: Node[] = useMemo(
                     onOuvrir={ouvrir}
                     viewport={screenViewport}
                     onViewport={setScreenViewport}
+                    positionSimu={positionSimu}
                   />
                 </div>
               ) : (

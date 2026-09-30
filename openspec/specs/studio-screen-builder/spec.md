@@ -515,13 +515,13 @@ Tout widget SHALL appartenir à exactement une strate : strate 1 CONTENU (passif
 
 ### Requirement: Styles POI par état
 
-`MapWidget.poiStyle` (optionnel) SHALL associer une icône à chaque état moteur : `{ locked?, unlocked?, active?, completed? }` (références d'icônes ou glyphes, jamais d'URL réseau). Non renseigné, le moteur SHALL appliquer son jeu d'icônes par défaut, distinct par état et lisible sans la couleur seule. L'état affiché SHALL suivre l'état moteur temps réel (`LOCKED → UNLOCKED → ACTIVE → COMPLETED`).
+`MapWidget.poiStyle` (optionnel) SHALL associer une icône à chaque état moteur : `{ locked?, unlocked?, completed? }` (références d'icônes ou glyphes, jamais d'URL réseau). Non renseigné, le moteur SHALL appliquer son jeu d'icônes par défaut, distinct par état et lisible sans la couleur seule. L'état affiché SHALL suivre l'état moteur temps réel (`LOCKED → UNLOCKED → COMPLETED`).
 
 #### Scenario: Icônes par défaut distinctes
 
-- **GIVEN** un widget carte sans `poiStyle` et 4 POI dans les 4 états
+- **GIVEN** un widget carte sans `poiStyle` et 3 POI dans les 3 états
 - **WHEN** le joueur ouvre l'écran
-- **THEN** les 4 marqueurs sont visuellement distincts sans recourir à la couleur seule
+- **THEN** les 3 marqueurs sont visuellement distincts sans recourir à la couleur seule
 
 #### Scenario: Icônes auteur appliquées
 
@@ -547,7 +547,7 @@ Tout widget SHALL appartenir à exactement une strate : strate 1 CONTENU (passif
 
 ### Requirement: Bouton à état lié vers l'étape
 
-Le bouton du volet SHALL refléter l'éligibilité du POI sélectionné : `Ouvrir` actif si le POI est éligible (`UNLOCKED`, pas de modale ACTIVE concurrente), `Verrouillé` désactivé sinon. Activer `Ouvrir` SHALL présenter l'écran de l'étape éligible (même présentation d'éligible existant : aucune transition ajoutée, aucun event ajouté). Le bouton désactivé SHALL expliquer le verrouillage (motif générique, jamais de fuite discovery : un POI non découvert n'affiche pas de volet du tout).
+Le bouton du volet SHALL refléter l'éligibilité du POI sélectionné : `Ouvrir` actif si le POI est éligible (`UNLOCKED`), `Verrouillé` désactivé sinon. Activer `Ouvrir` SHALL présenter l'écran de l'étape éligible (même présentation d'éligible existant : aucune transition ajoutée, aucun event ajouté). Le bouton désactivé SHALL expliquer le verrouillage (motif générique, jamais de fuite discovery : un POI non découvert n'affiche pas de volet du tout).
 
 #### Scenario: POI éligible ouvrable
 
@@ -570,3 +570,4 @@ Le sous-objet `source` SHALL être le point d'extension des futurs widgets liés
 - **GIVEN** un widget avec `source: { kind: "scores" }` (kind futur non enregistré)
 - **WHEN** la validation Draft-07 tourne
 - **THEN** le widget est rejeté (kind hors enum)
+

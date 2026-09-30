@@ -22,6 +22,21 @@ export interface CarteSimu {
 
 const SEUIL_TAP_PX = 8;
 
+// Libellé d'essai (français) vers état POI pour l'icône : les lignes
+// d'essai portent des libellés lisibles, les icônes suivent PoiState.
+function etatVersPoi(etat: string): "locked" | "unlocked" | "active" | "completed" {
+  switch (etat) {
+    case "Terminée":
+      return "completed";
+    case "En cours":
+      return "active";
+    case "Disponible":
+      return "unlocked";
+    default:
+      return "locked";
+  }
+}
+
 export function CarteInteractiveSimu({ widget, game, lignes, simu, hauteurPleine = false }: {
   widget: MapWidget;
   game: Game;
@@ -88,7 +103,10 @@ export function CarteInteractiveSimu({ widget, game, lignes, simu, hauteurPleine
 
   const demarrerGlisse = (e: React.PointerEvent) => {
     if (e.target !== e.currentTarget && !(e.target as HTMLElement).dataset.fond) return;
-    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+    // Capture sur le cadre (jamais la cible) : les mouvements restent reçus
+    // même quand le glissé démarre sur une tuile, et `touch-action: none`
+    // (style du cadre) empêche le défilement tactile de voler le geste.
+    e.currentTarget.setPointerCapture?.(e.pointerId);
     glisse.current = { x0: e.clientX, y0: e.clientY, cx: centre.x, cy: centre.y, bouge: false };
   };
   const poursuivreGlisse = (e: React.PointerEvent) => {
@@ -119,7 +137,7 @@ export function CarteInteractiveSimu({ widget, game, lignes, simu, hauteurPleine
       <div
         ref={cadreRef}
         className={`relative w-full cursor-grab overflow-hidden rounded border border-line active:cursor-grabbing ${hauteurPleine ? "min-h-0 flex-1" : "h-40"}`}
-        style={grille ? undefined : { background: fondUni }}
+        style={{ ...(grille ? undefined : { background: fondUni }), touchAction: "none" }}
         onPointerDown={demarrerGlisse}
         onPointerMove={poursuivreGlisse}
         onPointerUp={finirGlisse}
@@ -162,7 +180,7 @@ export function CarteInteractiveSimu({ widget, game, lignes, simu, hauteurPleine
               aria-label={`POI ${m.id}, ${etat}`}
               onClick={(e) => { e.stopPropagation(); setSelection(selection === m.id ? null : m.id); }}
             >
-              {iconePoiDefaut(etat as never).slice(0, 1).toUpperCase()}
+              {iconePoiDefaut(etatVersPoi(etat)).slice(0, 1).toUpperCase()}
             </button>
           );
         })}

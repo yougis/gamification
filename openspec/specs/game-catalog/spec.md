@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Distribuer les jeux GeoPlay depuis le Studio vers les players (natifs et PWA) via un service catalogue : publication versionnée par nom de jeu, récupération par code d'accès à 4 chiffres, vérification d'intégrité inchangée côté player.
+Distribuer les jeux GeoPlay depuis le Studio vers les players natifs via un service catalogue : publication versionnée par nom de jeu, récupération par code d'accès à 4 chiffres, vérification d'intégrité inchangée côté player.
 
 ## Requirements
 
@@ -40,7 +40,7 @@ Chaque jeu publié SHALL recevoir un code unique sur `0000`–`9999`, attribué 
 
 ### Requirement: Récupération par code côté player
 
-Le player (natif et PWA) SHALL offrir la saisie d'un code à 4 chiffres (plus scan QR / lien qui l'encodent : `{urlService, code}`). À la validation, le player SHALL télécharger le pack courant du jeu puis appliquer la vérification manifest existante (SHA-256 par fichier, refus du partiel/corrompu avec état explicite). Un pack déjà vérifié (même `sha256` par fichier) SHALL être réutilisé sans re-téléchargement. Après récupération, le jeu SHALL tourner offline, sans jamais recontacter le service.
+Le player natif SHALL offrir la saisie d'un code à 4 chiffres (plus scan QR / lien qui l'encodent : `{urlService, code}`). À la validation, le player SHALL télécharger le pack courant du jeu puis appliquer la vérification manifest existante (SHA-256 par fichier, refus du partiel/corrompu avec état explicite). Un pack déjà vérifié (même `sha256` par fichier) SHALL être réutilisé sans re-téléchargement. Après récupération, le jeu SHALL tourner offline, sans jamais recontacter le service.
 
 #### Scenario: Téléchargement par code puis offline
 
@@ -107,3 +107,4 @@ Le service catalogue SHALL accepter les appels du Studio exécuté dans un navig
 - **GIVEN** aucun service à l'URL saisie
 - **WHEN** l'auteur publie
 - **THEN** un message indique que le service est injoignable et rappelle de vérifier l'URL et que le service tourne
+

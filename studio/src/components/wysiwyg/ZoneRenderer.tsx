@@ -35,6 +35,7 @@ export function ZoneRenderer({
   game,
   lignesApercu,
   carteSimu,
+  selectionActive = true,
   masquerPleinEcran,
   flottant = false,
   // Traversant (change carte-fond-flottant) : édition ciblée fond — même
@@ -68,6 +69,10 @@ export function ZoneRenderer({
   // Carte simu (change carte-joueur-navigable, phase 3) : carte interactive
   // dans le terminal simulé. Absent = aperçu auteur statique.
   carteSimu?: CarteSimu;
+  // Sélection active (change simu-strates-pointeurs) : édition (clic =
+  // sélection) vs simu (seuls les contrôles actionnables sont opaques).
+  // Défaut true = comportement historique.
+  selectionActive?: boolean;
   // Plein écran (change studio-widgets-pleinecran) : quand vrai, les widgets
   // `pleinEcran` ne sont pas rendus dans le flux — PhoneCanvas les affiche
   // dans la couche breakout (cadre entier). Ici : fantôme de rappel en mode
@@ -161,6 +166,7 @@ export function ZoneRenderer({
               game={game}
               lignesApercu={lignesApercu}
               carteSimu={carteSimu}
+              selectionActive={selectionActive}
               flottant={flottant}
               traversant={traversant}
               onDropBefore={

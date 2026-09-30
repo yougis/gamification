@@ -51,7 +51,7 @@ Les modes de présentation SHALL inclure :
 
 Un jeu peut combiner plusieurs présentations simultanément (ex. `MAP + TOOLBOX + CLUE` pour un escape game géolocalisé, `HOME + MAP + TOOLBOX` pour un jeu d'orientation avec accueil joueur).
 
-Quand `presentation` inclut `HOME`, le player SHALL exposer en permanence une entrée « Accueil » (tab/barre) affichant le tableau de bord, y compris quand une autre vue est active ; l'affichage par défaut (tableau si aucune modale ACTIVE) est inchangé. Aller vers ou quitter l'Accueil SHALL ne produire ni transition d'état ni event de progression. Les vues restent exclusives (pas de superposition).
+Quand `presentation` inclut `HOME`, le player SHALL exposer en permanence une entrée « Accueil » (tab/barre) affichant le tableau de bord, y compris quand une autre vue est ouverte ; l'affichage par défaut (tableau si aucun écran d'étape ouvert) est inchangé. Aller vers ou quitter l'Accueil SHALL ne produire ni transition d'état ni event de progression. Les vues restent exclusives (pas de superposition).
 
 #### Scenario: Présentation MAP pour BASIC
 - **GIVEN** un jeu BASIC avec `presentation: ["MAP"]`
@@ -70,11 +70,11 @@ Quand `presentation` inclut `HOME`, le player SHALL exposer en permanence une en
 
 #### Scenario: Tableau de bord par défaut avec HOME
 - **GIVEN** un jeu avec `presentation: ["HOME", "TOOLBOX"]`
-- **WHEN** le joueur est entre deux étapes (aucune modale ACTIVE)
+- **WHEN** le joueur est entre deux étapes (aucun écran d'étape ouvert)
 - **THEN** le tableau de bord s'affiche par défaut avec le temps écoulé, les POI et l'étape à ouvrir
 
 #### Scenario: Retour à l'Accueil depuis une autre vue
-- **GIVEN** un jeu avec `presentation: ["HOME", "MAP"]`, joueur sur la carte avec une modale ACTIVE fermée
+- **GIVEN** un jeu avec `presentation: ["HOME", "MAP"]`, joueur sur la carte avec un écran d'étape refermé
 - **WHEN** le joueur touche l'onglet « Accueil »
 - **THEN** le tableau de bord s'affiche (temps, POI, étape à ouvrir), sans transition d'état ni event
 
@@ -143,11 +143,11 @@ Le Player mobile SHALL adapter son interface selon le modèle de navigation conf
 Le Player SHALL :
 - connaître l'état courant du jeu ;
 - connaître les étapes accessibles et découvertes ;
-- afficher les étapes selon leur état (LOCKED, UNLOCKED, ACTIVE, COMPLETED) ;
+- afficher les étapes selon leur état (LOCKED, UNLOCKED, COMPLETED) ;
 - afficher l'inventaire lorsqu'il est utilisé ;
 - afficher les indices ;
 - afficher la carte lorsque le jeu est géographique ;
-- lancer le mini-jeu lorsqu'une étape devient ACTIVE ;
+- lancer le mini-jeu lorsqu'une étape `UNLOCKED` est ouverte par le joueur ;
 - afficher les effets produits après une action.
 
 Le Player NE DOIT PAS être obligé d'afficher une carte pour tous les jeux.
@@ -178,17 +178,18 @@ Un jeu hybride est considéré comme un cas nominal et non comme une exception. 
 - **WHEN** le joueur est dans une zone géographique avec une énigme
 - **THEN** le joueur voit la carte (pour se localiser), la boîte à outils (pour vérifier ses objets), et l'indice (pour résoudre l'énigme)
 
-### Requirement: Compatibilité avec le cycle d'état existant
+### Requirement: Cycle sans ACTIVE par modele
 
-Le cycle `LOCKED → UNLOCKED → ACTIVE → COMPLETED` reste valide pour tous les modèles de navigation. La navigation ne SHALL pas imposer un nouveau cycle d'état spécifique à chaque modèle de jeu.
+Le cycle `LOCKED → UNLOCKED → COMPLETED` reste valide pour tous les modèles de navigation. La navigation ne SHALL pas imposer un nouveau cycle d'état spécifique à chaque modèle de jeu.
 
-Les mécanismes de transition changent selon le modèle, mais le cycle conceptuel reste identique :
-- BASIC : UNLOCKED → ACTIVE via GEOFENCE
-- GUIDED : UNLOCKED → ACTIVE automatique après précédent COMPLETED
-- ESCAPE_GAME : UNLOCKED → ACTIVE via ITEM_USED
-- TREASURE_HUNT : UNLOCKED → ACTIVE via GEOFENCE après résolution d'indice
+Les mécanismes d'éligibilité changent selon le modèle, mais le cycle conceptuel reste identique :
+- BASIC : éligible (`UNLOCKED`) via GEOFENCE
+- GUIDED : éligible (`UNLOCKED`) automatique après précédent COMPLETED
+- ESCAPE_GAME : éligible (`UNLOCKED`) via ITEM_USED
+- TREASURE_HUNT : éligible (`UNLOCKED`) via GEOFENCE après résolution d'indice
 
 #### Scenario: Différents mécanismes, même cycle
 - **GIVEN** deux jeux, un BASIC et un GUIDED, avec le même nœud
-- **WHEN** le nœud passe de UNLOCKED à ACTIVE dans chaque jeu
-- **THEN** le cycle d'état est le même, seul le mécanisme de transition diffère
+- **WHEN** le nœud passe de LOCKED à UNLOCKED dans chaque jeu
+- **THEN** le cycle d'état est le même, seul le mécanisme d'éligibilité diffère
+

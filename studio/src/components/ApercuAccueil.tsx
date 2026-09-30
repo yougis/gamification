@@ -7,6 +7,8 @@
 import { Icon } from "./icons";
 import { calculerApercu } from "../game/apercu-accueil";
 import { PhoneCanvas, VIEWPORTS, type ViewportId } from "./wysiwyg/PhoneCanvas";
+import type { CarteSimu } from "./wysiwyg/widgets/CarteInteractiveSimu";
+import { useEffect, useRef, useState } from "react";
 import type { Game } from "../game/types";
 
 export function ApercuAccueil({
@@ -19,6 +21,7 @@ export function ApercuAccueil({
   onOuvrir,
   viewport = "phone-portrait",
   onViewport,
+  positionSimu,
 }: {
   game: Game;
   nowMs: number;
@@ -32,8 +35,43 @@ export function ApercuAccueil({
   // portrait pour les appelants qui ne le branchent pas).
   viewport?: ViewportId;
   onViewport?: (v: ViewportId) => void;
+  // Position simulée (change simu-carte-puzzle-viewports) : alimente la carte
+  // interactive du tableau. Absente = position non renseignée (carte
+  // interactive quand même, éligibilité lue de `elus`).
+  positionSimu?: { lat: number; lng: number } | null;
 }) {
   const ap = calculerApercu(game, nowMs, terminees, elus, teteFile, actif);
+  // Carte interactive du tableau (change simu-carte-puzzle-viewports) :
+  // mêmes éligibles que l'aperçu, ouverture via le contrôle d'essai existant.
+  const carteSimu: CarteSimu = {
+    position: positionSimu ?? null,
+    eligible: (id: string) => elus.includes(id),
+    onOuvrir,
+  };
+  // Mise à l'échelle plein-cadre (change simu-carte-puzzle-viewports) : même
+  // calcul que Screen et terminal, pour une même taille par viewport partout.
+  const cadreRef = useRef<HTMLDivElement | null>(null);
+  const [tailleCadre, setTailleCadre] = useState({ w: 0, h: 0 });
+  useEffect(() => {
+    const el = cadreRef.current;
+    if (!el) return;
+    const mesurer = () => {
+      const r = el.getBoundingClientRect();
+      setTailleCadre((p) => (Math.abs(p.w - r.width) < 1 && Math.abs(p.h - r.height) < 1 ? p : { w: r.width, h: r.height }));
+    };
+    mesurer();
+    const ro = new ResizeObserver(mesurer);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const format = VIEWPORTS.find((v) => v.id === viewport) ?? VIEWPORTS[0];
+  const echelle =
+    (viewport === "phone-landscape" || viewport === "tablet-landscape") &&
+    tailleCadre.w > 0 &&
+    tailleCadre.h > 0
+      ? Math.min(tailleCadre.w / format.largeur, tailleCadre.h / format.hauteur, 1)
+      : undefined;
+  const scale = echelle != null && echelle < 1 ? echelle : undefined;
   return (
     <div className="carte p-3" aria-label="Aperçu du tableau de bord — essai en cours">
       <h3 className="flex items-center gap-1.5 font-bold text-[13px]">
@@ -64,13 +102,17 @@ export function ApercuAccueil({
           </span>
         )}
       </h3>
-      <div className="mt-1">
+      <div className="mt-1" ref={cadreRef}>
         <PhoneCanvas
           screen={game.global?.screen ?? {}}
           game={game}
           lignesApercu={ap.lignes}
           viewport={viewport}
+          scale={scale}
           showGhosts={false}
+          carteSimu={carteSimu}
+          dissimulationJoueur
+          cleContexte={game.gameId}
         />
       </div>
       {ap.tete ? (

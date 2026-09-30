@@ -29,7 +29,7 @@ SHALL rejouer sans réseau.
 ### Requirement: Exécution graphe et modules
 
 Le Player SHALL exécuter la sémantique des specs (`viewer-orchestrator`, états,
-`latch`, file FIFO, pools persistés) et rendre les 5 modules socle avec leurs
+`latch`, pools persistés) et rendre les 5 modules socle avec leurs
 fallbacks (2D, sans-capteur, dilatation tactile). Un type inconnu SHALL dégrader
 le nœud avec message, jamais crasher le Jeu.
 
@@ -37,7 +37,7 @@ le nœud avec message, jamais crasher le Jeu.
 
 - **GIVEN** le pack `reference-5poi` importé
 - **WHEN** le joueur joue le tirage puis la branche jusqu'à FIN
-- **THEN** chaque état suit la machine `LOCKED→UNLOCKED→ACTIVE→COMPLETED`
+- **THEN** chaque état suit la machine `LOCKED→UNLOCKED→COMPLETED`
 
 ### Requirement: Progression et scores journalisés
 
@@ -79,50 +79,18 @@ SHALL suivre le même schéma que Android.
 - **WHEN** l'animateur installe l'app iOS via Xcode ou TestFlight
 - **THEN** le jeu tourne avec la même logique que la version Android
 
-### Requirement: Coquille PWA installable et offline
+### Requirement: Export compatible natif unique
 
-Le Player SHALL exister aussi comme coquille navigateur installable (PWA :
-manifest, service worker, « Ajouter à l'écran d'accueil » / Web Clip MDM),
-adossée au même moteur et à la même UI commune que le natif. La PWA SHALL
-importer un pack par fichier, URL ou QR, vérifier le manifest SHA-256 par
-fichier au premier lancement et refuser tout pack partiel ou corrompu avec
-état explicite, exactement comme le natif. Un pack vérifié SHALL rejouer sans
-réseau (visite en ligne initiale requise pour la mise en cache).
-
-La persistance PWA (progression, tirages, events, inventaire) SHALL vivre en
-stockage local navigateur avec écriture immédiate et même `sessionId` de
-reprise. Le stockage SHALL être demandé persistant (`persist()`) et le
-lancement SHALL revérifier l'intégrité du pack.
-
-Le verrouillage kiosque OS n'existant pas côté web, la PWA SHALL proposer la
-procédure Guided Access (iPad) comme repli documenté quand `holdMode !=
-"none"`, sans jamais prétendre verrouiller.
-
-#### Scenario: Installation flotte sans compte
-
-- **GIVEN** un iPad supervisé recevant la PWA par Web Clip MDM
-- **WHEN** l'animateur ouvre le jeu sans réseau après une visite en ligne
-- **THEN** le pack vérifié démarre offline, sans compte Apple ni provisioning
-
-#### Scenario: Pack PWA partiel non lançable
-
-- **GIVEN** un pack PWA mis en cache à 90 %
-- **WHEN** le joueur tente de lancer
-- **THEN** le lancement est refusé avec la progression et le fichier manquant
-
-### Requirement: Export compatible multi-player
-
-Le même JSON de jeu SHALL s'exporter vers `NATIVE` et `PWA` sans fork (même
-schéma, même manifest, même validation AJV des deux côtés). Le canal SHALL
-être un attribut de distribution choisi à l'export, jamais une variante du
-jeu. L'export SHALL afficher le verdict de compatibilité par canal avant
+Le même JSON de jeu SHALL s'exporter vers le player natif sans fork (même
+schéma, même manifest, même validation AJV). Il n'existe plus qu'un seul canal de distribution, jamais une variante du
+jeu. L'export SHALL afficher le verdict de compatibilité natif avant
 génération (voir `player-compatibility`).
 
-#### Scenario: Même jeu, deux canaux
+#### Scenario: Jeu exporte vers le natif
 
 - **GIVEN** un jeu QUIZ/PUZZLE sans capteur exotique
-- **WHEN** l'auteur exporte vers `NATIVE` puis vers `PWA`
-- **THEN** les deux packs contiennent le même `game.json` et passent la même validation AJV
+- **WHEN** l'auteur exporte vers `NATIVE`
+- **THEN** le pack contient le `game.json` et passe la validation AJV
 
 ### Requirement: Build iOS automatisé
 
@@ -165,27 +133,3 @@ iOS.
 - **WHEN** un pack est importé sur iOS
 - **THEN** la validation Draft-07 produit le même résultat que sur Android
 
-### Requirement: Build PWA reproductible
-
-La coquille PWA SHALL se construire de façon reproductible : la même commande de build produit le même `dist/` sur toute machine (locale ou CI), sans exiger d'état machine local (scripts, outils pré-installés, caches manuels). La toolchain web (compilateur, gestionnaire de paquets, optimiseur wasm) SHALL être résolue par le build lui-même, jamais supposée présente.
-
-#### Scenario: Build sans état local
-- **WHEN** un développeur clone le repo sur une machine vierge (hors SDK Android/JDK documentés) et lance la commande de build PWA
-- **THEN** le build réussit sans script local ni outil pré-installé supplémentaire
-
-#### Scenario: Build CI identique au local
-- **WHEN** la CI construit la PWA sur runner Ubuntu
-- **THEN** le `dist/` produit est fonctionnellement identique à celui d'un build local (même `index.html`, même manifest, même service worker)
-
-### Requirement: PWA publiée sur URL publique stable
-
-Le `dist/` PWA issu du build CI SHALL être publié automatiquement sur une URL publique stable en HTTPS (GitHub Pages, repo public), sans committer le `dist/` dans le repo. L'URL SHALL servir exactement les fichiers du build (jamais une copie manuelle), avec les chemins relatifs existants (`start_url`/`scope` relatifs) pour rester valide sous le sous-chemin d'hébergement.
-
-#### Scenario: Publication automatique sur la branche principale
-- **WHEN** un commit est poussé sur la branche principale avec un build PWA vert
-- **THEN** la PWA est déployée sur l'URL publique et affiche la version du build
-
-#### Scenario: URL utilisable en flotte
-- **GIVEN** l'URL publique de la PWA déployée
-- **WHEN** l'animateur l'ouvre dans Safari puis l'ajoute à l'écran d'accueil (ou la pousse en Web Clip MDM)
-- **THEN** la PWA s'installe et importe un pack par fichier, URL ou code, exactement comme en local

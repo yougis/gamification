@@ -234,8 +234,19 @@ fun ScreenRenderer(
             ) {
                 ZoneBlock(overlay, branding, moduleSlot, imageContent, styleOf, onButtonAction, progressFraction, pageIndex, pageTotal, carte)
             }
+            // Fermeture universelle (change overlay-refermable) : `fermable`
+            // ne gouverne plus que le clic-fond ; tout overlay offre le
+            // contrôle de masquage, état conservé, reprise = affichée.
+            if (!overlay.fermable) {
+                Box(
+                    Modifier.fillMaxSize().padding(12.dp),
+                    contentAlignment = Alignment.TopEnd,
+                ) {
+                    TextButton(onClick = { overlayDismissed = true }) { Text("Masquer") }
+                }
+            }
         }
-        if (overlay != null && overlay.fermable && overlayDismissed) {
+        if (overlay != null && overlayDismissed) {
             TextButton(
                 onClick = { overlayDismissed = false },
                 modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),

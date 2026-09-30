@@ -281,6 +281,11 @@ export function PuzzlePlayerRenderer({ data, branding, onComplete, hint }: Modul
 
   if (!d.image) return <p className="text-sm">Puzzle sans image source.</p>;
 
+  // Résolution d'asset (change simu-carte-puzzle-viewports) : même mécanisme
+  // que l'aperçu éditeur — le chemin du pack n'est pas affichable tel quel
+  // dans le Studio (repli = chemin brut, tuiles vides si injouable).
+  const srcImage = (d.image && urlAssetSession(d.image)) || d.image;
+
   const permuter = (a: number, b: number) => {
     if (a === b || termine || blocage) return;
     if (maxEssais != null && essais + 1 > maxEssais) {
@@ -358,7 +363,7 @@ export function PuzzlePlayerRenderer({ data, branding, onComplete, hint }: Modul
             aria-label={`Tuile ${position + 1}${origine === position ? " (bien placée)" : ""}${selection === position ? " (sélectionnée)" : ""}`}
             className="aspect-square bg-surface disabled:cursor-default"
             style={{
-              ...tuileFond(d.image!, lignes, colonnes, origine),
+              ...tuileFond(srcImage, lignes, colonnes, origine),
               outline: selection === position ? `3px solid ${accent}` : undefined,
               outlineOffset: "-3px",
               opacity: origine === position ? 1 : 0.92,

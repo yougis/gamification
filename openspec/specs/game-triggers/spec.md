@@ -46,8 +46,8 @@ Le type réservé `WINDOW` SHALL être défini comme fenêtre sur le temps écou
 (numbers ≥ 0, au moins un des deux requis via `anyOf`), `additionalProperties: false`.
 La condition SHALL être vraie quand `elapsed >= apresSecondes` (si posé) ET `elapsed < avantSecondes`
 (si posé). Comme `GEOFENCE`, `WINDOW` est révocable : à l'échéance (`elapsed >= avantSecondes`),
-le nœud SHALL retomber `LOCKED` même si `latch: true`, sortir de la file d'attente, et ne peut plus
-redevenir éligible par cette condition. Une modale déjà ACTIVE à l'échéance SHALL se terminer
+le nœud SHALL retomber `LOCKED` même si `latch: true`, et ne peut plus
+redevenir éligible par cette condition. Un écran d'étape déjà ouvert à l'échéance SHALL se terminer
 normalement, puis le nœud retombe `LOCKED` (pas d'expulsion, pas de ré-entrée).
 `WINDOW` SHALL se combiner avec les autres conditions via `operator` (`AND`/`OR`) existant.
 
@@ -61,7 +61,7 @@ normalement, puis le nœud retombe `LOCKED` (pas d'expulsion, pas de ré-entrée
 
 - **GIVEN** un nœud `latch: true` avec `activation: {requires: [{type: WINDOW, avantSecondes: 600}]}`, joueur éligible à 500s
 - **WHEN** le temps écoulé passe 600s
-- **THEN** le nœud retombe `LOCKED` et sort de la file
+- **THEN** le nœud retombe `LOCKED`
 
 #### Scenario: Fenêtre sans borne rejetée en couche 1
 
@@ -119,3 +119,4 @@ Le validateur applicatif SHALL vérifier que `ITEM_USED` avec `consumed: true` f
 - **GIVEN** un objet `loupe` avec `consumable: false` et une condition `ITEM_USED {itemId: "loupe", consumed: true}`
 - **WHEN** le validateur controle
 - **THEN** le jeu est rejeté avec erreur
+

@@ -56,6 +56,7 @@ export function WidgetRenderer({
   game,
   lignesApercu,
   carteSimu,
+  selectionActive = true,
   pleinEcran = false,
   flottant = false,
   traversant = false,
@@ -92,6 +93,11 @@ export function WidgetRenderer({
   // Carte simu (change carte-joueur-navigable, phase 3) : carte interactive
   // dans le terminal simulé. Absent = aperçu auteur statique.
   carteSimu?: CarteSimu;
+  // Sélection active (change simu-strates-pointeurs) : édition (clic =
+  // sélection, comportement historique) vs simu (seuls button, map
+  // interactive et module sont opaques ; le reste traverse vers le fond).
+  // Défaut true = comportement historique.
+  selectionActive?: boolean;
   // Flottant (change carte-fond-flottant) : dans une zone flottante, le
   // widget redevient opaque aux pointeurs (la zone laisse passer les creux),
   // sauf `traversant` (édition ciblée fond : tout passe vers la carte).
@@ -121,6 +127,19 @@ export function WidgetRenderer({
     // la navigation clavier (Entree) selectionne sans editer.
     if (estTexte && onCommitText && zoneId) setEdition(true);
   };
+
+  // Opacité aux pointeurs (change simu-strates-pointeurs) : en édition,
+  // comportement historique (zone flottante => widget opaque sauf traversée).
+  // En simu, seuls les contrôles réellement actionnables sont opaques
+  // (bouton, carte interactive, module) ; texte, image, spacer, progression
+  // et aperçu statique traversent vers le fond.
+  const simuOpaque =
+    widget.type === "button" ||
+    widget.type === "module" ||
+    (widget.type === "map" && carteSimu != null && game != null);
+  const opacite = selectionActive
+    ? (flottant && !traversant ? "pointer-events-auto" : "")
+    : (simuOpaque ? "pointer-events-auto" : "pointer-events-none");
 
   // Taille relative (change studio-widgets-pleinecran) : % de la zone sur le
   // wrapper (l'image garde w-full interne). pleinEcran est géré au niveau
@@ -182,7 +201,7 @@ export function WidgetRenderer({
           onSelect?.(index);
         }
       }}
-      className={`min-w-0 max-w-full rounded ${pleinEcran ? "h-full" : ""} ${flottant && !traversant ? "pointer-events-auto" : ""} ${selected ? "outline-2 outline-neon outline" : ""} ${survol ? "outline-2 outline-dashed outline-neon" : ""} ${deplacable ? "cursor-grab" : ""}`}
+      className={`min-w-0 max-w-full rounded ${pleinEcran ? "h-full" : ""} ${opacite} ${selected ? "outline-2 outline-neon outline" : ""} ${survol ? "outline-2 outline-dashed outline-neon" : ""} ${deplacable ? "cursor-grab" : ""}`}
       style={styleTaille}
     >
       {widget.type === "text" ? (

@@ -63,20 +63,6 @@ Le runtime SHALL évaluer les `activation` en continu, résoudre les pools `ON_G
 - **WHEN** l'OS signale `onPause`
 - **THEN** l'évaluation continue en arrière-plan, seul le journal est mis à jour, le verrouillage kiosque reste actif
 
-### Requirement: File FIFO à modale unique
-
-Le runtime SHALL présenter au plus 1 modale `ACTIVE` : passage auto pour `GEOFENCE`/`TIMER`, choix (menu/carte) pour `NODE_COMPLETED`/`POOL_DRAWN` multiples, file d'attente FIFO, `ACTIVE` latché, file suivant le `latch` (sortie de file si relock). Les triggers d'activation peuvent être géographiques (GEOFENCE) ou fonctionnels (ITEM_USED, CODE_INPUT, CLUE_RESOLVED).
-
-#### Scenario: Deux geofences simultanées
-- **GIVEN** un Quiz `ACTIVE` et un second geofence qui devient vrai
-- **WHEN** le moteur évalue
-- **THEN** le second attend en file FIFO sans seconde modale
-
-#### Scenario: Activation par objet dans la file
-- **GIVEN** un jeu ESCAPE_GAME où un nœud devient UNLOCKED via ITEM_USED
-- **WHEN** le joueur utilise l'objet
-- **THEN** le nœud entre dans la file ACTIVE comme pour tout autre déclencheur
-
 ### Requirement: Capteurs sobres et guidance non bloquante
 
 Le GPS SHALL adapter sa fréquence (ralenti hors épreuve), appliquer gating `maxAccuracyM` + `dwell` + hystérésis depuis le JSON. La boussole SHALL fournir heading nord vrai lissé + accuracy pour flèche POI + distance texte + haptique (jamais couleur seule). Le GPS SHALL adapter sa fréquence selon le modèle de navigation. En mode GUIDED ou ESCAPE_GAME sans composante GPS, le GPS peut être inactif ou en mode basse fréquence.
@@ -137,7 +123,7 @@ Quand `HOME` est présent, le runtime SHALL afficher une entrée « Accueil » p
 
 ### Requirement: Tableau de bord entre les étapes
 
-Quand `presentation` inclut `HOME`, le player SHALL afficher par défaut (aucune modale ACTIVE) un tableau de bord contenant : le temps écoulé de la session ; pour chaque POI non terminé porteur d'une condition `TIMER` non encore satisfaite, le compte à rebours restant affiché à côté du POI (calculé depuis l'ancre et le délai existants, sans nouvelle donnée) ; une entrée vers la boîte à outils (même règle d'affichage que l'icône persistante) ; l'état de chaque POI (fait / à faire, depuis les états moteur) ; la proposition d'ouverture de l'étape en tête de file (même file FIFO, aucune transition ajoutée). Ouvrir ou fermer le tableau de bord SHALL ne produire ni transition d'état ni event de progression. Les temps limites d'épreuve (`timeLimitSeconds`, `maxAttempts`) SHALL rester affichés uniquement dans les écrans d'étapes par les modules.
+Quand `presentation` inclut `HOME`, le player SHALL afficher par défaut (aucun écran d'étape ouvert) un tableau de bord contenant : le temps écoulé de la session ; pour chaque POI non terminé porteur d'une condition `TIMER` non encore satisfaite, le compte à rebours restant affiché à côté du POI (calculé depuis l'ancre et le délai existants, sans nouvelle donnée) ; une entrée vers la boîte à outils (même règle d'affichage que l'icône persistante) ; l'état de chaque POI (fait / à faire, depuis les états moteur) ; la proposition d'ouverture du premier éligible (aucune transition ajoutée). Ouvrir ou fermer le tableau de bord SHALL ne produire ni transition d'état ni event de progression. Les temps limites d'épreuve (`timeLimitSeconds`, `maxAttempts`) SHALL rester affichés uniquement dans les écrans d'étapes par les modules.
 
 #### Scenario: Compte à rebours par POI
 - **GIVEN** un POI avec `TIMER {GAME_START + 600s}` et une session écoulée de 240s
@@ -145,7 +131,7 @@ Quand `presentation` inclut `HOME`, le player SHALL afficher par défaut (aucune
 - **THEN** le POI affiche « dans 06:00 » à côté de son état
 
 #### Scenario: Proposition d'ouverture
-- **GIVEN** un tableau de bord avec `baker` en tête de file
+- **GIVEN** un tableau de bord avec `baker` premier éligible
 - **WHEN** le joueur touche « Ouvrir : baker »
 - **THEN** l'étape s'ouvre comme par tout autre déclencheur, sans event supplémentaire
 
@@ -174,7 +160,7 @@ Le runtime SHALL adapter le rendu du Player selon le modèle de navigation confi
 
 ### Requirement: Icône d'inventaire persistante
 
-Quand le jeu définit des objets (`objects[]` non vide) ET que `presentation` inclut `TOOLBOX`, le Player SHALL afficher une icône d'inventaire persistante sur tous les écrans, sauf sur les Nœuds avec `inventoryAccess: false`. L'ouverture SHALL afficher la boîte à outils en overlay ; la fermeture SHALL reprendre l'écran exact (état moteur, modale ACTIVE et file FIFO inchangés). Sans objet ou sans `TOOLBOX`, aucune icône SHALL apparaître.
+Quand le jeu définit des objets (`objects[]` non vide) ET que `presentation` inclut `TOOLBOX`, le Player SHALL afficher une icône d'inventaire persistante sur tous les écrans, sauf sur les Nœuds avec `inventoryAccess: false`. L'ouverture SHALL afficher la boîte à outils en overlay ; la fermeture SHALL reprendre l'écran exact (état moteur inchangé). Sans objet ou sans `TOOLBOX`, aucune icône SHALL apparaître.
 
 #### Scenario: Accès à tout moment
 - **GIVEN** un jeu avec objets et `presentation: ["MAP", "TOOLBOX"]`, joueur sur un Nœud sans `inventoryAccess`
@@ -183,8 +169,8 @@ Quand le jeu définit des objets (`objects[]` non vide) ET que `presentation` in
 
 #### Scenario: Épreuve isolée
 - **GIVEN** un Nœud avec `inventoryAccess: false` dans le même jeu
-- **WHEN** le joueur atteint ce Nœud
-- **THEN** aucune icône n'est affichée tant que le Nœud est ACTIVE
+- **WHEN** le joueur atteint ce Nœud et ouvre son écran
+- **THEN** aucune icône n'est affichée tant que l'écran est ouvert
 
 #### Scenario: Jeu sans inventaire inchangé
 - **GIVEN** un jeu BASIC sans objet
@@ -193,14 +179,14 @@ Quand le jeu définit des objets (`objects[]` non vide) ET que `presentation` in
 
 ### Requirement: Surimpression fermable (terminal simulé)
 
-Constat de périmètre : aucun player (natif, PWA, shared Compose) ne rend aujourd'hui les `ScreenDefinition` — le terminal joueur simulé du Studio est le seul renderer d'écrans. Le contrat ci-dessous y est implémenté ; le renderer natif/PWA le reprendra dans un change dédié.
+Constat de périmètre : le terminal joueur simulé du Studio est le seul renderer d'écrans avec le renderer natif Compose — un seul renderer `commonMain` les porte. Le contrat ci-dessous y est implémenté.
 
-Quand la zone `overlay` d'un écran porte `fermable: true`, le terminal simulé SHALL permettre au joueur de masquer la surimpression par clic sur son fond semi-transparent. L'écran dessous SHALL rester jouable (renderer déjà interactif ; aucune transition d'état, aucun event dédié, aucune complétion implicite). Une icône « message » persistante (chrome player, glyphe fixe teinté branding) SHALL être visible tant que l'overlay est masquée ; son activation SHALL réafficher l'overlay avec son état conservé (mémoire session, non persistée : à la reprise l'overlay revient affichée). Masquer et réafficher SHALL être libres et illimités. Sans `fermable` (défaut), le clic sur le fond SHALL ne rien masquer.
+Quand la zone `overlay` d'un écran porte `fermable: true`, le renderer SHALL permettre au joueur de masquer la surimpression par clic sur son fond semi-transparent. L'écran dessous SHALL rester jouable (renderer déjà interactif ; aucune transition d'état, aucun event dédié, aucune complétion implicite). Une icône « message » persistante (chrome player, glyphe fixe teinté branding) SHALL être visible tant que l'overlay est masquée ; son activation SHALL réafficher l'overlay avec son état conservé (mémoire session, non persistée : à la reprise l'overlay revient affichée). Masquer et réafficher SHALL être libres et illimités. Sans `fermable` (défaut), le clic sur le fond SHALL ne rien masquer.
 
 #### Scenario: Masquage au clic-fond, écran jouable
-- **GIVEN** un Nœud ACTIVE avec overlay `fermable: true` par-dessus un quiz en cours
+- **GIVEN** un Nœud `UNLOCKED` ouvert avec overlay `fermable: true` par-dessus un quiz en cours
 - **WHEN** le joueur clique le fond de la surimpression
-- **THEN** l'overlay se masque, le quiz reste jouable, le Nœud reste ACTIVE, aucun event n'est journalisé
+- **THEN** l'overlay se masque, le quiz reste jouable, le Nœud reste `UNLOCKED`, aucun event n'est journalisé
 
 #### Scenario: Réouverture par l'icône message
 - **GIVEN** le même Nœud avec l'overlay masquée (saisie en cours dans la carte)
@@ -217,28 +203,13 @@ Quand la zone `overlay` d'un écran porte `fermable: true`, le terminal simulé 
 - **WHEN** le joueur reprend avec le même `sessionId`
 - **THEN** l'overlay est affichée (état propre), la progression moteur est restaurée
 
-### Requirement: Panneau triche de la coquille PWA
-
-La coquille PWA SHALL offrir un panneau triche regroupant bypass GEOFENCE, `forceDraw` par branche et position simulée. Chaque event simulé SHALL porter visuellement et en journal le flag triche (badge distinct) et SHALL ne jamais ressembler à un event réel. La triche SHALL être une simulation locale : elle ne modifie jamais le JSON source et ne nécessite aucun réseau.
-
-#### Scenario: Bypass débloque sans GPS
-
-- **GIVEN** une PWA sans position GPS (fallback) devant un nœud GEOFENCE
-- **WHEN** l'animateur active le bypass GEOFENCE
-- **THEN** le nœud devient UNLOCKED comme en présence réelle, chaque event portant le flag triche
-
-#### Scenario: Event simulé distinct du réel
-
-- **WHEN** l'animateur consulte le journal après un `forceDraw`
-- **THEN** l'event porte le badge triche et est distinguable des events réels
-
 ### Requirement: Arrivée immersive sur le nœud à jouer
 
 Au chargement d'une partie (pack importé, nouvelle session ou reprise), le player SHALL ouvrir directement l'écran du nœud à jouer au lieu de la liste, selon la règle : si `HOME` est présent dans `presentation`, le tableau de bord s'affiche et pilote (sa proposition d'ouverture existante fait foi) ; sinon, le player ouvre le premier nœud non terminé sans parent — aucune dépendance `NODE_COMPLETED`/`POOL_DRAWN` entrante — avec préférence au nœud nommé `start` quand il est éligible. Si aucun nœud n'est éligible, le player affiche la liste actuelle (repli inchangé). L'ouverture SHALL être une présentation d'éligible existant : aucune transition d'état, aucun event de progression.
 
 #### Scenario: Arrivée avec HOME
 
-- **GIVEN** un jeu avec `presentation: ["HOME", "TOOLBOX"]` et `baker` en tête de file
+- **GIVEN** un jeu avec `presentation: ["HOME", "TOOLBOX"]` et `baker` premier eligible
 - **WHEN** le joueur charge le pack
 - **THEN** le tableau de bord s'affiche avec « Ouvrir : baker », jamais la liste brute
 
@@ -262,7 +233,7 @@ Au chargement d'une partie (pack importé, nouvelle session ou reprise), le play
 
 ### Requirement: Enchaînement des écrans après validation
 
-Valider une étape (module `onComplete`, Terminer, Abandonner exclu) SHALL avancer automatiquement vers l'écran éligible suivant de la file FIFO : même file, aucune transition ajoutée, aucun event ajouté. À défaut d'éligible, le player revient au tableau de bord (si `HOME`) ou à la liste (repli). Si un nœud `isEnding` passe `COMPLETED`, l'écran de fin existant s'affiche.
+Valider une étape (module `onComplete`, Terminer, Abandonner exclu) SHALL avancer automatiquement vers l'écran du prochain noeud eligible, dans l'ordre des eligibles : aucune transition ajoutée, aucun event ajouté. À défaut d'éligible, le player revient au tableau de bord (si `HOME`) ou à la liste (repli). Si un nœud `isEnding` passe `COMPLETED`, l'écran de fin existant s'affiche.
 
 #### Scenario: Validation enchaîne
 
@@ -325,8 +296,7 @@ Un jeu HOME-seul (aucun `isEnding`) SHALL tourner sans terminaison : aucune tran
 - **THEN** aucun compte à rebours de fin ni écran de fin n'est annoncé ; Quitter reprend à l'identique
 
 ### Requirement: Rendu joueur du widget carte
-
-Le player (natif et PWA, via leurs renderers respectifs) SHALL rendre le widget `map` avec : le fond pack-only configuré (tuiles `global.map`, plan indoor actif, ou fond uni en repli) ; un marqueur par étape de la source (filtre `discovered` par défaut) avec l'icône de son état temps réel (`poiStyle` auteur ou défauts) ; les cercles de géofence (outdoor) ; la position du joueur et la trace GPX display quand disponibles. Le rendu SHALL rester lisible et jouable offline, sans jamais requérir le réseau.
+Le player natif (via son renderer) SHALL rendre le widget `map` avec : le fond pack-only configuré (tuiles `global.map`, plan indoor actif, ou fond uni en repli) ; un marqueur par étape de la source (filtre `discovered` par défaut) avec l'icône de son état temps réel (`poiStyle` auteur ou défauts) ; les cercles de géofence (outdoor) ; la position du joueur et la trace GPX display quand disponibles. Le rendu SHALL rester lisible et jouable offline, sans jamais requérir le réseau.
 
 #### Scenario: Carte offline complète
 
@@ -341,7 +311,6 @@ Le player (natif et PWA, via leurs renderers respectifs) SHALL rendre le widget 
 - **THEN** aucun marqueur du 4e nœud n'apparaît
 
 ### Requirement: Sélection et volet passifs
-
 Toucher un marqueur SHALL sélectionner le POI (état UI local) et afficher son volet (composé auteur ou défaut texte + bouton). Sélectionner, naviguer sur la carte et fermer le volet SHALL ne produire ni transition d'état ni event de progression. Le bouton `Ouvrir` SHALL présenter l'étape éligible (même présentation d'éligible existant) ; le bouton `Verrouillé` SHALL rester sans effet.
 
 #### Scenario: Sélection sans effet moteur
@@ -352,22 +321,23 @@ Toucher un marqueur SHALL sélectionner le POI (état UI local) et afficher son 
 
 #### Scenario: Ouverture depuis le volet
 
-- **GIVEN** un POI `UNLOCKED` sélectionné, aucune modale ACTIVE
+- **GIVEN** un POI `UNLOCKED` sélectionné
 - **WHEN** le joueur touche `Ouvrir`
-- **THEN** l'écran de l'étape s'ouvre, sans event ajouté, avec la file FIFO inchangée
+- **THEN** l'écran de l'étape s'ouvre, sans event ajouté
 
 ### Requirement: Widget carte plein écran depuis HOME
 
-Depuis HOME, l'icône du widget carte SHALL ouvrir la carte en plein écran **à la place** de HOME (navigation, pas overlay) ; le retour SHALL se faire via l'entrée « Accueil » (le tableau de bord se réaffiche à l'identique). Un seul widget plein écran à la fois : en ouvrir un second SHALL remplacer le premier, sans file. Le plein écran SHALL être inaccessible pendant une modale ACTIVE d'épreuve (vues exclusives, comme les présentations). Ouvrir, naviguer et revenir SHALL ne produire ni transition ni event.
+Depuis HOME, l'icône du widget carte SHALL ouvrir la carte en plein écran **à la place** de HOME (navigation, pas overlay) ; le retour SHALL se faire via l'entrée « Accueil » (le tableau de bord se réaffiche à l'identique). Un seul widget plein écran à la fois : en ouvrir un second SHALL remplacer le premier. Le plein écran SHALL être inaccessible pendant qu'un écran d'épreuve est ouvert (vues exclusives, comme les présentations). Ouvrir, naviguer et revenir SHALL ne produire ni transition ni event.
 
 #### Scenario: Aller-retour plein écran
 
-- **GIVEN** un joueur sur HOME sans modale ACTIVE
+- **GIVEN** un joueur sur HOME sans écran d'épreuve ouvert
 - **WHEN** il touche l'icône carte puis l'entrée « Accueil »
 - **THEN** la carte plein écran s'affiche puis HOME revient à l'identique, sans event
 
 #### Scenario: Plein écran verrouillé pendant une épreuve
 
-- **GIVEN** un nœud ACTIVE (quiz en cours)
+- **GIVEN** un écran d'épreuve ouvert (quiz en cours)
 - **WHEN** le joueur tente d'ouvrir la carte plein écran
 - **THEN** l'ouverture est refusée (ou l'icône est absente) et l'épreuve continue sans interruption
+

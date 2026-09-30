@@ -30,7 +30,7 @@ moriarty, fin) SHALL déclarer un `node.screen` conforme à ScreenDefinition
 des zones `header`/`content`/`footer` peuplées de widgets `text` (titres et
 textes d'ambiance de l'enquête) et d'un widget `module` portant le Module du
 Nœud (QUIZ, PUZZLE, CODE_INPUT, BOUSSOLE, AR_MARKER, DIFFERENCE_GAME, INFO).
-Le Nœud structurel `pool` (RANDOM_POOL, jamais ACTIVE) SHALL rester sans
+Le Nœud structurel `pool` (RANDOM_POOL, jamais ouvert comme étape) SHALL rester sans
 screen et utiliser l'écran par défaut.
 
 #### Scenario: Nœud QUIZ avec écran quiz-focus
@@ -110,5 +110,6 @@ inventaire, pools, terminaison) SHALL être inchangé : seule la présentation
 
 - **GIVEN** le pack exporté et vérifié fichier par fichier
 - **WHEN** le joueur joue start → tirage → branche → fin offline
-- **THEN** chaque état suit `LOCKED → UNLOCKED → ACTIVE → COMPLETED` et
+- **THEN** chaque état suit `LOCKED → UNLOCKED → COMPLETED` et
   chaque écran de Nœud s'affiche avec ses widgets et images
+

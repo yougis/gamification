@@ -216,7 +216,11 @@ export function PhoneCanvas({
   const zonesTransparentes = (!edition && fondPresent) || (edition && fondPresent && cal.actif === "fond");
   const widgetsTraversants = edition && fondPresent && cal.actif === "fond";
   const rendreSorti = ({ zoneId, widget, index }: VisuelSorti, interactif: boolean) => (
-    <div key={`${zoneId}-${index}`} className={`absolute inset-0 h-full ${interactif ? "" : "pointer-events-none"}`}>
+    // Conteneur toujours traversant (change simu-strates-pointeurs) : en
+    // simu le wrapper ne forme plus de rectangle attrape-clics, le widget
+    // décide (selectionActive) ; en édition, `interactif` garde le routage
+    // par calque (fond ciblé ou non).
+    <div key={`${zoneId}-${index}`} className={`absolute inset-0 h-full ${interactif && edition ? "" : "pointer-events-none"}`}>
       <WidgetRenderer
         widget={widget}
         index={index}
@@ -233,6 +237,7 @@ export function PhoneCanvas({
         game={game}
         lignesApercu={lignesApercu}
         carteSimu={carteSimu}
+        selectionActive={edition}
         pleinEcran
         onDropBefore={dndBreakout ? (fz, fi, tz, ti) => onMoveWidgetAcross?.(fz, fi, tz, ti) : undefined}
       />
@@ -240,13 +245,13 @@ export function PhoneCanvas({
   );
   const coucheFond =
     !fondPresent || masque("fond") ? null : (
-      <div className="absolute inset-0" aria-label="Arrière-plan">
+      <div className="pointer-events-none absolute inset-0" aria-label="Arrière-plan">
         {visuelsPleinEcran.filter((v) => v.fond).map((v) => rendreSorti(v, fondInteractif))}
       </div>
     );
   const couchePleinEcran =
     !visuelsPleinEcran.some((v) => !v.fond) ? null : (
-      <div className="absolute inset-0" aria-label="Widgets plein écran">
+      <div className="pointer-events-none absolute inset-0" aria-label="Widgets plein écran">
         {visuelsPleinEcran.filter((v) => !v.fond).map((v) => rendreSorti(v, !edition))}
       </div>
     );
@@ -289,6 +294,7 @@ export function PhoneCanvas({
                 game={game}
                 lignesApercu={lignesApercu}
                 flottant={zonesTransparentes}
+                selectionActive={edition}
                 traversant={widgetsTraversants}
                 carteSimu={carteSimu}
                 masquerPleinEcran
@@ -365,6 +371,7 @@ export function PhoneCanvas({
                 game={game}
                 lignesApercu={lignesApercu}
                 flottant={zonesTransparentes}
+                selectionActive={edition}
                 traversant={widgetsTraversants}
                 carteSimu={carteSimu}
                 masquerPleinEcran
@@ -395,6 +402,7 @@ export function PhoneCanvas({
                 game={game}
                 lignesApercu={lignesApercu}
                 flottant={zonesTransparentes}
+                selectionActive={edition}
                 traversant={widgetsTraversants}
                 carteSimu={carteSimu}
                 masquerPleinEcran
@@ -406,7 +414,7 @@ export function PhoneCanvas({
             </div>
           ) : null}
           {couchePleinEcran}
-          {zones.overlay && !masque("overlay") && (!overlayMasquee || !oeil) && !(dissimulable && masqueJoueur) ? (
+          {zones.overlay && !masque("overlay") && (!overlayMasquee || !oeil) && !masqueJoueur ? (
             <div
               className="absolute inset-0 flex items-center justify-center bg-black/50 p-6"
               onClick={dissimulable ? () => setMasqueJoueur(true) : undefined}
@@ -459,6 +467,7 @@ export function PhoneCanvas({
                   game={game}
                   lignesApercu={lignesApercu}
                   flottant={zonesTransparentes}
+                  selectionActive={edition}
                   traversant={widgetsTraversants}
                   carteSimu={carteSimu}
                 />
@@ -482,18 +491,18 @@ export function PhoneCanvas({
               </button>
             </div>
           ) : null}
-          {zones.overlay && dissimulable && masqueJoueur ? (
+          {zones.overlay && dissimulationJoueur === true && !masque("overlay") ? (
             <button
               type="button"
               className="absolute right-2 top-2 z-10 rounded-full border border-line bg-surface-2 p-2 shadow-lg hover:border-neon"
               style={{ color: couleurMessage ?? "var(--couleur-accent)" }}
               onClick={(e) => {
                 e.stopPropagation();
-                setMasqueJoueur(false);
+                setMasqueJoueur((m) => !m);
               }}
               onKeyDown={(e) => e.stopPropagation()}
-              title="Réafficher la surimpression"
-              aria-label="Réafficher la surimpression masquée"
+              title={masqueJoueur ? "Réafficher la surimpression" : "Masquer la surimpression"}
+              aria-label={masqueJoueur ? "Réafficher la surimpression masquée" : "Masquer la surimpression"}
             >
               <Icon name="message" size={16} />
             </button>
