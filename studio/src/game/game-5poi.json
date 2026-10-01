@@ -224,7 +224,7 @@
         "type": "AR_MARKER",
         "data": {
           "schemaVersion": "1.0.0",
-          "marker": "assets/e.mind",
+          "marker": "assets/e.png",
           "fallback2D": {}
         }
       },

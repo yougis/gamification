@@ -313,9 +313,11 @@ Recentrer / Aligner H / Aligner V SHALL être intégrés aux contrôles natifs R
 
 ### Requirement: Pastille validation dans le Composer
 
-Le Composer SHALL afficher une pastille compacte d'état de validation dans la barre globale de l'application (à côté du nom du jeu et des compteurs) : `✓ Valide` si aucune erreur, `⚠ N problèmes` sinon (N = nombre total d'erreurs C1 + C2). La pastille SHALL être cliquable vers l'écran Valider et SHALL porter un tooltip explicite (« Voir le détail dans Valider »).
+Le Composer SHALL afficher une pastille compacte d'état de validation dans la barre globale de l'application (à côté du nom du jeu et des compteurs) : `✓ Valide` si aucune erreur, `⚠ N problèmes` sinon (N = nombre total d'erreurs C1 + C2). N SHALL être calculé depuis la même source que les listes de l'écran Valider (diagnostics C1/C2 de niveau erreur) et SHALL ne jamais être dérivé par parsing de texte libre (messages de succès type « Publié », « Export OK » ne SHALL jamais alimenter le compteur). La pastille SHALL être cliquable vers l'écran Valider et SHALL porter un tooltip explicite (« Voir le détail dans Valider »).
 
 La pastille ne SHALL jamais afficher le détail des erreurs (messages, nœuds fautifs, impasses) — ce détail vit exclusivement dans l'écran Valider. Il n'existe plus de pastille sur un rail central (le centre n'ayant plus de rail).
+
+Le compteur de fichiers du manifest SHALL distinguer les assets enregistrés du `game.json` ajouté à la génération (libellé type « N asset(s) », jamais un compteur brut présenté comme un manque).
 
 #### Scenario: Pastille verte sans erreur
 - **GIVEN** un jeu valide affiché dans le Composer
@@ -326,6 +328,11 @@ La pastille ne SHALL jamais afficher le détail des erreurs (messages, nœuds fa
 - **GIVEN** un jeu avec 2 erreurs C2 affiché dans le Composer
 - **WHEN** l'auteur clique la pastille `⚠ 2 problèmes`
 - **THEN** l'écran Valider s'ouvre avec les 2 erreurs groupées par catégorie
+
+#### Scenario: Succès de publication sans fantôme
+- **GIVEN** un jeu valide dont l'auteur vient de publier avec succès (rapport « Publié : … code … »)
+- **WHEN** l'auteur regarde la barre globale
+- **THEN** la pastille affiche `✓ Valide` (le message de succès n'est pas compté) et Valider liste 0 erreur
 
 ### Requirement: Canvas graphe détaillé
 
@@ -1298,3 +1305,24 @@ Le bouton de génération du pack SHALL rester désactivé tant que la règle ce
 - **WHEN** l'auteur le réimporte après correction manuelle
 - **THEN** l'import suit la validation bi-couche comme tout fichier local
 
+### Requirement: Prévisualisation interactive du widget carte
+
+Le terminal joueur simulé (mode « Jeux ») SHALL rendre les widgets carte de façon interactive : déplacement, zoom (boutons, le tactile du poste s'il existe), position simulée lue depuis l'état d'essai (même source que les autres capteurs simulés, jamais le GPS réel du poste), clic sur un marqueur affichant le volet (titre + bouton Ouvrir comme côté player). Activer Ouvrir sur un POI éligible SHALL présenter l'étape comme le fait le simu pour tout éligible (mêmes transitions, event SIMULÉ) ; sur un POI verrouillé, le bouton SHALL rester sans effet. Naviguer SHALL ne produire ni transition ni event, comme côté player. Le rappel permanent « la prévisualisation n'écrit jamais dans le JSON source » SHALL rester visible.
+
+#### Scenario: Clic POI simulé puis ouverture
+
+- **GIVEN** le mode « Jeux » ouvert sur un écran avec widget carte et un POI `UNLOCKED` simulé
+- **WHEN** l'auteur clique le marqueur puis touche Ouvrir dans le volet
+- **THEN** l'écran de l'étape s'ouvre avec les transitions du simu et un event SIMULÉ, sans écrire au JSON
+
+#### Scenario: Position simulée affichée
+
+- **GIVEN** un essai avec une position simulée renseignée
+- **WHEN** l'auteur ouvre un écran avec widget carte dans le terminal
+- **THEN** le point de position s'affiche à la position simulée (jamais celle du poste auteur)
+
+#### Scenario: Navigation sans effet simu
+
+- **GIVEN** le même écran dans le terminal
+- **WHEN** l'auteur déplace et zoome la carte puis ferme le volet
+- **THEN** aucun event (même simulé) n'est journalisé et l'état d'essai est inchangé

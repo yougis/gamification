@@ -39,7 +39,7 @@ Le schéma Draft-07 SHALL définir `node.screen` et `global.screen` comme objets
 Une `ZoneContent` SHALL contenir :
 - `layout` (string, défaut `"stack"`) : `"stack"` (vertical), `"grid"` (colonnes), `"free"` (positionnement libre)
 - `widgets` (tableau de Widget, >=0 éléments)
-- `fermable` (booléen optionnel, défaut `false`) : réservé à la zone `overlay` — `true` autorise le joueur à masquer la surimpression (clic sur le fond) et à la réafficher (icône message). Sur les autres zones, la valeur est ignorée.
+- `fermable` (booléen optionnel, défaut `false`) : réservé à la zone `overlay` — `true` autorise en plus le masquage au clic sur le fond ; dans tous les cas le renderer affiche un contrôle de fermeture (icône message). Sur les autres zones, la valeur est ignorée.
 
 `additionalProperties: false` SHALL être appliqué.
 
@@ -64,8 +64,8 @@ Une `ZoneContent` SHALL contenir :
 #### Scenario: Overlay sans fermable (défaut fermé)
 
 - **GIVEN** une zone overlay sans champ `fermable`
-- **WHEN** le joueur clique le fond de la surimpression
-- **THEN** rien ne se masque (comportement historique, compat ascendante)
+- **WHEN** la validation Draft-07 tourne
+- **THEN** la zone est acceptée et le renderer affiche le contrôle de fermeture (seul le clic-fond reste inerte)
 
 ### Requirement: Définitions Widget
 
@@ -83,6 +83,8 @@ Chaque variante SHALL imposer ses champs requis et interdire les champs des autr
 Tout widget MAY porter un sous-objet optionnel `styles` : `{ fontFamily?: string, fontSize?: number, fontWeight?: "normal"|"bold", color?: string, align?: "left"|"center"|"right" }`. Les `styles` du widget SHALL prendre le pas sur les styles de l'écran et les styles globaux. `additionalProperties: false` SHALL être appliqué au sous-objet `styles`.
 
 Tout widget visuel (image, carte, module, et par extension texte/bouton/progression) MAY porter des props de mise en page communes et optionnelles : `largeurPct` / `hauteurPct` (numbers 0-100, relatifs à la zone ; absents = comportement actuel auto/flux) et `pleinEcran` (booléen, défaut `false` ; à `true` le widget sort du flux et remplit le cadre téléphone en `absolute inset-0`, sous la zone overlay qui reste au sommet). Ces props SHALL être déclarées explicitement dans chaque variante visuelle du schéma (jamais implicites, `additionalProperties: false` conservé).
+
+Un widget `pleinEcran` SHALL occuper effectivement toute la hauteur du cadre téléphone dans le rendu (chaîne de hauteur pleine du wrapper breakout jusqu'au contenu : aucune hauteur fixe résiduelle de type `h-40`) ; seul le contenu peint change (tuiles étirées, marqueurs relatifs), jamais l'empilement (zones puis breakout puis overlay) ni l'interactivité par mode (édition non-interactive, lecture seule active).
 
 L'ordre de peinture intra-zone SHALL suivre l'ordre du tableau `widgets` (dernier = dessus) ; réordonner (drag existant, monter/descendre) SHALL changer l'empilement sans toucher aux autres props. L'empilement des zones SHALL rester fixe : header → content → footer → overlay.
 
@@ -127,6 +129,18 @@ L'ordre de peinture intra-zone SHALL suivre l'ordre du tableau `widgets` (dernie
 - **GIVEN** un widget `{ type: "image", src: "a.png", largeurPct: 150 }`
 - **WHEN** la validation Draft-07 tourne
 - **THEN** le widget est rejeté (hors 0-100)
+
+#### Scenario: Carte plein écran remplit le cadre
+
+- **GIVEN** un écran avec un widget carte `pleinEcran: true` et des fantômes « + Pied de page » / « + Surimpression » visibles en édition
+- **WHEN** le canvas affiche l'écran
+- **THEN** la carte occupe toute la hauteur du cadre (aucun bandeau fixe), les fantômes restant peints dessous et l'overlay éventuelle au sommet
+
+#### Scenario: Terminal plein écran sans bandeau
+
+- **GIVEN** le même widget ouvert dans le terminal simulé (lecture seule)
+- **WHEN** l'écran s'affiche
+- **THEN** la carte interactive occupe tout le cadre et reste navigable (pan/zoom/clic), sans zone vide résiduelle
 
 ### Requirement: Fusion global/screen et node/screen
 
@@ -501,6 +515,8 @@ Tout widget SHALL appartenir à exactement une strate : strate 1 CONTENU (passif
 
 `MapWidget.background` SHALL valoir `"pack-tiles"` (défaut, tuiles pré-chargées `global.map`), `"indoor-plan"` (plan actif `global.indoorPlans`, jeux indoor) ou `"solid"` (fond uni). Toute source réseau (URL de tuiles, fond distant) SHALL être rejetée : les fonds sont des assets du pack (manifest SHA-256) ou le fallback uni. Sans tuiles ni plan, le widget SHALL rendre le fond uni avec marqueurs et position, exactement comme la carte standalone.
 
+L'interdiction porte sur les DONNÉES du jeu (le JSON ne contient jamais d'URL de tuiles) : elle n'interdit pas à la prévisualisation auteur d'afficher des tuiles chargées en ligne à des fins de contrôle visuel. Quand un pack actif existe, l'aperçu auteur SHALL afficher les tuiles (source d'aperçu du Studio, en ligne) avec un badge « aperçu en ligne » ; sans pack actif, sans tuiles ou sans réseau, l'aperçu SHALL rester schématique (fond uni + marqueurs + position). Le JSON et le pack joueur SHALL rester inchangés par cet aperçu (pack-only strict côté données).
+
 #### Scenario: Fond réseau rejeté
 
 - **GIVEN** un widget carte avec `background: { url: "https://tuiles.exemple.fr/{z}/{x}/{y}.png" }`
@@ -512,6 +528,18 @@ Tout widget SHALL appartenir à exactement une strate : strate 1 CONTENU (passif
 - **GIVEN** un jeu outdoor sans tuiles pré-chargées et un widget carte en `pack-tiles`
 - **WHEN** le joueur ouvre l'écran
 - **THEN** le fond est uni, marqueurs, cercles et position restent lisibles
+
+#### Scenario: Aperçu auteur en ligne sans fuite JSON
+
+- **GIVEN** un widget carte en `pack-tiles` avec un pack actif, auteur en ligne
+- **WHEN** le PhoneCanvas affiche l'écran
+- **THEN** les tuiles s'affichent avec le badge « aperçu en ligne », et le JSON du jeu ne contient toujours aucune URL
+
+#### Scenario: Aperçu hors-ligne schématique
+
+- **GIVEN** le même écran sans réseau
+- **WHEN** le PhoneCanvas affiche l'écran
+- **THEN** le fond schématique uni s'affiche avec marqueurs et position, sans erreur
 
 ### Requirement: Styles POI par état
 
@@ -571,3 +599,92 @@ Le sous-objet `source` SHALL être le point d'extension des futurs widgets liés
 - **WHEN** la validation Draft-07 tourne
 - **THEN** le widget est rejeté (kind hors enum)
 
+### Requirement: Strate fond et strate flottante
+
+Un écran MAY déclarer un widget `pleinEcran` en strate FOND (arrière-plan interactif) ; les widgets des zones header/content/footer se rendent alors en strate FLOTTANTE par-dessus, la zone overlay restant au sommet comme aujourd'hui. La strate fond SHALL occuper tout le cadre téléphone ; la strate flottante SHALL laisser voir le fond dans les creux (conteneur transparent sauf sur les widgets eux-mêmes, qui restent sélectionnables et éditables). Sans déclaration de fond, le rendu SHALL rester strictement identique à l'actuel (aucune superposition).
+
+#### Scenario: Carte en fond, texte par-dessus
+
+- **GIVEN** un écran avec un widget carte `pleinEcran` en strate fond et un widget texte en content
+- **WHEN** le canvas affiche l'écran
+- **THEN** la carte remplit le cadre, le texte flotte par-dessus lisible, et les zones vides laissent voir la carte
+
+#### Scenario: Sans fond déclaré, inchangé
+
+- **GIVEN** un écran sans strate fond déclarée
+- **WHEN** le canvas affiche l'écran
+- **THEN** zones empilées en flux comme aujourd'hui, sans superposition ni changement visuel
+
+### Requirement: Sélection de calque auteur
+
+Le Studio SHALL offrir un sélecteur de calque (fond / flottant / overlay, même pattern que l'œil de la surimpression) permettant de basculer la sélection et l'édition entre strates superposées, chaque strate restant masquable/isolable sans modifier le JSON. Le calque actif SHALL être signalé visuellement ; les calques non actifs SHALL rester visibles en arrière-plan.
+
+#### Scenario: Édition du texte sur fond carte
+
+- **GIVEN** un écran avec carte en fond et texte flottant, calque flottant actif
+- **WHEN** l'auteur clique le texte
+- **THEN** le texte est sélectionné et éditable, la carte reste visible derrière sans intercepter le clic
+
+### Requirement: Reflet discret du pack actif dans l'aperçu auteur
+
+L'aperçu auteur du widget carte (canvas Screen et aperçu Home, même PhoneCanvas) SHALL refléter le pack actif du projet sans pastille visible : le titre du fond porte le nom du pack résolu, le badge « aperçu en ligne » s'affiche quand les tuiles sont chargées en ligne, et la mention « fond uni — aucun pack actif » s'affiche sinon. Sélectionner, naviguer et fermer SHALL rester sans effet (aperçu statique et non interactif, strate 2 inchangée).
+
+#### Scenario: Titre et badge sans pastille
+
+- **GIVEN** un écran avec un widget carte en `pack-tiles` et un pack actif « Centre-ville » (42 tuiles, `pret`)
+- **WHEN** l'auteur ouvre l'écran dans le canvas puis l'aperçu Home
+- **THEN** aucune pastille « pack actif » n'est visible, le titre du fond porte le nom du pack et le badge « aperçu en ligne » s'affiche, sans contrôle d'édition dans l'aperçu
+
+#### Scenario: Mention sans actif
+
+- **GIVEN** le même écran sans pack actif désigné
+- **WHEN** l'auteur ouvre l'écran
+- **THEN** la mention « fond uni — aucun pack actif » s'affiche, marqueurs et position restant visibles
+
+### Requirement: Découpage en sous-pages explicites
+
+La zone content SHALL se découper en sous-pages visibles par l'auteur : chaque widget `module` ou `image` SHALL ouvrir une nouvelle sous-page (sauf s'il est le premier widget de la zone) ; les widgets `text`, `button`, `progress` et `spacer` SHALL appartenir à la sous-page courante. Une sous-page SHALL contenir au plus un média (`module`/`image`) : un module ne partage jamais sa page avec un autre média, le texte d'accompagnement restant avec lui. Un contenu sans widget `module`/`image` SHALL former une seule sous-page (compatibilité ascendante).
+
+#### Scenario: Ajout d'image créant une page
+
+- **GIVEN** une zone content avec un widget `module` seul (1 sous-page)
+- **WHEN** l'auteur ajoute un widget `image` après le module
+- **THEN** une 2e sous-page apparaît avec l'image, la 1re garde le module, comme l'ajout d'une question au quiz
+
+#### Scenario: Texte d'accompagnement avec son média
+
+- **GIVEN** une zone content avec [texte, module, texte, image]
+- **WHEN** le découpage s'applique
+- **THEN** les sous-pages sont [texte], [module, texte] et [image] : un seul média par page
+
+#### Scenario: Contenu sans média inchangé
+
+- **GIVEN** une zone content avec uniquement des widgets `text` et `button`
+- **WHEN** le découpage s'applique
+- **THEN** une seule sous-page existe et le rendu est identique à avant
+
+### Requirement: Prévisualisation active dans le canvas
+
+Le canvas SHALL afficher la sous-page courante avec onglets ou pastilles de navigation et boutons Suivant/Précédent visibles (comme le prévisualisateur). L'auteur SHALL pouvoir naviguer entre sous-pages par clic ou swipe (état local d'édition, jamais persisté). La sélection de widget SHALL suivre la sous-page affichée.
+
+#### Scenario: Navigation entre sous-pages en construction
+
+- **GIVEN** un écran de 3 sous-pages affiché en canvas, sous-page 1 visible
+- **WHEN** l'auteur touche « Suivant »
+- **THEN** la sous-page 2 s'affiche avec ses widgets sélectionnables, le JSON est inchangé
+
+### Requirement: Fit par type, portrait et paysage
+
+Les widgets `image` et `module` SHALL se rendre en entier dans le viewport (canvas comme joueur) : réduction à la taille disponible en respectant le ratio H/L, jamais de rognage. Le widget `text` long SHALL garder le défilement vertical. La règle SHALL s'appliquer aux 4 viewports (portrait et paysage).
+
+#### Scenario: Image panoramique en viewport portrait
+
+- **GIVEN** une image 2:1 dans un viewport téléphone portrait
+- **WHEN** la sous-page s'affiche
+- **THEN** l'image est visible en entier (bandes éventuelles, ratio conservé), sans rognage ni scroll horizontal
+
+#### Scenario: Minijeu en viewport paysage
+
+- **GIVEN** un module PUZZLE dans un viewport téléphone paysage
+- **WHEN** la sous-page s'affiche
+- **THEN** le minijeu tient intégralement dans le cadre réduit, ratio conservé

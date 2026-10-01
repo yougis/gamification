@@ -133,3 +133,109 @@ iOS.
 - **WHEN** un pack est importé sur iOS
 - **THEN** la validation Draft-07 produit le même résultat que sur Android
 
+### Requirement: Écran Importer scrollable
+
+L'écran Importer SHALL rester entièrement accessible sur tout écran : son contenu SHALL défiler verticalement pour que chaque voie (QR, URL, catalogue distant, fichier local, catalogue local) soit atteignable quelle que soit la hauteur disponible. Aucune action SHALL être tronquée hors d'atteinte.
+
+#### Scenario: Petit écran complet
+- **GIVEN** l'écran Importer sur un téléphone basse résolution
+- **WHEN** l'auteur fait défiler vers le bas
+- **THEN** les cartes catalogue, fichier et catalogue local deviennent visibles et activables
+
+### Requirement: Ouverture du pack importé
+
+Après un import réussi (URL, fichier, QR, catalogue distant), le player SHALL ouvrir le pack qui vient d'être installé, jamais un autre : l'identifiant du pack installé SHALL être transmis à l'écran de jeu via la navigation. La résolution `firstOrNull()` SHALL ne servir que de défaut au démarrage à froid (aucun argument).
+
+#### Scenario: URL GitHub ouvre le bon jeu
+- **GIVEN** un import URL réussi installant `packs/monjeu_<ts>`
+- **WHEN** la partie démarre
+- **THEN** le titre affiche `monjeu` et ses étapes, pas un pack plus ancien ni le `reference-5poi` embarqué
+
+#### Scenario: Démarrage à froid inchangé
+- **GIVEN** un lancement de l'app sans navigation d'import
+- **WHEN** l'écran de jeu charge
+- **THEN** le pack le plus récent s'ouvre, ou le `reference-5poi` embarqué si aucun pack installé
+
+### Requirement: Catalogue local des jeux installés
+
+L'écran Importer SHALL lister les jeux installés sur le téléphone : pour chaque pack, `gameId`, version du schéma, date d'installation et état vérifié. La liste SHALL être triée du plus récent au plus ancien. Choisir un jeu SHALL l'ouvrir directement après re-vérification SHA-256 de ses fichiers ; un pack corrompu SHALL être signalé avec le fichier fautif et ne SHALL pas être lancé.
+
+#### Scenario: Rejouer sans réimporter
+- **GIVEN** deux jeux installés à des dates différentes
+- **WHEN** l'auteur ouvre l'écran Importer
+- **THEN** les deux jeux sont listés, le plus récent en premier, et toucher l'ancien l'ouvre sans réseau
+
+#### Scenario: Pack local corrompu refusé
+- **GIVEN** un pack installé dont un asset a été altéré après installation
+- **WHEN** l'auteur tente de l'ouvrir depuis le catalogue local
+- **THEN** l'ouverture est refusée avec le fichier fautif nommé, comme à l'import
+
+### Requirement: Unicité par gameId
+
+Le catalogue local SHALL contenir au plus une entrée par `gameId`. Tout import (URL, fichier, QR, catalogue distant) SHALL : réutiliser l'entrée existante si le contenu est identique (même SHA du `game.json`, horodatage rafraîchi), remplacer l'entrée en place si le `gameId` existe avec un contenu différent, créer une entrée sinon. Aucun autre flux (démarrage, ouverture, essai) SHALL créer d'entrée.
+
+#### Scenario: Réimport identique sans doublon
+- **GIVEN** le jeu `chasse` installé depuis un JSON
+- **WHEN** le même fichier est réimporté
+- **THEN** une seule entrée `chasse` subsiste, avec date rafraîchie
+
+#### Scenario: Nouvelle version remplace
+- **GIVEN** le jeu `chasse` v1 installé
+- **WHEN** un JSON `chasse` v2 (contenu différent) est importé
+- **THEN** l'entrée `chasse` porte v2, aucun second dossier `chasse` n'existe
+
+#### Scenario: Démarrage sans création
+- **GIVEN** trois jeux installés, app tuée
+- **WHEN** l'app redémarre puis l'auteur ouvre le catalogue
+- **THEN** les trois mêmes entrées sont listées, aucune ajoutée
+
+### Requirement: Ensemencement unique respectant la suppression
+
+Le jeu de référence embarqué SHALL être ensemencé au plus une fois (drapeau persisté) et seulement si aucun pack de ce `gameId` n'est installé (test sur le `gameId` lu, jamais sur le nom de dossier). Si l'auteur supprime ce jeu, il SHALL ne jamais être re-créé.
+
+#### Scenario: Pas de doublon au redémarrage
+- **GIVEN** le `reference-5poi` installé, app tuée
+- **WHEN** l'app redémarre
+- **THEN** aucun nouveau dossier n'est créé
+
+#### Scenario: Suppression respectée
+- **GIVEN** le `reference-5poi` supprimé par l'auteur
+- **WHEN** l'app redémarre
+- **THEN** le jeu ne réapparaît pas
+
+### Requirement: Suppression explicite d'un jeu
+
+Chaque entrée SHALL proposer la suppression (confirmation explicite) : le dossier du pack est supprimé, l'historique SQLite des sessions est conservé (orphelin assumé, rejouable si le jeu est réimporté sous le même `gameId`).
+
+#### Scenario: Suppression confirmée
+- **GIVEN** le jeu `chasse` installé avec une session terminée
+- **WHEN** l'auteur confirme la suppression
+- **THEN** l'entrée disparaît, le dossier n'existe plus, et réimporter `chasse` retrouve l'historique
+
+#### Scenario: Refus sans effet
+- **GIVEN** la confirmation de suppression affichée
+- **WHEN** l'auteur refuse
+- **THEN** rien n'est supprimé ni modifié
+
+### Requirement: Reset triche par nouvelle session
+
+En mode animateur actif uniquement, chaque entrée SHALL proposer « Recommencer » : une session vierge est créée pour ce jeu (tirages et progression vierges), l'historique des sessions précédentes étant conservé. Hors mode animateur, l'action SHALL être absente (pas seulement désactivée).
+
+#### Scenario: Recommencer en triche
+- **GIVEN** le jeu `chasse` terminé, mode animateur actif
+- **WHEN** l'auteur choisit « Recommencer »
+- **THEN** une nouvelle session vierge démarre et l'ancienne reste consultable dans l'historique
+
+#### Scenario: Invisible hors triche
+- **GIVEN** le même jeu, mode animateur inactif
+- **WHEN** l'auteur regarde l'entrée
+- **THEN** aucune action « Recommencer » n'apparaît
+
+### Requirement: Mise à jour depuis un pack complet
+
+L'import d'un `.zip` (fichier local) ou d'un pack service pour un `gameId` déjà installé SHALL proposer la mise à jour différentielle plutôt qu'une seconde entrée : le catalogue local garde une seule entrée par `gameId` (règle `player-catalogue-stable` inchangée). Le contrôle de taille SHALL s'appliquer avant application (delta estimé, pas le pack entier).
+
+#### Scenario: Zip de mise à jour
+- **GIVEN** le jeu `chasse` v1 installé et un `.zip` `chasse` v2 importé par fichier
+- **WHEN** l'auteur confirme la mise à jour après le contrôle de taille
+- **THEN** seule la différence est appliquée, l'entrée reste unique, la progression est préservée

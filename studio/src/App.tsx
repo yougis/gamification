@@ -1103,8 +1103,9 @@ const noeuds: Node[] = useMemo(
 
   // Génération du pack depuis l'écran Exporter. En échec on RESTE sur
   // l'écran (la checklist reflète l'état) au lieu de repartir au Composer.
-  const genererPack = async () => {
-    if (bloqueExport && !animateur) return;
+  // Lecteur de tuiles partagé (change pack-zip-diff-tuiles) : même cache
+  // pour l'export fichiers et l'export .zip.
+  const creerLecteurTuiles = () => {
     // Tuiles du pack actif (change pack-tuiles-effectif phase C) : lecteur
     // adossé au cache serveur quand configuré ; sans catalogue, export
     // historique sans tuiles (comportement inchangé).
@@ -1125,6 +1126,11 @@ const noeuds: Node[] = useMemo(
             },
           }
         : undefined;
+    return { cacheTuiles, lecteurTuiles };
+  };
+  const genererPack = async () => {
+    if (bloqueExport && !animateur) return;
+    const { cacheTuiles, lecteurTuiles } = creerLecteurTuiles();
     const r = await exportPackFull(game, st.present.meta, manifest, animateur, lecteurTuiles);
     if (!r.ok) {
       setRapport(r.diagnostics.length ? r.diagnostics.map(rendreDiagnostic) : r.errors);
@@ -1139,6 +1145,7 @@ const noeuds: Node[] = useMemo(
     };
     dl("game.json", r.gameJson!);
     dl("manifest.json", JSON.stringify(r.manifest, null, 2));
+    if (r.tilesJson) dl("tiles.json", r.tilesJson);
     dl("studio-meta.json", JSON.stringify(st.present.meta, null, 2));
     dl("compat.json", JSON.stringify(buildCompatSidecar(game), null, 2));
     // Assets choisis pendant la session (change studio-media-templates) :
@@ -1168,6 +1175,54 @@ const noeuds: Node[] = useMemo(
       nbTuiles++;
     }
     setRapport([`Export OK : game.json + manifest (${r.manifest!.files.length} fichiers) + studio-meta.json${nbAssets ? ` + ${nbAssets} asset(s)` : ""}${nbTuiles ? ` + ${nbTuiles} tuile(s)` : ""}`]);
+    setDernierExport({ date: new Date().toISOString(), files: r.manifest!.files });
+    setExportOk(true);
+    setEtapeWorkflow(5);
+  };
+
+  // Pack complet .zip (change pack-zip-diff-tuiles) : game.json + manifest +
+  // tiles.json + assets + tuiles en UN seul fichier transférable (noms
+  // complets préservés, octets identiques). Taille annoncée, confirmation
+  // au-delà de 10 Mo.
+  const genererZip = async () => {
+    if (bloqueExport && !animateur) return;
+    const { cacheTuiles, lecteurTuiles } = creerLecteurTuiles();
+    const r = await exportPackFull(game, st.present.meta, manifest, animateur, lecteurTuiles);
+    if (!r.ok) {
+      setRapport(r.diagnostics.length ? r.diagnostics.map(rendreDiagnostic) : r.errors);
+      setEtapeWorkflow(4);
+      return;
+    }
+    const fichiers = r.manifest!.files;
+    const entrees: { path: string; data: Uint8Array }[] = [];
+    const texte = new TextEncoder();
+    entrees.push({ path: "game.json", data: texte.encode(r.gameJson!) });
+    entrees.push({ path: "manifest.json", data: texte.encode(JSON.stringify(r.manifest, null, 2)) });
+    if (r.tilesJson) entrees.push({ path: "tiles.json", data: texte.encode(r.tilesJson) });
+    for (const m of fichiers) {
+      if (m.path === "game.json" || m.path === "manifest.json" || m.path === "tiles.json") continue;
+      let octets: Uint8Array | null = null;
+      const fichier = assetsSession.current.get(m.path);
+      if (fichier) octets = new Uint8Array(await fichier.arrayBuffer());
+      else if (m.path.startsWith("tuiles/")) octets = cacheTuiles.get(m.path) ?? null;
+      if (!octets) {
+        setRapport([`Zip impossible : octets introuvables pour ${m.path}`]);
+        setEtapeWorkflow(4);
+        return;
+      }
+      entrees.push({ path: m.path, data: octets });
+    }
+    const total = entrees.reduce((n, e) => n + e.data.length, 0);
+    const mo = (total / 1048576).toFixed(1);
+    if (total > 10 * 1048576 && !window.confirm(`Pack .zip : ${entrees.length} fichiers, ${mo} Mo. Télécharger ?`)) return;
+    const { assemblerZip } = await import("./game/zip");
+    const blob = assemblerZip(entrees);
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${game.gameId}.zip`;
+    a.click();
+    window.setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    setRapport([`Zip OK : ${game.gameId}.zip (${entrees.length} fichiers, ${mo} Mo, manifest vérifié)`]);
     setDernierExport({ date: new Date().toISOString(), files: r.manifest!.files });
     setExportOk(true);
     setEtapeWorkflow(5);
@@ -2133,6 +2188,13 @@ const noeuds: Node[] = useMemo(
                     title={bloque ? raisonsBlocage.join("\n") : pretQuandMeme ? "Confirmer l'export malgré les avertissements (journalisé)" : "Générer le pack offline"}
                     className={`w-full py-3 rounded font-display font-bold text-[9px] uppercase tracking-widest transition-all ${bloque ? 'bg-fail/8 border border-fail/20 text-fail/50 cursor-not-allowed' : pretQuandMeme ? 'bg-caution text-canvas hover:brightness-110' : 'bg-neon text-canvas hover:brightness-110'}`}>
                     {bloque ? "Export bloqué — corriger les erreurs" : pretQuandMeme ? `Exporter quand même (${avts.length} avertissement${avts.length > 1 ? "s" : ""})` : exportConfirme && avts.length > 0 ? "Générer le pack (avertissements assumés)" : "Générer le pack"}
+                  </button>
+                  <button
+                    disabled={bloque}
+                    onClick={() => { if (pretQuandMeme) confirmer(); else void genererZip(); }}
+                    title={bloque ? raisonsBlocage.join("\n") : "Pack complet transférable (.zip : jeu + assets + tuiles)"}
+                    className={`w-full mt-2 py-3 rounded font-display font-bold text-[9px] uppercase tracking-widest transition-all ${bloque ? 'bg-fail/8 border border-fail/20 text-fail/50 cursor-not-allowed' : 'bg-panel border border-neon/40 text-snow hover:border-neon'}`}>
+                    Pack complet (.zip) — jeu + assets + tuiles
                   </button>
                   {bloque && (
                     <ul className="mt-2 font-mono text-[8px] text-fail space-y-1" aria-label="Causes du blocage">

@@ -38,9 +38,6 @@
             android:name="packName"
             app:argType="string"
             app:nullable="true" />
-        <action
-            android:id="@+id/action_gameFragment_to_moduleFragment"
-            app:destination="@id/moduleFragment" />
     </fragment>
 
     <fragment
@@ -51,16 +48,6 @@
         <action
             android:id="@+id/action_importFragment_to_gameFragment"
             app:destination="@id/gameFragment" />
-    </fragment>
-
-    <fragment
-        android:id="@+id/moduleFragment"
-        android:name="com.geoplay.player.ui.ModuleFragment"
-        android:label="@string/module_detail"
-        tools:layout="@layout/fragment_module">
-        <argument
-            android:name="nodeId"
-            app:argType="string" />
     </fragment>
 
     <fragment

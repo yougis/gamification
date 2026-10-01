@@ -46,7 +46,8 @@ class PackManager private constructor(private val context: Context) {
 
     suspend fun importPack(
         inputStream: InputStream,
-        onProgress: ((Float) -> Unit)? = null
+        onProgress: ((Float) -> Unit)? = null,
+        confirmer: suspend (ApercuDiff) -> Boolean = { true }
     ): PackVerificationResult {
         return withContext(Dispatchers.IO) {
             // Lecture tamponnee pour detecter ZIP vs JSON seul (borne sideload : fichier .zip ou game.json).
@@ -58,7 +59,8 @@ class PackManager private constructor(private val context: Context) {
             val isZip = read >= 4 && magic[0] == 0x50.toByte() && magic[1] == 0x4B.toByte()
 
             if (!isZip) {
-                return@withContext importSingleGameJson(buffered, onProgress)
+                android.util.Log.d("GeoPlayDbg", "importPack: JSON seul detecte")
+                return@withContext importSingleGameJson(buffered, onProgress, confirmer)
             }
 
             val tempDir = File(context.cacheDir, "pack_import_${System.currentTimeMillis()}")
@@ -101,12 +103,15 @@ class PackManager private constructor(private val context: Context) {
                     return@withContext verification
                 }
 
-                val finalDir = File(context.filesDir, "packs/${System.currentTimeMillis()}")
-                finalDir.mkdirs()
-                copyFiles(tempDir, finalDir)
-                // Le manifest source est deja copie via copyFiles ; pas de re-generation.
-
-                PackVerificationResult(isValid = true, progressPercent = 1f, packName = finalDir.name)
+                // Unicité + atomique (changes player-catalogue-stable,
+                // pack-zip-diff-tuiles) : diff, confirmation, bascule.
+                val zipGameId = readGameIdOf(tempDir)
+                    ?: return@withContext PackVerificationResult(
+                        isValid = false,
+                        errors = listOf("game.json illisible ou gameId absent"),
+                        progressPercent = 0f
+                    )
+                return@withContext installerDepuisStaged(zipGameId, tempDir, manifest, emptyList(), confirmer, onProgress)
             } catch (e: Exception) {
                 Log.e("PackManager", "Import failed", e)
                 PackVerificationResult(isValid = false, errors = listOf(e.message ?: "Erreur inconnue"))
@@ -118,7 +123,8 @@ class PackManager private constructor(private val context: Context) {
 
     suspend fun importPackFromUrl(
         url: String,
-        onProgress: ((Float) -> Unit)? = null
+        onProgress: ((Float) -> Unit)? = null,
+        confirmer: suspend (ApercuDiff) -> Boolean = { true }
     ): PackVerificationResult {        return withContext(Dispatchers.IO) {
             var connection: java.net.HttpURLConnection? = null
             try {
@@ -134,8 +140,9 @@ class PackManager private constructor(private val context: Context) {
                         errors = listOf("Telechargement refuse: HTTP ${connection.responseCode}")
                     )
                 }
+                android.util.Log.d("GeoPlayDbg", "importPackFromUrl: HTTP 200, lecture flux")
                 connection.inputStream.use { stream ->
-                    importPack(stream, onProgress)
+                    importPack(stream, onProgress, confirmer)
                 }
             } catch (e: Exception) {
                 Log.e("PackManager", "Download failed: $url", e)
@@ -152,7 +159,8 @@ class PackManager private constructor(private val context: Context) {
     suspend fun importPackFromCatalog(
         baseUrl: String,
         code: String,
-        onProgress: ((Float) -> Unit)? = null
+        onProgress: ((Float) -> Unit)? = null,
+        confirmer: suspend (ApercuDiff) -> Boolean = { true }
     ): PackVerificationResult {
         return withContext(Dispatchers.IO) {
             val tempDir = File(context.cacheDir, "pack_catalog_${System.currentTimeMillis()}")
@@ -196,26 +204,40 @@ class PackManager private constructor(private val context: Context) {
                 val identical = findIdenticalPack(gameText, manifest)
                 if (identical != null) {
                     onProgress?.invoke(1f)
+                    touchDir(identical)
                     return@withContext PackVerificationResult(isValid = true, progressPercent = 1f, packName = identical.name)
                 }
+                // Différentiel (change pack-zip-diff-tuiles) : ne télécharge
+                // que les fichiers nouveaux ou modifiés ; les identiques sont
+                // repris dans l'ancien dossier à l'installation.
+                val catalogueId = try {
+                    json.decodeFromString(Game.serializer(), gameText).gameId
+                } catch (e: Exception) {
+                    return@withContext PackVerificationResult(
+                        isValid = false,
+                        errors = listOf("game.json illisible: ${e.message}")
+                    )
+                }
+                val ancienMan = findDirByGameId(catalogueId)?.let { loadManifest(it) }
+                val anciennes = ancienMan?.files?.associateBy { it.path } ?: emptyMap()
+                val recopier = mutableListOf<String>()
                 val assets = manifest.files.filter { it.path != "game.json" }
                 assets.forEachIndexed { i, entry ->
-                    val bytes = httpGetBytes(catalogAssetUrl(baseUrl, code, entry.path))
-                    if (bytes != null) {
-                        val dest = File(tempDir, entry.path)
-                        dest.parentFile?.mkdirs()
-                        dest.writeBytes(bytes)
+                    val a = anciennes[entry.path]
+                    if (a != null && a.sha256.lowercase() == entry.sha256.lowercase()) {
+                        recopier.add(entry.path)
+                    } else {
+                        val bytes = httpGetBytes(catalogAssetUrl(baseUrl, code, entry.path))
+                        if (bytes != null) {
+                            val dest = File(tempDir, entry.path)
+                            dest.parentFile?.mkdirs()
+                            dest.writeBytes(bytes)
+                        }
                     }
                     onProgress?.invoke((i + 1).toFloat() / (assets.size + 1).coerceAtLeast(1))
                 }
-                val verification = verifyFiles(manifest, tempDir, onProgress)
-                if (!verification.isValid) {
-                    return@withContext verification
-                }
-                val finalDir = File(context.filesDir, "packs/${System.currentTimeMillis()}")
-                finalDir.mkdirs()
-                copyFiles(tempDir, finalDir)
-                PackVerificationResult(isValid = true, progressPercent = 1f, packName = finalDir.name)
+                saveManifest(manifest, tempDir)
+                return@withContext installerDepuisStaged(catalogueId, tempDir, manifest, recopier, confirmer, onProgress)
             } catch (e: Exception) {
                 Log.e("PackManager", "Catalog import failed", e)
                 PackVerificationResult(isValid = false, errors = listOf(e.message ?: "Import impossible"))
@@ -278,16 +300,17 @@ class PackManager private constructor(private val context: Context) {
 
     private suspend fun importSingleGameJson(
         stream: InputStream,
-        onProgress: ((Float) -> Unit)?
+        onProgress: ((Float) -> Unit)?,
+        confirmer: suspend (ApercuDiff) -> Boolean
     ): PackVerificationResult {
         return withContext(Dispatchers.IO) {
+            val staged = File(context.cacheDir, "pack_json_${System.currentTimeMillis()}")
+            staged.mkdirs()
             try {
                 val text = stream.bufferedReader().use { it.readText() }
                 val game = json.decodeFromString(Game.serializer(), text)
                 onProgress?.invoke(0.5f)
-                val packDir = File(context.filesDir, "packs/${game.gameId}_${System.currentTimeMillis()}")
-                packDir.mkdirs()
-                val gameFile = File(packDir, "game.json")
+                val gameFile = File(staged, "game.json")
                 gameFile.writeText(text)
                 val manifest = PackManifest(
                     files = listOf(
@@ -300,12 +323,14 @@ class PackManager private constructor(private val context: Context) {
                     ),
                     version = 1
                 )
-                saveManifest(manifest, packDir)
+                saveManifest(manifest, staged)
                 onProgress?.invoke(1f)
-                PackVerificationResult(isValid = true, progressPercent = 1f, packName = packDir.name)
+                installerDepuisStaged(game.gameId, staged, manifest, emptyList(), confirmer, onProgress)
             } catch (e: Exception) {
                 Log.e("PackManager", "game.json illisible", e)
                 PackVerificationResult(isValid = false, errors = listOf("Fichier invalide: ${e.message}"))
+            } finally {
+                deleteRecursive(staged)
             }
         }
     }
@@ -393,8 +418,188 @@ class PackManager private constructor(private val context: Context) {
         File(packDir, "manifest.json").writeText(jsonString)
     }
 
-    private fun loadManifest(packDir: File): PackManifest? {
-        val file = File(packDir, "manifest.json")
+    // Unicité par gameId (change player-catalogue-stable) : une entrée par
+    // jeu ; seul l'import crée/remplace, jamais le démarrage ni l'ouverture.
+    private fun packsRoot() = File(context.filesDir, "packs")
+
+    private fun readGameIdOf(dir: File): String? {
+        return try {
+            val f = File(dir, "game.json")
+            if (!f.isFile) return null
+            json.decodeFromString(Game.serializer(), f.readText()).gameId
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun findDirByGameId(gameId: String): File? {
+        return packsRoot().listFiles()
+            ?.filter { it.isDirectory && readGameIdOf(it) == gameId }
+            ?.maxByOrNull { it.lastModified() }
+    }
+
+    private fun touchDir(dir: File) {
+        val now = System.currentTimeMillis()
+        dir.setLastModified(now)
+        File(dir, "game.json").setLastModified(now)
+    }
+
+    // Migration/nettoyage : un seul dossier par gameId (le plus récent).
+    // Retourne le nombre de dossiers supprimés.
+    suspend fun deduplicateInstalledPacks(): Int {
+        return withContext(Dispatchers.IO) {
+            var removed = 0
+            val byId = mutableMapOf<String, MutableList<File>>()
+            packsRoot().listFiles()?.filter { it.isDirectory }?.forEach { dir ->
+                readGameIdOf(dir)?.let { id ->
+                    byId.getOrPut(id) { mutableListOf() }.add(dir)
+                }
+            }
+            for ((_, dirs) in byId) {
+                if (dirs.size <= 1) continue
+                val keep = dirs.maxByOrNull { it.lastModified() }!!
+                for (dir in dirs) {
+                    if (dir != keep) {
+                        deleteRecursive(dir)
+                        removed++
+                    }
+                }
+            }
+            removed
+        }
+    }
+
+    suspend fun deletePack(packName: String): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                val dir = File(packsRoot(), packName)
+                if (!dir.isDirectory) return@withContext false
+                deleteRecursive(dir)
+                true
+            } catch (e: Exception) {
+                Log.w("PackManager", "Suppression impossible: $packName", e)
+                false
+            }
+        }
+    }
+
+    // Mise à jour différentielle (change pack-zip-diff-tuiles) : aperçu
+    // présenté à l'auteur avant application (taille du delta), jamais
+    // appliqué sans confirmation quand le jeu existe déjà.
+    data class ApercuDiff(
+        val gameId: String,
+        val estNouveau: Boolean,
+        val ajoutes: Int,
+        val modifies: Int,
+        val retires: Int,
+        val octetsDelta: Long
+    )
+
+    // Cohérence manifest ↔ tiles.json (change pack-zip-diff-tuiles) : si le
+    // manifest liste tiles.json, chaque tuiles/* du manifest doit figurer à
+    // l'index et réciproquement. Écart = refus avec fichier nommé.
+    private fun coherenceTuiles(manifest: PackManifest, dir: File): String? {
+        if (manifest.files.none { it.path == "tiles.json" }) return null
+        return try {
+            val racine = org.json.JSONObject(File(dir, "tiles.json").readText())
+            val tableau = racine.optJSONArray("tuiles") ?: return "tiles.json sans liste « tuiles »"
+            val index = mutableSetOf<String>()
+            for (i in 0 until tableau.length()) {
+                val t = tableau.getJSONObject(i)
+                index.add("tuiles/${t.getInt("z")}/${t.getInt("x")}/${t.getInt("y")}.png")
+            }
+            val manifestTuiles = manifest.files.map { it.path }.filter { it.startsWith("tuiles/") }.toSet()
+            val horsIndex = manifestTuiles - index
+            if (horsIndex.isNotEmpty()) return "Tuile hors index : ${horsIndex.first()}"
+            val horsManifest = index - manifestTuiles
+            if (horsManifest.isNotEmpty()) return "Tuile hors manifest : ${horsManifest.first()}"
+            null
+        } catch (e: Exception) {
+            "tiles.json illisible: ${e.message}"
+        }
+    }
+
+    // Cœur d'installation (change pack-zip-diff-tuiles) : le dossier `staged`
+    // (temporaire, propriété de l'appelant) contient les fichiers du nouveau
+    // pack ; `recopier` liste les chemins à reprendre dans l'ancien dossier
+    // (déjà vérifiés identiques, ex. assets non retéléchargés du catalogue).
+    // Seuls les fichiers du manifest (+ manifest.json) sont installés dans un
+    // dossier frais vérifié, puis l'ancien est supprimé (bascule atomique :
+    // un échec laisse l'ancien jouable).
+    private suspend fun installerDepuisStaged(
+        gameId: String,
+        staged: File,
+        nouveau: PackManifest,
+        recopier: List<String>,
+        confirmer: suspend (ApercuDiff) -> Boolean,
+        onProgress: ((Float) -> Unit)?
+    ): PackVerificationResult {
+        val ancienDir = findDirByGameId(gameId)
+        val ancienMan = ancienDir?.let { loadManifest(it) }
+        val anciennes = ancienMan?.files?.associateBy { it.path } ?: emptyMap()
+        val nouvelles = nouveau.files.associateBy { it.path }
+        val ajoutesModifies = nouveau.files.filter { n ->
+            val a = anciennes[n.path]
+            a == null || a.sha256.lowercase() != n.sha256.lowercase()
+        }
+        val retires = anciennes.keys.filter { it !in nouvelles }
+        val octets = ajoutesModifies.sumOf { it.size }
+        if (ancienDir != null && ancienMan != null) {
+            if (ajoutesModifies.isEmpty() && retires.isEmpty()) {
+                touchDir(ancienDir)
+                return PackVerificationResult(isValid = true, progressPercent = 1f, packName = ancienDir.name)
+            }
+            val ok = confirmer(
+                ApercuDiff(gameId, false, ajoutesModifies.count { it.path !in anciennes },
+                    ajoutesModifies.count { it.path in anciennes }, retires.size, octets)
+            )
+            if (!ok) {
+                return PackVerificationResult(isValid = false, errors = listOf("Mise à jour annulée"), miseAJourAnnulee = true)
+            }
+        }
+        val aInstaller = (nouveau.files.map { it.path } + "manifest.json").toSet()
+        val frais = File(packsRoot(), "${gameId}_${System.currentTimeMillis()}")
+        frais.mkdirs()
+        try {
+            for (chemin in aInstaller) {
+                val src = File(staged, chemin)
+                if (src.isFile) {
+                    val dest = File(frais, chemin)
+                    dest.parentFile?.mkdirs()
+                    src.copyTo(dest, overwrite = true)
+                }
+            }
+            for (chemin in recopier) {
+                // Fichiers volontairement non téléchargés (identiques à
+                // l'ancien, vérifiés par SHA) : repris dans l'ancien dossier.
+                val dest = File(frais, chemin)
+                if (dest.isFile) continue
+                val src = ancienDir?.let { File(it, chemin) }
+                if (src != null && src.isFile) {
+                    dest.parentFile?.mkdirs()
+                    src.copyTo(dest, overwrite = true)
+                }
+            }
+            val incoherence = coherenceTuiles(nouveau, frais)
+            if (incoherence != null) {
+                deleteRecursive(frais)
+                return PackVerificationResult(isValid = false, errors = listOf(incoherence))
+            }
+            val verification = verifyFiles(nouveau, frais, onProgress)
+            if (!verification.isValid) {
+                deleteRecursive(frais)
+                return verification
+            }
+            if (ancienDir != null && ancienDir != frais) deleteRecursive(ancienDir)
+            return PackVerificationResult(isValid = true, progressPercent = 1f, packName = frais.name)
+        } catch (e: Exception) {
+            try { deleteRecursive(frais) } catch (_: Exception) { }
+            Log.e("PackManager", "Installation impossible", e)
+            return PackVerificationResult(isValid = false, errors = listOf(e.message ?: "Installation impossible"))
+        }
+    }
+
+    private fun loadManifest(packDir: File): PackManifest? {        val file = File(packDir, "manifest.json")
         if (!file.exists()) return null
         return try {
             json.decodeFromString(PackManifest.serializer(), file.readText())
@@ -469,13 +674,32 @@ class PackManager private constructor(private val context: Context) {
     suspend fun verifyInstalledPack(packName: String): PackVerificationResult {
         return withContext(Dispatchers.IO) {
             val packDir = File(context.filesDir, "packs/$packName")
-            val manifest = loadManifest(packDir)
+            var manifest = loadManifest(packDir)
+            if (manifest == null && File(packDir, "game.json").isFile) {
+                // Adoption (change pack-zip-diff-tuiles) : packs installés
+                // avant le manifest persisté (octets vérifiés à l'install
+                // d'origine) — baseline de confiance, vérifiée ensuite.
+                val fichiers = packDir.walkTopDown()
+                    .filter { it.isFile }
+                    .map { f ->
+                        ManifestEntry(
+                            path = f.relativeTo(packDir).path.replace(File.separatorChar, '/'),
+                            version = "1",
+                            size = f.length(),
+                            sha256 = computeSha256(f)
+                        )
+                    }
+                    .toList()
+                manifest = PackManifest(files = fichiers, version = 1)
+                saveManifest(manifest, packDir)
+            }
+            val man = manifest
                 ?: return@withContext PackVerificationResult(
                     isValid = false,
                     errors = listOf("Manifest manquant: manifest.json"),
                     missingFiles = listOf("manifest.json")
                 )
-            verifyFiles(manifest, packDir, null)
+            verifyFiles(man, packDir, null)
         }
     }
 

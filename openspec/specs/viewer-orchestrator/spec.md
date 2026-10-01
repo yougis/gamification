@@ -181,7 +181,7 @@ Quand le jeu définit des objets (`objects[]` non vide) ET que `presentation` in
 
 Constat de périmètre : le terminal joueur simulé du Studio est le seul renderer d'écrans avec le renderer natif Compose — un seul renderer `commonMain` les porte. Le contrat ci-dessous y est implémenté.
 
-Quand la zone `overlay` d'un écran porte `fermable: true`, le renderer SHALL permettre au joueur de masquer la surimpression par clic sur son fond semi-transparent. L'écran dessous SHALL rester jouable (renderer déjà interactif ; aucune transition d'état, aucun event dédié, aucune complétion implicite). Une icône « message » persistante (chrome player, glyphe fixe teinté branding) SHALL être visible tant que l'overlay est masquée ; son activation SHALL réafficher l'overlay avec son état conservé (mémoire session, non persistée : à la reprise l'overlay revient affichée). Masquer et réafficher SHALL être libres et illimités. Sans `fermable` (défaut), le clic sur le fond SHALL ne rien masquer.
+Toute zone `overlay` d'un écran SHALL offrir un contrôle de fermeture (icône « message », chrome player, glyphe fixe teinté branding), que `fermable` vaille `true` ou non. Quand `fermable: true`, le renderer SHALL en plus permettre au joueur de masquer la surimpression par clic sur son fond semi-transparent. L'écran dessous SHALL rester jouable (renderer déjà interactif ; aucune transition d'état, aucun event dédié, aucune complétion implicite). L'icône « message » persistante SHALL être visible tant que l'overlay est masquée ; son activation SHALL réafficher l'overlay avec son état conservé (mémoire session, non persistée : à la reprise l'overlay revient affichée). Masquer et réafficher SHALL être libres et illimités. Sans `fermable` (défaut), le clic sur le fond SHALL ne rien masquer (seule l'icône ferme).
 
 #### Scenario: Masquage au clic-fond, écran jouable
 - **GIVEN** un Nœud `UNLOCKED` ouvert avec overlay `fermable: true` par-dessus un quiz en cours
@@ -196,7 +196,7 @@ Quand la zone `overlay` d'un écran porte `fermable: true`, le renderer SHALL pe
 #### Scenario: Non fermable inchangé
 - **GIVEN** un Nœud avec overlay sans `fermable`
 - **WHEN** le joueur clique le fond de la surimpression
-- **THEN** rien ne se masque et aucune icône « message » n'apparaît
+- **THEN** rien ne se masque par le fond, mais l'icône « message » permet de masquer puis réafficher l'overlay, toujours sans transition d'état
 
 #### Scenario: Reprise avec overlay affichée
 - **GIVEN** une session où l'overlay `fermable: true` était masquée au kill
@@ -296,7 +296,10 @@ Un jeu HOME-seul (aucun `isEnding`) SHALL tourner sans terminaison : aucune tran
 - **THEN** aucun compte à rebours de fin ni écran de fin n'est annoncé ; Quitter reprend à l'identique
 
 ### Requirement: Rendu joueur du widget carte
-Le player natif (via son renderer) SHALL rendre le widget `map` avec : le fond pack-only configuré (tuiles `global.map`, plan indoor actif, ou fond uni en repli) ; un marqueur par étape de la source (filtre `discovered` par défaut) avec l'icône de son état temps réel (`poiStyle` auteur ou défauts) ; les cercles de géofence (outdoor) ; la position du joueur et la trace GPX display quand disponibles. Le rendu SHALL rester lisible et jouable offline, sans jamais requérir le réseau.
+
+Le player (natif et PWA, via leurs renderers respectifs) SHALL rendre le widget `map` avec : le fond pack-only configuré (tuiles `global.map`, plan indoor actif, ou fond uni en repli) ; un marqueur par étape de la source (filtre `discovered` par défaut) avec l'icône de son état temps réel (`poiStyle` auteur ou défauts) ; les cercles de géofence (outdoor) ; la position du joueur et la trace GPX display quand disponibles. Le rendu SHALL rester lisible et jouable offline, sans jamais requérir le réseau.
+
+La position du joueur SHALL être alimentée par la source de localisation de la plateforme (`LocationProvider` natif, Geolocation côté PWA) et affichée comme point distinct des marqueurs, avec recentrage optionnel. Sans position (GPS coupé, permission refusée, stub), la carte SHALL rester complète et navigable, sans erreur ni état bloquant.
 
 #### Scenario: Carte offline complète
 
@@ -309,6 +312,18 @@ Le player natif (via son renderer) SHALL rendre le widget `map` avec : le fond p
 - **GIVEN** le même écran avec un 4e nœud en discovery non révélée
 - **WHEN** le joueur ouvre l'écran
 - **THEN** aucun marqueur du 4e nœud n'apparaît
+
+#### Scenario: Position GPS affichée
+
+- **GIVEN** un joueur géolocalisé ouvrant un écran avec widget carte
+- **WHEN** la position est disponible
+- **THEN** un point distinct des marqueurs indique la position, déplaçable par recentrage, sans produire d'event
+
+#### Scenario: GPS indisponible sans blocage
+
+- **GIVEN** un joueur sans GPS (permission refusée) ouvrant le même écran
+- **WHEN** la carte s'affiche
+- **THEN** marqueurs, cercles et navigation restent complets, aucun message d'erreur bloquant
 
 ### Requirement: Sélection et volet passifs
 Toucher un marqueur SHALL sélectionner le POI (état UI local) et afficher son volet (composé auteur ou défaut texte + bouton). Sélectionner, naviguer sur la carte et fermer le volet SHALL ne produire ni transition d'état ni event de progression. Le bouton `Ouvrir` SHALL présenter l'étape éligible (même présentation d'éligible existant) ; le bouton `Verrouillé` SHALL rester sans effet.
@@ -341,3 +356,40 @@ Depuis HOME, l'icône du widget carte SHALL ouvrir la carte en plein écran **à
 - **WHEN** le joueur tente d'ouvrir la carte plein écran
 - **THEN** l'ouverture est refusée (ou l'icône est absente) et l'épreuve continue sans interruption
 
+### Requirement: Strates player avec parité natif/PWA
+
+Le player (natif et PWA via le partagé KMP — la PWA rejoue les mêmes composables `ScreenRenderer`/`MapWidgetBlock`, sans renderer propre) SHALL rendre le même empilement à 3 strates que le Studio : FOND (widget d'arrière-plan déclaré, navigable : drag/zoom tactiles et boutons), FLOTTANT (contenu par-dessus, lisible, carte visible dans les creux), OVERLAY (modale existante au sommet). Le fond SHALL rester interactif sous le flottant : un geste démarrant sur un creux (ni widget, ni volet, ni contrôle) SHALL naviguer la carte ; un geste démarrant sur un widget SHALL aller au widget. Naviguer SHALL ne produire ni transition d'état ni event, comme toute interaction strate 2. Le rendu SHALL rester offline (fonds pack-only existants). La compilation croisée wasmJs du partagé avec les strates SHALL rester verte (parité PWA par construction).
+
+#### Scenario: Drag dans un creux navigue
+
+- **GIVEN** un joueur sur un écran à carte en fond avec texte flottant
+- **WHEN** il glisse depuis une zone vide entre les textes
+- **THEN** la carte se déplace, sans event ni transition
+
+#### Scenario: Texte flottant lisible et cliquable
+
+- **GIVEN** le même écran
+- **WHEN** le joueur touche le widget texte
+- **THEN** le texte réagit (sélection/lecture) et la carte ne bouge pas
+
+#### Scenario: Parité des rendus
+
+- **GIVEN** un écran à strates validé
+- **WHEN** il s'affiche dans le Studio et via le partagé (natif, et PWA par les mêmes composables — compilation wasmJs verte)
+- **THEN** l'ordre fond → flottant → overlay est identique partout (test de parité : même écran, rendus Studio et partagé comparés ; PWA visible en prévisualisation via le change preview-pwa-iframe)
+
+### Requirement: Carte joueur navigable
+
+Le widget carte joueur SHALL être navigable : déplacement par glisser, zoom par pincement ET par boutons +/- (accessibilité tactile et desktop), recentrage sur la position ou sur l'emprise des POI. Le viewport SHALL être un état UI strictement local (comme la sélection) : panorer, zoomer, recentrer SHALL ne produire ni transition d'état ni event de progression. Le volet du POI sélectionné SHALL suivre (ancré au marqueur ou panneau) sans jamais déclencher de mécanique de complétion ou de score (strate 2 inchangée).
+
+#### Scenario: Pan et zoom sans effet moteur
+
+- **GIVEN** un joueur déplaçant et zoomant la carte puis sélectionnant un marqueur
+- **WHEN** le journal est consulté
+- **THEN** aucun event n'a été émis et les états moteur sont inchangés
+
+#### Scenario: Zoom boutons accessible
+
+- **GIVEN** un joueur sans geste pincement (desktop, accessibilité)
+- **WHEN** il utilise les boutons +/-
+- **THEN** le zoom s'applique par paliers, recentré sur le centre de vue, sans event

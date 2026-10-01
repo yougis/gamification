@@ -177,7 +177,7 @@
               },
               {
                 "type": "image",
-                "src": "assets/loupe.svg",
+                "src": "assets/loupe.png",
                 "alt": "Loupe d'investigation"
               },
               {
@@ -309,7 +309,7 @@
             "widgets": [
               {
                 "type": "image",
-                "src": "assets/baker-crime.svg",
+                "src": "assets/baker-crime.png",
                 "alt": "Scène de crime"
               },
               {
@@ -337,7 +337,7 @@
         "type": "PUZZLE",
         "data": {
           "schemaVersion": "1.0.0",
-          "image": "assets/scotland-yard.svg",
+          "image": "assets/scotland-yard.png",
           "tileRows": 3,
           "tileCols": 3
         }
@@ -393,7 +393,7 @@
             "widgets": [
               {
                 "type": "image",
-                "src": "assets/scotland-yard.svg",
+                "src": "assets/scotland-yard.png",
                 "alt": "Blason de Scotland Yard"
               },
               {
@@ -475,7 +475,7 @@
             "widgets": [
               {
                 "type": "image",
-                "src": "assets/strand-code.svg",
+                "src": "assets/strand-code.png",
                 "alt": "Lettre cryptée"
               },
               {
@@ -547,7 +547,7 @@
               },
               {
                 "type": "image",
-                "src": "assets/stbarts-vue.svg",
+                "src": "assets/stbarts-vue.png",
                 "alt": "Point de vue et boussole"
               },
               {
@@ -575,7 +575,7 @@
         "type": "AR_MARKER",
         "data": {
           "schemaVersion": "1.0.0",
-          "marker": "assets/holmes.marker.svg",
+          "marker": "assets/holmes.marker.png",
           "fallback2D": {}
         }
       },
@@ -634,7 +634,7 @@
             "widgets": [
               {
                 "type": "image",
-                "src": "assets/holmes.marker.svg",
+                "src": "assets/holmes.marker.png",
                 "alt": "Marqueur du repaire"
               },
               {
@@ -645,7 +645,7 @@
               },
               {
                 "type": "image",
-                "src": "assets/holmes-fallback.svg",
+                "src": "assets/holmes-fallback.png",
                 "alt": "Croquis de secours"
               },
               {
@@ -670,8 +670,8 @@
               "h": 5
             }
           ],
-          "source": "assets/moriarty-source.svg",
-          "derivee": "assets/moriarty-derivee.svg"
+          "source": "assets/moriarty-source.png",
+          "derivee": "assets/moriarty-derivee.png"
         }
       },
       "activation": {
@@ -832,7 +832,7 @@
             "widgets": [
               {
                 "type": "image",
-                "src": "assets/fin-deduction.svg",
+                "src": "assets/fin-deduction.png",
                 "alt": "Tableau de déduction"
               },
               {

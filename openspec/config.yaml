@@ -1,7 +1,7 @@
 schema: spec-driven
 
 context: |
-  Projet : GeoPlay — framework de jeux geolocalises offline, natif iOS et Android.
+  Projet : GeoPlay — plateforme de jeux geolocalises offline, natif iOS et Android.
 
   Principe premier : ce n'est pas "un jeu" mais une plateforme de production de jeux.
   Tout ce qui est specifie doit rester generique (valable pour n'importe quel jeu
@@ -18,119 +18,127 @@ context: |
   - Moteur / runtime natif package : engine de rendu par registre, orchestrateur
     d'activation, capteurs (GPS, boussole, camera AR), theme, modes systeme.
 
-  Graphe et orchestrateur (socle v0) :
+  Graphe et orchestrateur (socle archive) :
   - Conditions : GEOFENCE (rayon + predicat in|out|dwell|through + dwell + hysteresis),
     NODE_COMPLETED, TIMER (delai minimum ancre GAME_START|NODE_COMPLETION + anchorNodeId),
-    POOL_DRAWN. RANDOM_POOL = noeud structurel LOCKED -> COMPLETED direct.
-    CONDITIONAL (gamebook) + WINDOW (fenetre horaire absolue) reserves dans l'enum,
-    non outilles par le Studio au socle.
+    POOL_DRAWN, PROXIMITY_MASTER, WINDOW (fenetre relative GAME_START + apres/avantSecondes),
+    ITEM_REQUIRED, ITEM_USED, CODE_INPUT, CLUE_RESOLVED. RANDOM_POOL = noeud structurel
+    LOCKED -> COMPLETED direct.
   - Fan-in : operator AND|OR obligatoire des que requires a >=2 conditions (if/then
     Draft-07), interdit si <=1. Fan-out : UNLOCKED = eligible et presentable, sans
     modale imposee ni file d'attente ; plusieurs eligibles simultanes, choix joueur libre.
-  - Etats : LOCKED -> UNLOCKED -> COMPLETED. latch par noeud : true = reste
+  - Etats : LOCKED -> UNLOCKED -> COMPLETED. Pas d'etat ACTIVE. latch par noeud : true = reste
     UNLOCKED une fois debloque, false = retour LOCKED si conditions revocables retombent
     (ex. sortie geofence). L'ecran ouvert survit a la sortie de zone (ni expulsion,
-    ni re-entree). Seules GEOFENCE/WINDOW sont revocables.
+    ni re-entree). GEOFENCE et WINDOW sont revocables.
   - Cycles : allowCycle=false par defaut sur toute condition a nodeId. Validateur ignore
     les aretes allowCycle:true et rejette tout cycle residuel. onReentry: ignore par
     defaut ; replay exige maxReentries + scoreOnReplay (defaut false, seule la 1ere
     completion score). allowCycle = topologie logique, onReentry = execution terrain.
-  - Terminaison : au moins un noeud isEnding:true obligatoire. Termine quand un isEnding
-    passe COMPLETED. Validateur verifie atteignabilite structurelle sous hypothese
-    explicite d'environnement favorable (GEOFENCE/TIMER supposes pouvoir devenir vrais).
-    RANDOM_POOL et OR = chemins alternatifs. Chaque candidat de pool doit atteindre un
-    isEnding. Detection AND-sur-branches-exclusives limitee au cas direct (pas de
-    fermeture transitive).
+  - Terminaison : au moins un noeud isEnding:true obligatoire, sauf cas HOME-seul
+    (nodes: [] accepte si et seulement si HOME figure dans global.presentation).
+    Termine quand un isEnding passe COMPLETED. Validateur verifie atteignabilite
+    structurelle sous hypothese explicite d'environnement favorable (GEOFENCE/TIMER
+    supposes pouvoir devenir vrais). RANDOM_POOL et OR = chemins alternatifs. Chaque
+    candidat de pool doit atteindre un isEnding. Detection AND-sur-branches-exclusives
+    limitee au cas direct (pas de fermeture transitive).
   - POOL : {candidates, drawCount, drawTiming ON_POOL_ACTIVATION|ON_GAME_START}.
-    Sans remise au socle (withReplacement supprime). drawCount<=len et unicite des
+    Sans remise (withReplacement supprime). drawCount<=len et unicite des
     candidats inter-pools en validateur applicatif. Ordre topo des pools ON_GAME_START,
     cycle inter-pools rejete. ON_GAME_START ne peut dependre d'un candidat de pool
     ON_POOL_ACTIVATION. Persistance immediate randomDraws[sessionId][poolNodeId], jamais
     recalcule. Reprendre = meme sessionId relit, Nouvelle partie = nouveau sessionId.
     forceDraw pour triche/preview (avec flag triche pour le scoring).
   - Registre de modules extensible : chaque type (QUIZ, DIFFERENCE_GAME/7-erreurs,
-    PUZZLE, AR_MARKER, BOUSSOLE, futurs types) s'enregistre avec
+    PUZZLE, AR_MARKER, BOUSSOLE, CODE_INPUT, INFO, futurs types) s'enregistre avec
     sous-schema versionne, besoins capteurs/carte, rendu. Ajouter un module ne touche
     jamais au schema Noeuds/Liens. Moteur ignore un type inconnu gracieusement.
   - Donnees jamais en dur : rayon GPS et overrides, seuils capteurs, URLs, bbox/zooms,
     tout lu depuis le JSON. Trace GPX = base auteur pour poser les POI + polyline
-    display globale optionnelle ; trace par module differee. Boussole = aide service
-    moteur non-validante (fleche vers POI + distance texte + haptique), reutilisable
-    comme entree capteur dans un module enigme (validation interne au module, jamais
-    par l'orchestrateur). La position est qualifiee par accuracy + dwell.
-    7-erreurs : source + derivee + masque Alpha auteur -> polygones % au build (MCP)
-    + dilatation tactile parametree.
+    display globale optionnelle. Boussole = aide service moteur non-validante
+    (fleche vers POI + distance texte + haptique), reutilisable comme entree capteur
+    dans un module enigme (validation interne au module, jamais par l'orchestrateur).
+    La position est qualifiee par accuracy + dwell.
   - Offline-first natif : fichiers app + SQLite. Manifest {path, version, size, sha256} par fichier, archive
     pre-tuilee dezippee en worker, verif SHA-256, diff (ne retelecharge que version
     changee), resume, background download, progression non lancable si partiel.
     Fond imagerie configurable {provider, bbox, minZoom, maxZoom, attribution} + fallback
-    image statique. Difficulte (enfant|famille|expert) + modes
-    (normal|animateur|soiree|hardcore) en variantes/overrides, i18n par cles + glossaire
-    acronymes lockes. Sync scoring multi-session MASTER P2P natif + resync serveur
-    tardive hors socle 000 (lien socle : events + scoreOnReplay + flag triche).
-    Branding global + surcharge par Noeud en objet donnees. Modes systeme socle :
-    triche/test + preview Studio (meme bypass, deux entrees) ; rejouabilite/a11y en roadmap.
+    image statique. Branding global + surcharge par Noeud en objet donnees.
+
+  Plateforme (jalons M1-M6, changes 900-982) :
+  - Joueur sans compte (offline-first conserve). Seuls les createurs s'authentifient (Keycloak, realm geoplay).
+  - Droits portes par le createur : roles Keycloak (level0/creator/advanced/admin), plans et achats
+    backend resolus en entitlements (type:id), licence signee EdDSA embarquee dans le package et verifiee
+    offline par le runtime. Achats sur le Studio Shop web uniquement, aucun achat dans l'app mobile.
+  - Validation triple couche : C1 Draft-07 (forme) + C2 applicative (graphe, pools, references, HOME-seul)
+    + C3 droits (entitlements couvrant modules/templates/themes/widgets/layouts). Serveur autoritaire pour C3,
+    Studio indicatif (cadenas + avertissement).
+  - i18n par fichiers separes : game.json ne contient que des cles {"$t"}, textes dans i18n/fr.json + en.json
+    inclus au manifest ; chaine de repli langue joueur -> langue systeme -> defaultLocale.
+  - schemaVersion entier + migrations pures testees vN -> vN+1 ; runtime refuse un jeu trop recent avec message clair.
+  - Tokens de style semantiques (roles, jamais de valeur litterale dans les widgets) ; theme = {tokens light/dark,
+    widgetVariants} ; heritage global.theme -> screen.theme -> widget ; contraste WCAG AA.
+  - Catalogue generique unique (template/theme/layout/widget/module/object-pack) avec requires/requiresAll,
+    visibilites, versions, champ calcule access.
+  - Backend monolithe modulaire Node.js/TypeScript + PostgreSQL + Barman (WAL + physique, PITR, retention 30 j,
+    test de restauration mensuel) + stockage objet S3 + CDN. Validateurs C1/C2/C3 en TypeScript partages
+    Studio/backend ; parite valideur TS = valideur KMP verifiee par la suite de regression partagee.
+  - Generation LLM asynchrone (worker isole, seul service separe) : sortie contrainte au sous-registre autorise
+    du profil, boucle C1 -> C2 -> C3 (3 tentatives), brouillon uniquement, moderation entree/sortie.
+  - Documentation (guide createur, reference API/MCP, glossaire) mise a jour dans le meme change que la fonctionnalite.
 
 rules:
   proposal:
-    - Identifier explicitement si le change modifie le schema graphe
-      (Noeuds/activation/registre/branding/manifest) ; si oui, lister tous les
-      consommateurs impactes (Studio MCP, runtime natif, orchestrateur, modules
-      concernes, packaging offline).
-    - Preciser si le change touche aux valeurs reservees CONDITIONAL/WINDOW ou ajoute
-      un module au registre ; decrire la politique de compat (ignore gracieux vs rejet).
-    - Preciser si le change necessite une connexion reseau a un moment quelconque du
-      parcours joueur ; si oui, justifier l'exception a l'offline-first.
-    - Indiquer la dependance a un change precedent non encore archive
-      (ex. depend de 000-framework-architecture).
-    - Le code de rendu graphique des modules (QUIZ, BOUSSOLE, etc.) doit être écrit exclusivement en `commonMain` avec Compose Multiplatform.
-    - Le simulateur Studio consomme le renderer `commonMain` en appel direct (jeu en memoire, etat simule injecte, sans session ni protocole). Seul player : le natif Android/iOS.
-    - Le simulateur Web (wasmJsMain) doit appliquer un fallback logiciel clavier/souris pour les capteurs physiques (GPS, Gyro, Boussole) indisponibles sur ordinateur.
-    - Toute modification du schéma JSON OpenSpec doit être validée par AJV côté Studio et être immédiatement consommable par le parseur Kotlin du runtime.
-
+    - Identifier explicitement si le change modifie le schema graphe (Noeuds/activation/registre/branding/manifest/i18n/schemaVersion) ; si oui, lister tous les consommateurs impactes (Studio MCP, runtime natif KMP, orchestrateur, modules concernes, packaging offline, backend).
+    - Preciser si le change touche aux conditions WINDOW/CONDITIONAL/PROXIMITY_MASTER ou ajoute un module au registre ; decrire la politique de compat (ignore gracieux vs rejet).
+    - Preciser si le change necessite une connexion reseau a un moment quelconque du parcours joueur ; si oui, justifier l'exception a l'offline-first (le serveur n'est jamais requis pour jouer un jeu installe).
+    - Indiquer la dependance a un change 9xx non encore archive (ex. depend de 911-schema-versioning-migrations) et le jalon M1-M6 concerne.
+    - "Preciser l'impact C3/entitlements/licence : tout module, template, theme, widget ou layout utilise doit etre couvert par un entitlement du publieur ; decrire erreur a la publication vs avertissement en edition."
+    - Preciser l'impact backend le cas echeant (monolithe Node.js/TypeScript, PostgreSQL, Keycloak, S3, Barman) vs pur Studio/runtime.
+    - Preciser l'impact i18n (cles $t, fichiers i18n/*.json au manifest, migration des jeux de reference) et migrations schemaVersion si le schema evolue.
+    - Preciser l'impact tokens/theme (aucune couleur en dur, heritage global -> screen -> widget, contraste AA).
+    - Le code de rendu graphique des modules (QUIZ, BOUSSOLE, etc.) doit etre ecrit exclusivement en commonMain avec Compose Multiplatform.
+    - "Le simulateur Studio consomme le renderer commonMain en appel direct (jeu en memoire, etat simule injecte, sans session ni protocole). Seul player : le natif Android/iOS. Pas d'iframe PWA, pas d'endpoint /emulate."
+    - Le simulateur Web (wasmJsMain, cible instrumentale jamais distribuee) doit appliquer un fallback logiciel clavier/souris pour les capteurs physiques (GPS, Gyro, Boussole) indisponibles sur ordinateur.
+    - Toute modification du schema JSON OpenSpec doit etre validee par AJV cote Studio et etre immediatement consommable par le parseur Kotlin du runtime, avec parite TS/KMP verifiee.
   specs:
-    - Toute spec touchant aux mini-jeux doit referencer les types via le registre
-      (jamais de liste fermee en dur) et nommer Nœud vs Module vs condition.
-    - Utiliser le format Given/When/Then pour les scenarios d'activation
-      (GEOFENCE, NODE_COMPLETED, TIMER, POOL_DRAWN, latch/desactivation,
-      cycles/reentry, terminaison).
-    - Toute valeur de configuration (rayon GPS et overrides, predicats in|out|dwell|
-      through, seuils capteurs, URLs, bbox/zooms) doit etre decrite comme lue depuis
-      le JSON du jeu, jamais comme une constante du code.
-    - Distinguer les regles exprimables en JSON Schema Draft-07 pur des regles du
-      validateur applicatif separe (cycles, atteignabilite, topo pools ON_GAME_START,
-      drawCount<=len, unicite candidats, AND-sur-branches-exclusives direct).
-  operations:
-    apply:
-      guidance:
-        - Verifier que tout fichier JSON produit ou modifie reste valide au regard de
-          `openspec/specs/game-schema/spec.md` (ou du schema Draft-07 archive) ET du
-          validateur applicatif (cycles, atteignabilite, pools, reentry, terminaison).
-        - Ne pas introduire de dependance reseau bloquante dans le parcours joueur
-          post-telechargement ; stockage natif fichiers+SQLite, manifest SHA-256 verifie.
-        
-    archive:
-      guidance:
-        - Resumer dans le changelog l'impact sur le schema graphe/registre s'il a ete
-          modifie, pour que les changes suivants (Studio, moteur, orchestrateur,
-          modules, packaging offline) sachent s'ils doivent etre mis a jour.
+    - Toute spec touchant aux mini-jeux doit referencer les types via le registre (jamais de liste fermee en dur) et nommer Noeud vs Module vs condition.
+    - Utiliser le format Given/When/Then pour les scenarios d'activation (GEOFENCE, NODE_COMPLETED, TIMER, POOL_DRAWN, PROXIMITY_MASTER, WINDOW, ITEM_REQUIRED, latch/desactivation, cycles/reentry, terminaison).
+    - Toute valeur de configuration (rayon GPS et overrides, predicats in|out|dwell|through, seuils capteurs, URLs, bbox/zooms, bounds/marginMeters, tileStrategy) doit etre decrite comme lue depuis le JSON du jeu, jamais comme une constante du code.
+    - Distinguer les regles exprimables en JSON Schema Draft-07 pur des regles du validateur applicatif separe (cycles, atteignabilite, topo pools ON_GAME_START, drawCount<=len, unicite candidats, AND-sur-branches-exclusives direct, exclusion map/indoorPlans, planId, recettes, WINDOW apres<avant).
+    - "Specifier le niveau de chaque constat : erreur (bloque l'export), avertissement (export apres confirmation journalisee), info (jamais bloquant). Rétrograder une regle ne doit jamais invalider un jeu valide."
+    - Emettre des constats structures {code, noeud, champ, attendu} rendus via le glossaire ferme (etape, declencheur, tirage, fin) avec action Voir ; ne plus etendre le pattern-matching textuel.
+    - "Exemption HOME-seul : quand HOME figure dans global.presentation et nodes est vide, les controles isEnding et atteignabilite sont sautes (session sans fin assumee)."
+    - "Specifier C3 : tout element de catalogue utilise requiert un entitlement ; erreur a la publication, avertissement en edition ; licence signee EdDSA verifiee offline (E_LICENSE_INVALID si alteree)."
+    - 'Specifier i18n : cles {"$t"} stables, repli demande -> defaut -> cle brute signalee ; cle manquante en defaultLocale = erreur, en autre langue = avertissement, orpheline = info.'
+    - Specifier licence et codes d'erreur d'installation (E_STORAGE_FULL, E_NETWORK, E_HASH_MISMATCH, E_MANIFEST_INVALID, E_SCHEMA_TOO_NEW, E_LICENSE_INVALID, E_PARTIAL, E_ALREADY_INSTALLED, E_DB_MIGRATION) avec installation atomique, jamais d'etat partiel lancable.
+  design:
+    - "Decrire l'architecture monolithe modulaire : Studio Web React statique, app mobile KMP Android/iOS, backend Node.js/TypeScript, Keycloak realm geoplay, PostgreSQL, stockage objet S3 + CDN, worker LLM asynchrone isole."
+    - Repartir Keycloak (identite, roles level0/creator/advanced/admin, OIDC PKCE, JWT via JWKS) vs backend (entitlements, catalogues, jeux, quotas, licences, billing) ; entitlements jamais dans le JWT (cache court 60 s) ou embarques en licence signee.
+    - Decrire PostgreSQL + Barman (WAL streaming + sauvegarde physique, PITR, retention 30 j, test mensuel), sauvegarde stockage objet, export Git du realm Keycloak, secrets en gestionnaire dedie.
+    - Decrire la licence signee EdDSA (gameId, version, publisherId, entitlements, iat, exp, kid), rotation de cles, versions publiees immuables restant jouables apres expiration du plan (seule la publication est bloquee, grace 30 j).
+    - Decrire quotas et stockage adresse par contenu (sha256), extraits de tuiles mutualises, transcodage media, depassement bloquant publication/import mais jamais lecture/jeu.
+    - Garantir offline-first joueur, un seul schema de jeu, un seul mecanisme de catalogue, aucune interruption de partie en cours par un droit expire.
+  tasks:
+    - Verifier que tout fichier JSON produit ou modifie reste valide au regard de openspec/specs/game-schema/spec.md (ou du schema Draft-07 archive) ET du validateur applicatif (cycles, atteignabilite, pools, reentry, terminaison) ET de C3 quand le change touche aux droits.
+    - Ne pas introduire de dependance reseau bloquante dans le parcours joueur post-telechargement ; stockage natif fichiers+SQLite, manifest SHA-256 verifie.
+    - Maintenir la parite validateur TS = validateur KMP via la suite de regression partagee (moteur JVM, simulateur wasmJs, runtime natif) sur les jeux de reference.
+    - Resumer dans le changelog l'impact sur le schema graphe/registre/licence/i18n s'il a ete modifie, pour que les changes suivants (Studio, moteur, orchestrateur, modules, packaging offline, backend) sachent s'ils doivent etre mis a jour.
+    - Mettre a jour la documentation (guide createur, reference API/MCP, glossaire) dans le meme change que la fonctionnalite.
 
 pipeline:
   explore:
     require_tools: [codegraph]
     prompt_enrichment: |
       Utilise l'index sémantique local de CodeGraph pour vérifier où le schéma concerné est actuellement consommé (Validateur AJV, Studio MCP ou KMP Runtime).
-  
   propose:
     require_tools: [codegraph]
     impact_analysis: |
       Chaque fichier `proposal.md` généré doit inclure une section "Impact CodeGraph" listant les fichiers sources exacts à modifier dans la frontière KMP (`kmp-native-boundary`) et le registre des modules.
 
-# Déclaration de l'infrastructure d'indexation
 infrastructure:
   code_mapping: codegraph
   database_path: ".codegraph/db.sqlite"
-
 
 architecture:
   framework: "Kotlin Multiplatform (KMP) + Compose Multiplatform"
@@ -139,3 +147,9 @@ architecture:
   paradigm: "Spec-Driven UI Runtime Interpreter (Skiko Graphics Canvas Rendering)"
   state_management: "Orchestrateur de graphe oriente natif (LOCKED -> UNLOCKED -> COMPLETED, eligibles sans file)"
   simulation_bridge: "Appel direct du renderer commonMain (jeu en memoire, sans session)"
+  backend: "Monolithe modulaire Node.js/TypeScript (Fastify ou NestJS), OpenAPI genere, PostgreSQL + Barman, stockage objet S3 + CDN, worker LLM asynchrone isole"
+  identity: "Keycloak realm geoplay (clients studio-web, mobile, backend, shop ; roles level0/creator/advanced/admin ; OIDC PKCE ; JWT via JWKS)"
+  validation_tiers: "C1 Draft-07 + C2 applicative + C3 droits (serveur autoritaire, Studio indicatif)"
+  licensing: "license.json EdDSA Ed25519 dans le package, verification runtime offline, versions publiees immuables"
+  i18n_model: "game.json en cles $t, fichiers i18n/fr.json + en.json au manifest, defaultLocale fr"
+  catalog_model: "Table catalog_item generique (template/theme/layout/widget/module/object-pack), requires/requiresAll, access calcule"

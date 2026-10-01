@@ -52,7 +52,12 @@ const sansSlash = (url: string): string => url.replace(/\/+$/, "");
 // rognés, slash final retiré, suffixe `/publish` final retiré (il désigne
 // l'endpoint, pas le service — sans quoi l'appel doublerait le segment).
 export function normaliserUrlService(url: string): string {
-  return sansSlash(url.trim()).replace(/\/publish$/, "");
+  // N'accepte que la racine du service : dépouille un éventuel endpoint
+  // collé par erreur (/publish historique, /games ou /tilepacks qui
+  // produiraient sinon des routes inexistantes côté serveur).
+  return sansSlash(url.trim())
+    .replace(/\/(publish|games|tilepacks)$/, "")
+    .replace(/\/(publish|games|tilepacks)$/, "");
 }
 
 // Enveloppe fetch (change studio-lot-correctifs) : un échec réseau (service

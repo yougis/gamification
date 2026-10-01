@@ -10,14 +10,17 @@ import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
-import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.graphics.asImageBitmap
 import com.geoplay.player.R
 import com.geoplay.player.data.GameRepository
 import com.geoplay.player.data.PackManager
 import com.geoplay.player.databinding.FragmentGameBinding
 import com.geoplay.player.databinding.FragmentHomeBinding
 import com.geoplay.player.databinding.FragmentImportBinding
-import com.geoplay.player.databinding.FragmentModuleBinding
 import com.geoplay.player.databinding.FragmentPreviewBinding
 import com.geoplay.player.databinding.FragmentReviewBinding
 import com.geoplay.player.databinding.FragmentSettingsBinding
@@ -27,6 +30,7 @@ import com.geoplay.shared.model.Game
 import com.geoplay.shared.model.NodeState
 import com.geoplay.shared.model.OnReentry
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -76,7 +80,10 @@ class GameFragment : Fragment() {
     private var _binding: FragmentGameBinding? = null
     private val binding get() = _binding!!
     private lateinit var repository: GameRepository
-    private var game: Game? = null
+    // Etat Compose (dont game lui-même) : toute écriture recompose.
+    // (Un var simple lu dans setContent ne déclenchait rien — écran figé.)
+    private var game: Game? by mutableStateOf(null)
+    private var currentPackName: String? = null
     private var currentNodeId: String? = null
     private var sessionId: String? = null
     private var gameStartMs: Long = System.currentTimeMillis()
@@ -97,6 +104,29 @@ class GameFragment : Fragment() {
     private var activeId: String? = null
     private val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
 
+    // État Compose (change player-android-compose) : l'UI partagée est
+    // nourrie par ces états, recalculés par recompute() (mêmes données et
+    // mêmes formules que l'ancien updateUI texte).
+    private var uiStates by androidx.compose.runtime.mutableStateOf(mapOf<String, NodeState>())
+    private var uiInventory by androidx.compose.runtime.mutableStateOf(mapOf<String, Int>())
+    private var uiElapsedMs by androidx.compose.runtime.mutableLongStateOf(0L)
+    private var uiCountdowns by androidx.compose.runtime.mutableStateOf(mapOf<String, Long?>())
+    private var uiQueueHead by androidx.compose.runtime.mutableStateOf<String?>(null)
+    private var uiTempsRestant by androidx.compose.runtime.mutableStateOf<Long?>(null)
+    private var uiVerrouillages by androidx.compose.runtime.mutableStateOf(mapOf<String, Long?>())
+    private var uiHorsDelai by androidx.compose.runtime.mutableStateOf(false)
+    private var uiErreurChargement by androidx.compose.runtime.mutableStateOf<String?>(null)
+    private var tickerOn = false
+    private var gpsOn = false
+    private val gpsListener = object : android.location.LocationListener {
+        override fun onLocationChanged(location: android.location.Location) {
+            alimenterSimGps(location.latitude, location.longitude,
+                if (location.hasAccuracy()) location.accuracy.toInt() else 999)
+        }
+        @Deprecated("deprecated")
+        override fun onStatusChanged(provider: String?, status: Int, extras: android.os.Bundle?) = Unit
+    }
+
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?
@@ -108,9 +138,27 @@ class GameFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        binding.rvQueue.layoutManager = LinearLayoutManager(requireContext())
         requestLocationWithRationale()
+        demarrerContenuCompose()
         loadGame()
+        // Garde-fou DIAG : si le jeu n'est pas chargé en 10 s, afficher
+        // l'étape atteinte au lieu de "Chargement" muet.
+        lifecycleScope.launch {
+            kotlinx.coroutines.delay(10000)
+            if (game == null && uiErreurChargement == null) {
+                uiErreurChargement = "Diag : bloqué à " + etapeDiag
+            }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        demarrerGps()
+    }
+
+    override fun onPause() {
+        arreterGps()
+        super.onPause()
     }
 
     private val locationPermission = registerForActivityResult(
@@ -125,6 +173,9 @@ class GameFragment : Fragment() {
                 "Localisation refusee : les etapes GPS restent en attente, le reste du jeu reste jouable",
                 Toast.LENGTH_LONG
             ).show()
+        } else {
+            // Permission accordée : position réelle (providers + sim).
+            demarrerGps()
         }
     }
 
@@ -150,28 +201,43 @@ class GameFragment : Fragment() {
         )
     }
 
+    // DIAG temporaires (debug hang "Chargement") : tag GeoPlayDbg, à retirer au correctif final.
+    private var etapeDiag = "init"
+
     private fun loadGame() {
+        android.util.Log.d("GeoPlayDbg", "loadGame: debut")
         lifecycleScope.launch {
             val prefs = requireContext().getSharedPreferences("geoplay_prefs", android.content.Context.MODE_PRIVATE)
             isCheatMode = prefs.getBoolean("cheat_mode", false)
             val loaded = withContext(Dispatchers.IO) {
                 try {
+                    android.util.Log.d("GeoPlayDbg", "loadGame: IO arg packName=" + arguments?.getString("packName"))
                     val packManager = PackManager.getInstance(requireContext())
                     // Pack demandé en argument (change player-local-catalog) :
                     // après import ou depuis le catalogue local, on ouvre CE
                     // pack. Défaut à froid : le plus récent, sinon référence.
                     val wanted = arguments?.getString("packName")
                     val named = wanted?.let { packManager.loadPack(it) }
-                    named ?: packManager.getInstalledPacks().firstOrNull()?.let { packManager.loadPack(it) }
-                        ?: loadReferencePack()
+                    if (named != null) {
+                        currentPackName = wanted
+                        android.util.Log.d("GeoPlayDbg", "loadGame: pack argument OK gameId=" + named.gameId)
+                        named
+                    } else {
+                        val first = packManager.getInstalledPacks().firstOrNull()
+                        currentPackName = first
+                        android.util.Log.d("GeoPlayDbg", "loadGame: defaut froid first=" + first)
+                        first?.let { packManager.loadPack(it) } ?: loadReferencePack()
+                    }
                 } catch (e: Exception) {
+                    android.util.Log.d("GeoPlayDbg", "loadGame: exception " + e.message)
                     loadReferencePack()
                 }
             }
+            android.util.Log.d("GeoPlayDbg", "loadGame: loaded gameId=" + loaded?.gameId)
             if (loaded != null) {
                 setupGame(loaded)
             } else {
-                binding.tvGameTitle.text = "Aucun pack installe"
+                uiErreurChargement = "Aucun pack installe"
             }
         }
     }
@@ -188,16 +254,116 @@ class GameFragment : Fragment() {
 
     private fun setupGame(game: Game) {
         this.game = game
+        android.util.Log.d("GeoPlayDbg", "setupGame: gameId=" + game.gameId + " noeuds=" + game.nodes.size)
         // Reprendre = meme sessionId relit ; nouvelle partie = nouveau sessionId (offline-pack + player-install).
         val argSession = arguments?.getString("sessionId")
         lifecycleScope.launch {
+            etapeDiag = "resolveSession"
             val sid = withContext(Dispatchers.IO) { resolveSession(game, argSession) }
             sessionId = sid
+            android.util.Log.d("GeoPlayDbg", "setupGame: session=" + sid)
+            etapeDiag = "restoreProgress"
             withContext(Dispatchers.IO) { restoreProgress(sid) }
+            android.util.Log.d("GeoPlayDbg", "setupGame: restore OK done=" + done.size)
+            etapeDiag = "ensureBootDraws"
             withContext(Dispatchers.IO) { ensureBootDraws() }
-            val cheatTag = if (isCheatMode) " [animateur]" else ""
-            binding.tvGameTitle.text = "Partie: " + game.gameId + cheatTag
-            updateUI()
+            android.util.Log.d("GeoPlayDbg", "setupGame: draws OK")
+            recompute()
+            demarrerTicker()
+        }
+    }
+
+    // Contenu Compose (change player-android-compose) : GeoPlayApp partagé,
+    // nourri par recompute(). Avant chargement : écran d'attente.
+    private fun demarrerContenuCompose() {
+        binding.composeView.setContent {
+            val g = game
+            if (g == null) {
+                androidx.compose.foundation.layout.Box(
+                    modifier = androidx.compose.ui.Modifier.fillMaxSize(),
+                    contentAlignment = androidx.compose.ui.Alignment.Center
+                ) {
+                    androidx.compose.material3.Text(uiErreurChargement ?: "Chargement de la partie…")
+                }
+                return@setContent
+            }
+            com.geoplay.shared.ui.theme.GeoPlayTheme {
+                com.geoplay.shared.ui.navigation.GeoPlayApp(
+                    game = g,
+                    states = uiStates,
+                    onQuizComplete = { nodeId, score -> terminerEtape(nodeId, score) },
+                    onBack = { findNavController().navigateUp() },
+                    inventory = uiInventory,
+                    onInventoryOpen = { journalInventaire("INVENTORY_OPENED", null) },
+                    onItemSelected = { itemId -> journalInventaire("ITEM_SELECTED", itemId) },
+                    elapsedMs = uiElapsedMs,
+                    countdownsMs = uiCountdowns,
+                    queueHeadId = uiQueueHead,
+                    onOpenNode = { id ->
+                        activeId = id
+                        currentNodeId = id
+                        recompute()
+                    },
+                    tempsRestantMs = uiTempsRestant,
+                    verrouillagesMs = uiVerrouillages,
+                    horsDelai = uiHorsDelai,
+                    imageContent = { src, alt -> ImagePack(src, alt) },
+                    onModuleComplete = { nodeId -> terminerEtape(nodeId, 10) }
+                )
+            }
+        }
+    }
+
+    @androidx.compose.runtime.Composable
+    private fun ImagePack(src: String, alt: String?) {
+        val pack = currentPackName
+        val fichier = pack?.let { java.io.File(requireContext().filesDir, "packs/$it/$src") }
+        if (pack == null || fichier == null || !fichier.isFile) {
+            androidx.compose.material3.Text(alt ?: src)
+            return
+        }
+        val bitmap = try {
+            android.graphics.BitmapFactory.decodeFile(fichier.absolutePath)
+        } catch (_: Exception) { null }
+        if (bitmap == null) {
+            androidx.compose.material3.Text(alt ?: src)
+            return
+        }
+        androidx.compose.foundation.Image(
+            bitmap = bitmap.asImageBitmap(),
+            contentDescription = alt
+        )
+    }
+
+    private fun journalInventaire(event: String, itemId: String?) {
+        val sid = sessionId ?: return
+        val g = game ?: return
+        lifecycleScope.launch {
+            withContext(Dispatchers.IO) {
+                repository.logInventoryEvent(sid, event, itemId)
+                if (event == "ITEM_SELECTED" && itemId != null) {
+                    val desc = g.objects.find { it.id == itemId }?.description
+                    val nom = g.objects.find { it.id == itemId }?.name ?: itemId
+                    launch(Dispatchers.Main) {
+                        Toast.makeText(
+                            requireContext(),
+                            nom + (if (desc.isNullOrBlank()) "" else " — $desc"),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+            }
+        }
+    }
+
+    private fun demarrerTicker() {
+        if (tickerOn) return
+        tickerOn = true
+        lifecycleScope.launch {
+            while (tickerOn) {
+                delay(1000)
+                if (game != null && sessionId != null) recompute()
+            }
         }
     }
 
@@ -319,11 +485,15 @@ class GameFragment : Fragment() {
         return true
     }
 
-    private fun updateUI() {
+    // Recalcul (change player-android-compose) : mêmes données et mêmes
+    // formules que l'ancien updateUI texte, écrites dans les états Compose.
+    private fun recompute() {
         val game = this.game ?: return
+        val sid = sessionId ?: return
         lifecycleScope.launch {
+            etapeDiag = "recompute:activationDraws"
             withContext(Dispatchers.IO) { ensureActivationDraws() }
-            // Mode animateur : bypass capteurs (file FIFO inchangee), flag triche sur les events.
+            // Mode animateur : bypass capteurs, flag triche sur les events.
             if (isCheatMode) {
                 game.nodes.forEach { n ->
                     sim.present.add(n.id)
@@ -332,118 +502,103 @@ class GameFragment : Fragment() {
                 sim.accuracyM = 5
             }
             sim.nowMs = System.currentTimeMillis() - gameStartMs
-            val ev = evaluate(game, sim, draws.toMap(), done.toMap(), counts.toMap(), emptySet())
-            val showHome = "HOME" in game.global.presentation
-
-            // Ouverture manuelle (change home-player-runtime, 7.2 : fin de
-            // l'arrivee auto). Avec HOME le tableau propose, sinon la liste ;
-            // aucune ouverture sans geste joueur.
-
-            binding.tvCurrentNode.text = "Etape actuelle: " + (currentNodeId ?: "-")
-            binding.tvActiveNode.text = if (activeId != null) "Ouverte: $activeId" else "Aucune"
-
-            binding.rvQueue.adapter = QueueAdapter(ev.queue) { id ->
-                activeId = id
-                currentNodeId = id
-                updateUI()
+            etapeDiag = "recompute:evaluate"
+            val ev = com.geoplay.shared.game.evaluate(game, sim, draws.toMap(), done.toMap(), counts.toMap(), emptySet())
+            val homeNow = System.currentTimeMillis() - gameStartMs
+            etapeDiag = "recompute:inventory"
+            val inv = withContext(Dispatchers.IO) {
+                repository.getInventory(sid).associate { it.itemId to it.quantity }
             }
-
-            binding.btnComplete.setOnClickListener { completeCurrent(false) }
-            binding.btnAbandon.setOnClickListener { completeCurrent(true) }
-
-            // Tableau de bord (change player-home-dashboard) : même règle
-            // et même contenu que le partagé. Ouvrir = tête de file via le
-            // même chemin que le clic file (aucun event ajouté).
-            binding.cardHome.visibility = if (showHome) View.VISIBLE else View.GONE
-            if (showHome) {
-                val homeNow = System.currentTimeMillis() - gameStartMs
-                // Temps global (change game-temps-global-fenetres) : reste de
-                // partie + flag hors délai, mêmes formules que le partagé.
-                val duree = com.geoplay.shared.game.dureeTotaleMs(game)
-                val reste = duree?.let { (it - homeNow).coerceAtLeast(0L) }
-                val horsDelai = com.geoplay.shared.game.estHorsDelai(game, homeNow)
-                binding.tvHomeElapsed.text = "⏱ " + com.geoplay.shared.ui.home.formatDuration(homeNow) +
-                    (if (reste != null) " — reste " + com.geoplay.shared.ui.home.formatDuration(reste) else "") +
-                    (if (horsDelai) " — HORS DÉLAI" else "")
-                binding.tvHomeList.text = game.nodes
-                    .filter { it.randomPool == null }
-                    .joinToString("\n") { n ->
-                        val state = when {
-                            done.containsKey(n.id) -> "Terminée"
-                            ev.unlocked.contains(n.id) -> "Disponible"
-                            else -> "Verrouillée"
-                        }
-                        val rest = com.geoplay.shared.game.timerRemainingMs(n, done.toMap(), homeNow)
-                        val verrou = com.geoplay.shared.game.verrouillageDansMs(n, homeNow)
-                        n.id + " — " + state +
-                            (if (rest != null) " — dans " + com.geoplay.shared.ui.home.formatDuration(rest) else "") +
-                            (if (verrou != null) " — se verrouille dans " + com.geoplay.shared.ui.home.formatDuration(verrou) else "")
-                    }
-                // Proposition (change home-player-runtime, 7.2) : tete suggeree
-                // hors etape ouverte, sans auto-ouverture. Ouvrir = meme
-                // chemin que le clic file (aucun event ajoute).
-                val head = com.geoplay.shared.game.suggest(ev.unlocked.filter { it != activeId }, emptyList()).tete
-                if (head != null && !done.containsKey(head)) {
-                    binding.btnHomeOpen.visibility = View.VISIBLE
-                    binding.btnHomeOpen.text = "Ouvrir : $head"
-                    binding.btnHomeOpen.setOnClickListener {
-                        activeId = head
-                        currentNodeId = head
-                        updateUI()
-                    }
-                } else {
-                    binding.btnHomeOpen.visibility = View.GONE
+            uiStates = game.nodes.associate { n ->
+                n.id to when {
+                    done.containsKey(n.id) -> NodeState.COMPLETED
+                    ev.unlocked.contains(n.id) -> NodeState.UNLOCKED
+                    else -> NodeState.LOCKED
                 }
             }
-
-            // Boîte à outils (change player-inventory-toolbox) : règle
-            // triple lue du JSON — l'overlay ne touche ni moteur ni file.
-            binding.btnToolbox.visibility =
-                if (com.geoplay.shared.game.toolboxIconVisible(game, activeId)) View.VISIBLE else View.GONE
-            binding.btnToolbox.setOnClickListener { openToolbox() }
+            uiInventory = inv
+            uiElapsedMs = homeNow
+            uiCountdowns = game.nodes.associate { it.id to com.geoplay.shared.game.timerRemainingMs(it, done.toMap(), homeNow) }
+            uiQueueHead = com.geoplay.shared.game.suggest(ev.unlocked.filter { it != activeId }, emptyList()).tete
+            val duree = com.geoplay.shared.game.dureeTotaleMs(game)
+            uiTempsRestant = duree?.let { (it - homeNow).coerceAtLeast(0L) }
+            uiVerrouillages = game.nodes.associate { it.id to com.geoplay.shared.game.verrouillageDansMs(it, homeNow) }
+            uiHorsDelai = com.geoplay.shared.game.estHorsDelai(game, homeNow)
+            etapeDiag = "recompute:ok"
+            android.util.Log.d("GeoPlayDbg", "recompute: etats ecrits=" + uiStates.size + " unlocked=" + ev.unlocked)
         }
     }
 
-    // Boîte à outils en overlay (change player-inventory-toolbox) : un
-    // dialogue par-dessus l'écran courant, fermeture = reprise exacte
-    // (aucun état moteur, file ou progression n'est touché — seuls les
-    // events de journal INVENTORY_OPENED/ITEM_SELECTED sont appendés).
-    private fun openToolbox() {
-        val game = this.game ?: return
-        val sid = sessionId ?: return
-        lifecycleScope.launch {
-            repository.logInventoryEvent(sid, "INVENTORY_OPENED")
-            val owned = withContext(Dispatchers.IO) { repository.getInventory(sid) }
-            val names = game.objects.associate { it.id to it.name }
-            val lines = owned.map { e -> "${names[e.itemId] ?: e.itemId} × ${e.quantity}" }
-            val items = owned.map { it.itemId }.toTypedArray()
-            val dialog = android.app.AlertDialog.Builder(requireContext())
-                .setTitle("Boîte à outils")
-                .setNegativeButton("Fermer", null)
-            if (lines.isEmpty()) {
-                dialog.setMessage("Boîte à outils vide.")
-            } else {
-                dialog.setItems(lines.toTypedArray()) { _, which ->
-                    val itemId = items[which]
-                    lifecycleScope.launch {
-                        repository.logInventoryEvent(sid, "ITEM_SELECTED", itemId)
-                        val desc = game.objects.find { it.id == itemId }?.description
-                        Toast.makeText(
-                            requireContext(),
-                            (names[itemId] ?: itemId) + (if (desc.isNullOrBlank()) "" else " — $desc"),
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
+    // GPS natif vers sim (change player-android-compose) : ENTER seulement
+    // (dwell/through restent simu/triche comme avant) ; latch:true garde
+    // l'éligibilité après sortie, latch:false la retire.
+    private fun demarrerGps() {
+        if (gpsOn) return
+        val ctx = context ?: return
+        val ok = androidx.core.content.ContextCompat.checkSelfPermission(
+            ctx, android.Manifest.permission.ACCESS_FINE_LOCATION
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (!ok) return
+        try {
+            com.geoplay.shared.providers.initLocalisationAndroid(ctx)
+            val manager = ctx.getSystemService(android.content.Context.LOCATION_SERVICE) as android.location.LocationManager
+            for (fournisseur in listOf(
+                android.location.LocationManager.GPS_PROVIDER,
+                android.location.LocationManager.NETWORK_PROVIDER
+            )) {
+                try {
+                    if (!manager.isProviderEnabled(fournisseur)) continue
+                    manager.requestLocationUpdates(fournisseur, 5000L, 5f, gpsListener)
+                } catch (_: Exception) {
                 }
             }
-            dialog.show()
+            gpsOn = true
+        } catch (_: Exception) {
         }
     }
 
-    private fun completeCurrent(abandon: Boolean) {        val id = activeId ?: run {
-            Toast.makeText(requireContext(), "Aucune étape ouverte", Toast.LENGTH_SHORT).show()
-            return
+    private fun arreterGps() {
+        if (!gpsOn) return
+        gpsOn = false
+        try {
+            val manager = requireContext().getSystemService(android.content.Context.LOCATION_SERVICE) as android.location.LocationManager
+            manager.removeUpdates(gpsListener)
+        } catch (_: Exception) {
         }
+    }
+
+    private fun alimenterSimGps(lat: Double, lng: Double, accuracyM: Int) {
+        val g = game ?: return
+        sim.accuracyM = accuracyM
+        for (noeud in g.nodes) {
+            val dedans = noeud.activation.requires.any { c ->
+                val clat = c.lat
+                val clng = c.lng
+                val crayon = c.radiusMeters
+                c.type == com.geoplay.shared.model.ConditionType.GEOFENCE &&
+                    clat != null && clng != null && crayon != null &&
+                    haversineM(lat, lng, clat, clng) <= crayon
+            }
+            if (dedans) sim.present.add(noeud.id)
+            else if (!noeud.latch) sim.present.remove(noeud.id)
+        }
+        recompute()
+    }
+
+    private fun haversineM(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {
+        val r = 6371000.0
+        val dLat = Math.toRadians(lat2 - lat1)
+        val dLng = Math.toRadians(lng2 - lng1)
+        val a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+            Math.sin(dLng / 2) * Math.sin(dLng / 2)
+        return 2 * r * Math.asin(Math.sqrt(a.coerceIn(0.0, 1.0)))
+    }
+
+    // Complétion (change player-android-compose) : même règle que l'ancien
+    // completeCurrent (rejeu borné, scores, effets GIVE/REMOVE, fin), avec le
+    // score du module au lieu du 10 fixe. Abandon = simple retour (shell).
+    private fun terminerEtape(id: String, score: Int) {
         val node = game?.nodes?.find { it.id == id } ?: return
         val sid = sessionId ?: return
         val times = (counts[id] ?: 0) + 1
@@ -457,50 +612,47 @@ class GameFragment : Fragment() {
         val isReplay = times > 1
         lifecycleScope.launch {
             counts[id] = times
-            if (!abandon) {
-                val now = System.currentTimeMillis()
-                done[id] = now
-                // Ecriture immediate SQLite (progression + scores), jamais recalcule.
-                withContext(Dispatchers.IO) {
-                    repository.completeNode(sid, id, score = 10, isReplay = isReplay, isCheat = isCheatMode)
-                    val scoreKept = !isReplay || node.scoreOnReplay
-                    repository.recordScore(sid, id, if (scoreKept) 10 else 0, isCheatMode)
-                    // Effets d'inventaire (même règle que la PWA) : GIVE/REMOVE
-                    // alimentent la boîte à outils + journal (flag triche suivi).
-                    for (effect in node.effects) {
-                        val itemId = effect.itemId ?: continue
-                        when (effect.type) {
-                            "GIVE_ITEM" -> {
-                                val qty = (effect.value as? kotlinx.serialization.json.JsonPrimitive)
-                                    ?.content?.toIntOrNull() ?: 1
-                                repository.addItem(sid, itemId, qty, isCheatMode)
-                            }
-                            "REMOVE_ITEM" -> repository.removeItem(sid, itemId, isCheatMode)
+            val now = System.currentTimeMillis()
+            done[id] = now
+            // Ecriture immediate SQLite (progression + scores), jamais recalcule.
+            withContext(Dispatchers.IO) {
+                repository.completeNode(sid, id, score = score, isReplay = isReplay, isCheat = isCheatMode)
+                val scoreKept = !isReplay || node.scoreOnReplay
+                repository.recordScore(sid, id, if (scoreKept) score else 0, isCheatMode)
+                // Effets d'inventaire : GIVE/REMOVE alimentent la boîte à
+                // outils + journal (flag triche suivi).
+                for (effect in node.effects) {
+                    val itemId = effect.itemId ?: continue
+                    when (effect.type) {
+                        "GIVE_ITEM" -> {
+                            val qty = (effect.value as? kotlinx.serialization.json.JsonPrimitive)
+                                ?.content?.toIntOrNull() ?: 1
+                            repository.addItem(sid, itemId, qty, isCheatMode)
                         }
+                        "REMOVE_ITEM" -> repository.removeItem(sid, itemId, isCheatMode)
                     }
-                    repository.saveProgress(
-                        com.geoplay.shared.model.GameProgressEntity(
-                            sessionId = sid,
-                            gameId = game?.gameId ?: "",
-                            currentNodeId = null,
-                            updatedAt = now
-                        )
-                    )
-                    if (node.isEnding) repository.completeSession(sid)
                 }
+                repository.saveProgress(
+                    com.geoplay.shared.model.GameProgressEntity(
+                        sessionId = sid,
+                        gameId = game?.gameId ?: "",
+                        currentNodeId = null,
+                        updatedAt = now
+                    )
+                )
+                if (node.isEnding) repository.completeSession(sid)
             }
-            if (node.isEnding && !abandon) {
+            if (node.isEnding) {
                 val tag = if (isCheatMode) " [animateur]" else ""
                 Toast.makeText(requireContext(), "FIN atteinte : " + node.id + tag, Toast.LENGTH_LONG).show()
             }
             activeId = null
-            // Retour HOME systematique (change home-player-runtime, 7.2 : fin
-            // de l'avance auto). La proposition se recalcule a l'updateUI.
-            updateUI()
+            recompute()
         }
     }
 
     override fun onDestroyView() {
+        tickerOn = false
         super.onDestroyView()
         _binding = null
     }
@@ -599,10 +751,58 @@ class ImportFragment : Fragment() {
                 packManager.listInstalledPacks()
             }
             binding.tvLocalEmpty.visibility = if (packs.isEmpty()) View.VISIBLE else View.GONE
-            binding.rvLocalPacks.adapter = LocalPacksAdapter(packs) { packName ->
+            binding.rvLocalPacks.adapter = LocalPacksAdapter(packs, { packName ->
                 openLocalPack(packName)
-            }
+            }, { packName, gameId ->
+                menuEntreeLocale(packName, gameId)
+            })
         }
+    }
+
+    // Menu d'entrée locale (change player-catalogue-stable) : supprimer
+    // (confirmation, historique conservé) et, en mode animateur uniquement,
+    // recommencer (nouvelle session vierge, historique gardé).
+    private fun menuEntreeLocale(packName: String, gameId: String) {
+        val triche = requireContext().getSharedPreferences("geoplay_prefs", android.content.Context.MODE_PRIVATE)
+            .getBoolean("cheat_mode", false)
+        val actions = mutableListOf("Supprimer")
+        if (triche) actions.add("Recommencer (nouvelle partie)")
+        android.app.AlertDialog.Builder(requireContext())
+            .setTitle(gameId)
+            .setItems(actions.toTypedArray()) { _, which ->
+                when (actions[which]) {
+                    "Supprimer" -> confirmerSuppression(packName, gameId)
+                    else -> recommencerPartie(packName, gameId)
+                }
+            }
+            .setNegativeButton("Annuler", null)
+            .show()
+    }
+
+    private fun confirmerSuppression(packName: String, gameId: String) {
+        android.app.AlertDialog.Builder(requireContext())
+            .setTitle("Supprimer « $gameId » ?")
+            .setMessage("Le pack sera supprimé du téléphone. L'historique des parties est conservé et sera retrouvé si le jeu est réimporté.")
+            .setPositiveButton("Supprimer") { _, _ ->
+                lifecycleScope.launch {
+                    val ok = withContext(Dispatchers.IO) { packManager.deletePack(packName) }
+                    if (!ok) {
+                        Toast.makeText(requireContext(), "Suppression impossible", Toast.LENGTH_LONG).show()
+                    }
+                    refreshLocalCatalog()
+                }
+            }
+            .setNegativeButton("Annuler", null)
+            .show()
+    }
+
+    private fun recommencerPartie(packName: String, gameId: String) {
+        // Nouvelle session vierge : on oublie la reprise, le prochain
+        // resolveSession crée un UUID frais (tirages et progression vierges).
+        requireContext().getSharedPreferences("geoplay_prefs", android.content.Context.MODE_PRIVATE)
+            .edit().remove("last_session_$gameId").apply()
+        val args = android.os.Bundle().apply { putString("packName", packName) }
+        findNavController().navigate(R.id.action_importFragment_to_gameFragment, args)
     }
 
     private fun openLocalPack(packName: String) {
@@ -686,6 +886,35 @@ class ImportFragment : Fragment() {
         startActivityForResult(intent, PICK_FILE_REQUEST)
     }
 
+    // Confirmation de mise à jour (change pack-zip-diff-tuiles) : affichée
+    // uniquement quand le jeu existe déjà (PackManager n'appelle qu'alors).
+    // Suspend jusqu'au choix ; toujours appelée depuis un thread de fond.
+    private suspend fun confirmerMiseAJour(apercu: PackManager.ApercuDiff): Boolean {
+        val reponse = kotlinx.coroutines.CompletableDeferred<Boolean>()
+        withContext(Dispatchers.Main) {
+            val taille = if (apercu.octetsDelta < 1048576) {
+                "${apercu.octetsDelta / 1024} Ko"
+            } else {
+                "%.1f Mo".format(apercu.octetsDelta / 1048576.0)
+            }
+            android.app.AlertDialog.Builder(requireContext())
+                .setTitle("Mettre à jour « ${apercu.gameId} » ?")
+                .setMessage(
+                    "Différence : ${apercu.ajoutes} ajouté(s), ${apercu.modifies} modifié(s), " +
+                        "${apercu.retires} retiré(s) — $taille à appliquer. La partie en cours est préservée."
+                )
+                .setPositiveButton("Mettre à jour") { _, _ -> reponse.complete(true) }
+                .setNegativeButton("Annuler") { _, _ -> reponse.complete(false) }
+                .setOnCancelListener { reponse.complete(false) }
+                .show()
+        }
+        return try {
+            reponse.await()
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     private fun importFromUrl(url: String) {
         lifecycleScope.launch {
             binding.progressBar.visibility = View.VISIBLE
@@ -693,11 +922,11 @@ class ImportFragment : Fragment() {
             binding.btnImportUrl.isEnabled = false
             try {
                 val result = withContext(Dispatchers.IO) {
-                    packManager.importPackFromUrl(url) { progress ->
+                    packManager.importPackFromUrl(url, { progress ->
                         launch(Dispatchers.Main) {
                             binding.progressBar.progress = (progress * 100).toInt()
                         }
-                    }
+                    }, ::confirmerMiseAJour)
                 }
                 showVerification(result)
             } catch (e: Exception) {
@@ -716,11 +945,11 @@ class ImportFragment : Fragment() {
             binding.btnImportCode.isEnabled = false
             try {
                 val result = withContext(Dispatchers.IO) {
-                    packManager.importPackFromCatalog(baseUrl, code) { progress ->
+                    packManager.importPackFromCatalog(baseUrl, code, { progress ->
                         launch(Dispatchers.Main) {
                             binding.progressBar.progress = (progress * 100).toInt()
                         }
-                    }
+                    }, ::confirmerMiseAJour)
                 }
                 showVerification(result)
             } catch (e: Exception) {
@@ -733,6 +962,12 @@ class ImportFragment : Fragment() {
     }
 
     private fun showVerification(result: com.geoplay.shared.pack.PackVerificationResult) {
+        android.util.Log.d("GeoPlayDbg", "showVerification: valid=" + result.isValid + " pack=" + result.packName + " erreurs=" + result.errors)
+        if (result.miseAJourAnnulee) {
+            Toast.makeText(requireContext(), "Mise à jour annulée : jeu inchangé", Toast.LENGTH_SHORT).show()
+            refreshLocalCatalog()
+            return
+        }
         if (result.isValid) {
             Toast.makeText(requireContext(), "Pack verifie : jeu demarrable offline", Toast.LENGTH_SHORT).show()
             // Ouvre le pack installé (change player-local-catalog), jamais un
@@ -761,11 +996,11 @@ class ImportFragment : Fragment() {
                 requireContext().contentResolver.openInputStream(uri)?.use { inputStream ->
                     val manager = PackManager.getInstance(requireContext())
                     val result = withContext(Dispatchers.IO) {
-                        manager.importPack(inputStream) { progress ->
+                        manager.importPack(inputStream, { progress ->
                             launch(Dispatchers.Main) {
                                 binding.progressBar.progress = (progress * 100).toInt()
                             }
-                        }
+                        }, ::confirmerMiseAJour)
                     }
                     showVerification(result)
                 } ?: Toast.makeText(requireContext(), "Fichier illisible", Toast.LENGTH_LONG).show()
@@ -793,32 +1028,6 @@ class ImportFragment : Fragment() {
     companion object {
         const val PICK_FILE_REQUEST = 1001
         const val SCAN_QR_REQUEST = 1002
-    }
-
-    override fun onDestroyView() {
-        super.onDestroyView()
-        _binding = null
-    }
-}
-
-class ModuleFragment : Fragment() {
-
-    private var _binding: FragmentModuleBinding? = null
-    private val binding get() = _binding!!
-    private var nodeId: String? = null
-
-    override fun onCreateView(
-        inflater: LayoutInflater, container: ViewGroup?,
-        savedInstanceState: Bundle?
-    ): View {
-        _binding = FragmentModuleBinding.inflate(inflater, container, false)
-        return binding.root
-    }
-
-    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        super.onViewCreated(view, savedInstanceState)
-        nodeId = requireArguments().getString("nodeId")
-        binding.tvModuleTitle.text = nodeId ?: "Module"
     }
 
     override fun onDestroyView() {

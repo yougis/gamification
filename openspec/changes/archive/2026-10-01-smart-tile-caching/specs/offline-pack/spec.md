@@ -34,6 +34,12 @@ Stacks web exclues (Leaflet, WebXR), Mapbox par défaut exclu (licence offline).
 - **WHEN** le pack du jeu est généré
 - **THEN** seules les tuiles du second pack sont embarquées (manifest SHA-256)
 
+#### Scenario: Export embarquant le pack actif
+
+- **GIVEN** un projet avec un pack actif `pret` de 42 tuiles vérifiées
+- **WHEN** l'auteur exporte le jeu
+- **THEN** les 42 tuiles sont embarquées avec leurs entrées manifest SHA-256, et le pack joueur rejoue offline
+
 ## ADDED Requirements
 
 ### Requirement: Calcul bbox automatique

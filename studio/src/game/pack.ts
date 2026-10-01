@@ -180,8 +180,7 @@ export function zoomApercu(bbox: BboxTuiles, minZoom: number, maxZoom: number, m
 // pré-génération rendent l'abus structurellement difficile.
 
 /** Clés `tuiles/{z}/{x}/{y}.png` couvrant la bbox sur [minZoom, maxZoom]. */
-export function clesTuiles(bbox: BboxTuiles, minZoom: number, maxZoom: number): string[] {
-  const lo = bornerZoom(Math.min(minZoom, maxZoom));
+export function clesTuiles(bbox: BboxTuiles, minZoom: number, maxZoom: number): string[] {  const lo = bornerZoom(Math.min(minZoom, maxZoom));
   const hi = bornerZoom(Math.max(minZoom, maxZoom));
   const cles: string[] = [];
   for (let z = lo; z <= hi; z++) {
@@ -271,6 +270,119 @@ export function compterTuiles(bbox: BboxTuiles, minZoom: number, maxZoom: number
   let total = 0;
   for (let z = lo; z <= hi; z++) total += tuilesPourZoom(bbox, z);
   return total;
+}
+
+// --- Index spatial tiles.json (change pack-zip-diff-tuiles) ---
+// Compatible TileJSON (bornes, zooms) + stratégie + liste {z,x,y}.
+// Source unique : les entrées tuiles du manifest (jamais ré-énumérées).
+// Le manifest reste la source d'intégrité ; l'index est la source de
+// l'univers (chargement intelligent, calcul ajouts/retraits).
+
+export interface TuileIndex {
+  z: number;
+  x: number;
+  y: number;
+}
+
+export interface TilesJson {
+  tilejson: "3.0.0";
+  /** [minLng, minLat, maxLng, maxLat] (ordre TileJSON). */
+  bounds: [number, number, number, number];
+  minzoom: number;
+  maxzoom: number;
+  strategie: string;
+  tileRadiusMeters?: number;
+  tuiles: TuileIndex[];
+}
+
+const CHEMIN_TUILE_INDEX = /^tuiles\/(\d{1,2})\/(\d+)\/(\d+)\.png$/;
+
+/** Découpe un chemin manifest en {z,x,y}, ou null si hors convention. */
+export function decoderCleTuileIndex(path: string): TuileIndex | null {  const m = CHEMIN_TUILE_INDEX.exec(path);
+  if (!m) return null;
+  return { z: Number(m[1]), x: Number(m[2]), y: Number(m[3]) };
+}
+
+export function construireTilesJson(args: {
+  cheminsTuiles: string[];
+  bounds: BboxTuiles | null;
+  minzoom: number;
+  maxzoom: number;
+  strategie: string;
+  tileRadiusMeters?: number;
+}): { json: string; orphelines: string[] } {
+  const tuiles: TuileIndex[] = [];
+  const orphelines: string[] = [];
+  const tries = [...args.cheminsTuiles].sort();
+  for (const c of tries) {
+    const t = decoderCleTuileIndex(c);
+    if (!t) orphelines.push(c);
+    else tuiles.push(t);
+  }
+  const b = args.bounds;
+  const doc: TilesJson = {
+    tilejson: "3.0.0",
+    bounds: b ? [b.minLng, b.minLat, b.maxLng, b.maxLat] : [-180, -90, 180, 90],
+    minzoom: args.minzoom,
+    maxzoom: args.maxzoom,
+    strategie: args.strategie,
+    ...(args.tileRadiusMeters != null ? { tileRadiusMeters: args.tileRadiusMeters } : {}),
+    tuiles,
+  };
+  return { json: JSON.stringify(doc), orphelines };
+}
+
+// --- Différentiel (change pack-zip-diff-tuiles) ---
+// Comparaison par {path, sha256} : ajoutés/modifiés à copier, retirés à
+// effacer, identiques conservés. Miroir de la règle player (3.1).
+
+export interface DiffFichiers {
+  ajoutes: string[];
+  modifies: string[];
+  retires: string[];
+  octetsAjoutes: number;
+  octetsModifies: number;
+}
+
+export function diffManifests(
+  ancien: { path: string; sha256: string; size: number }[],
+  nouveau: { path: string; sha256: string; size: number }[],
+): DiffFichiers {
+  const vieux = new Map(ancien.map((m) => [m.path, m]));
+  const neufs = new Map(nouveau.map((m) => [m.path, m]));
+  const ajoutes: string[] = [];
+  const modifies: string[] = [];
+  let octetsAjoutes = 0;
+  let octetsModifies = 0;
+  for (const [chemin, m] of neufs) {
+    const a = vieux.get(chemin);
+    if (!a) {
+      ajoutes.push(chemin);
+      octetsAjoutes += m.size;
+    } else if (a.sha256 !== m.sha256) {
+      modifies.push(chemin);
+      octetsModifies += m.size;
+    }
+  }
+  const retires = [...vieux.keys()].filter((c) => !neufs.has(c));
+  return { ajoutes, modifies, retires, octetsAjoutes, octetsModifies };
+}
+
+export interface DiffTuiles {
+  ajoutees: TuileIndex[];
+  retirees: TuileIndex[];
+  conservees: number;
+}
+
+const cleTuile = (t: TuileIndex) => `${t.z}/${t.x}/${t.y}`;
+
+/** Diff d'univers de tuiles entrée par entrée (z/x/y). */
+export function diffTuiles(ancien: TilesJson, nouveau: TilesJson): DiffTuiles {
+  const vieilles = new Set(ancien.tuiles.map(cleTuile));
+  const neuves = new Map(nouveau.tuiles.map((t) => [cleTuile(t), t]));
+  const ajoutees = [...neuves.entries()].filter(([c]) => !vieilles.has(c)).map(([, t]) => t);
+  const retirees = ancien.tuiles.filter((t) => !neuves.has(cleTuile(t)));
+  return { ajoutees, retirees, conservees: nouveau.tuiles.length - ajoutees.length };
 }
 
 /** Estimation {nbTuiles, octets, lisible} avant génération (menu Packs de carte). */

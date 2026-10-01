@@ -253,6 +253,13 @@
                 android:textSize="16sp" />
 
             <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="Toucher : ouvrir. Appui long : supprimer / recommencer (triche)."
+                android:textSize="12sp" />
+
+            <TextView
                 android:id="@+id/tvLocalEmpty"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"

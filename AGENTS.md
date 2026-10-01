@@ -3,8 +3,14 @@
 Ce projet suit une methodologie **Spec-Driven Development** pilotee par
 **OpenSpec** (`openspec/config.yaml`, `openspec/changes/`,
 `openspec/specs/`). Voir `ROADMAP.md` pour l'ordre des changes
-(`000` socle, `100`-`500`, differes `600`-`640`) a proposer via
-`/opsx:propose` dans opencode. Ce fichier fixe que des regles de code
+(jalons M1-M6, changes `900`-`982`) a proposer via
+`/opsx:propose` -> `/opsx:continue` (ou `/opsx:ff`)
+-> `/opsx:apply` -> `/opsx:archive` dans opencode. Etat au 2026-10-01 :
+socle 000 -> 500 archive, 102 changes archives,
+30 specs actives dans `openspec/specs/`. Studio Web mature, player natif
+en bascule KMP. La feuille de route couvre la suite : livraison (M1),
+finitions (M2), comptes (M3), catalogues (M4), monetisation et IA (M5),
+marketplace plus tard (M6). Ce fichier fixe que des regles de code
 generales ; les regles de spec vivent dans `openspec/config.yaml`.
 
 ## Principes structurants du systeme
@@ -23,7 +29,7 @@ projet :
    reseau apres le telechargement (fichiers app + SQLite, manifest SHA-256
    par fichier verifie).
 4. **Registre de modules ouvert** : types socle `QUIZ`, `DIFFERENCE_GAME`,
-   `PUZZLE`, `AR_MARKER`, `BOUSSOLE`. Toute extension est une entree
+   `PUZZLE`, `AR_MARKER`, `BOUSSOLE`, `CODE_INPUT`, `INFO`. Toute extension est une entree
    registre, jamais une retouche du schema Noeuds/Liens.
 5. **Geofencing par JSON** : rayon, overrides et predicats toujours lus
    depuis le JSON du jeu, jamais codes en dur dans le viewer.
@@ -41,6 +47,22 @@ projet :
    inventory) sont optionnelles.
 10. **Validation en double couche** : Draft-07 (forme) + validateur
     applicatif (cycles, atteignabilite, topo pools, etc.).
+11. **Joueur sans compte** : offline-first conserve, aucun login bloquant sur
+    mobile. Seuls les createurs s'authentifient (Keycloak).
+12. **Droits portes par le createur** : licence signee EdDSA dans le package,
+    verifiee offline. Achats sur le Studio Shop web, aucun achat dans l'app mobile.
+13. **Monolithe modulaire** : backend Node.js/TypeScript + PostgreSQL + Barman.
+    Pas de microservices (sauf worker LLM, asynchrone).
+14. **Documentation dans le meme change** : guide createur, reference API/MCP
+    et glossaire mis a jour avec la fonctionnalite.
+15. **Validation triple couche** : C1 Draft-07 + C2 applicative + C3 droits
+    (serveur autoritaire, Studio indicatif).
+16. **i18n en fichiers separes** : `game.json` en cles `{"$t"}`, textes dans
+    `i18n/fr.json` + `en.json` inclus au manifest.
+17. **Schema versionne** : `schemaVersion` entier + migrations pures testees
+    vN -> vN+1 ; runtime refuse un jeu trop recent avec message clair.
+18. **Tokens semantiques** : aucune couleur en dur dans les widgets, heritage
+    global -> screen -> widget, contraste WCAG AA.
 
 ## Regles de code generales
 
@@ -89,6 +111,9 @@ Les skills suivants sont disponibles pour l'agent :
 - `geoplay-runtime-engine` — Runtime natif (lifecycle, capteurs)
 - `geoplay-module-registry` — Registre de modules extensible
 - `geoplay-offline-pack` — Pack offline (manifest SHA-256, diff)
+- `geoplay-backend-ops` — Backend monolithe (Node/TS, PostgreSQL + Barman, S3, Keycloak)
+- `geoplay-entitlement-catalog` — Droits (entitlements, catalogue, C3, licence, quotas, Shop)
+- `geoplay-i18n-migrations` — i18n fichiers separes, schemaVersion, tokens
 - `openspec-propose` — Proposer un nouveau change
 - `openspec-apply-change` — Appliquer un change
 - `openspec-archive-change` — Archiver un change

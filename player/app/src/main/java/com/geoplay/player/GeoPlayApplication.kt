@@ -25,21 +25,36 @@ class GeoPlayApplication : Application() {
     }
 
     private fun copyReferencePackIfNeeded() {
+        // Catalogue stable (change player-catalogue-stable) : ensemencement
+        // unique testé sur le gameId lu (jamais le nom de dossier), avec
+        // nettoyage des doublons hérités au premier démarrage. Une suppression
+        // volontaire n'est jamais re-créée (drapeau persisté).
         CoroutineScope(Dispatchers.IO).launch {
             try {
+                val prefs = getSharedPreferences("geoplay", MODE_PRIVATE)
+                if (prefs.getBoolean("seed_reference_done", false)) return@launch
                 val packManager = PackManager.getInstance(this@GeoPlayApplication)
-                val packs = packManager.getInstalledPacks()
-                if ("reference-5poi" !in packs) {
-                    try {
+                val elimines = packManager.deduplicateInstalledPacks()
+                if (elimines > 0) {
+                    Log.i("GeoPlay", "Catalogue nettoyé: $elimines doublon(s) supprimé(s)")
+                }
+                val ids = packManager.listInstalledPacks().map { it.gameId }.toSet()
+                if ("reference-5poi" in ids) {
+                    prefs.edit().putBoolean("seed_reference_done", true).apply()
+                    return@launch
+                }
+                try {
                         assets.open("reference-5poi.json").use { inputStream ->
-                            val result = packManager.importPack(inputStream) { }
-                            if (!result.isValid) {
-                                Log.w("GeoPlay", "Pack ref non importé: ${result.errors}")
-                            }
+                            val result = packManager.importPack(inputStream, null)
+                        if (!result.isValid) {
+                            Log.w("GeoPlay", "Pack ref non importé: ${result.errors}")
+                        } else {
+                            prefs.edit().putBoolean("seed_reference_done", true).apply()
                         }
-                    } catch (e: Exception) {
-                        Log.w("GeoPlay", "Pack ref absent des assets", e)
                     }
+                } catch (e: Exception) {
+                    Log.w("GeoPlay", "Pack ref absent des assets", e)
+                    prefs.edit().putBoolean("seed_reference_done", true).apply()
                 }
             } catch (e: Exception) {
                 Log.w("GeoPlay", "Init pack ref impossible", e)

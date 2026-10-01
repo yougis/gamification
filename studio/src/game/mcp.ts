@@ -1,7 +1,7 @@
 // Outils MCP du Studio (spike) : meme schema des deux cotes, rien ne sort sans validation.
 import { validateGame } from "./validate";
 import { Collecteur, messagesBloquants, type Diagnostic } from "./diagnostics";
-import { sha256Hex, clesTuiles, compterTuiles, detecterTuilesHorsBbox, type ManifestFile } from "./pack";
+import { sha256Hex, clesTuiles, compterTuiles, detecterTuilesHorsBbox, construireTilesJson, type ManifestFile } from "./pack";
 import type { Game, GameNode, ReviewStatus, StudioMeta, HoldMode, HoldExit, NavigationModel, Discovery, Effect, GameObject, ExperienceStyle, Branding, GameMode, Difficulty, NodePosition, ScreenDefinition, ZoneContent, ZoneId, Widget, WidgetStyles, MinigameDefaults, TileStrategy, TilePackMeta } from "./types";
 
 export type { ManifestFile };
@@ -289,6 +289,8 @@ export interface ExportResult {
   errors: string[];
   gameJson?: string;
   manifest?: { files: ManifestFile[] };
+  /** Index spatial (change pack-zip-diff-tuiles), présent quand généré. */
+  tilesJson?: string;
   /** Constats structurés des refus (change studio-validation-actionnable). */
   diagnostics: Diagnostic[];
 }
@@ -990,6 +992,39 @@ export async function exportPackFull(
       /* périmètre indicatif : un échec de calcul ne bloque jamais seul */
     }
   }
+  // Index spatial tiles.json (change pack-zip-diff-tuiles) : construit depuis
+  // les entrées tuiles du manifest (source unique), inscrit au manifest.
+  // Toute entrée tuiles/* hors convention bloque avec le fichier nommé.
+  let tilesJson: string | undefined;
+  {
+    const g = game.global ?? {};
+    const cheminsTuiles = manifest.filter((m) => m.path.startsWith("tuiles/")).map((m) => m.path);
+    const bboxIdx = computeBboxFromStrategy(game);
+    const gmap = (game.global?.map as { minZoom?: number; maxZoom?: number } | undefined) ?? {};
+    const bati = construireTilesJson({
+      cheminsTuiles,
+      bounds: bboxIdx ? { minLat: bboxIdx.minLat, minLng: bboxIdx.minLng, maxLat: bboxIdx.maxLat, maxLng: bboxIdx.maxLng } : null,
+      minzoom: gmap.minZoom ?? 12,
+      maxzoom: gmap.maxZoom ?? 16,
+      strategie: (g.tileStrategy ?? "fixed") as string,
+      tileRadiusMeters: typeof g.tileRadiusMeters === "number" ? g.tileRadiusMeters : undefined,
+    });
+    if (bati.orphelines.length > 0) {
+      const message = `export refuse : ${bati.orphelines.length} entree(s) tuiles hors convention : ${bati.orphelines.slice(0, 5).join(", ")}`;
+      errors.push(message);
+      const avant = sig.diagnostics.length;
+      sig.signaler("TUILE_ORPHELINE", message, { champ: "manifest", attendu: "tuiles/z/x/y.png" });
+      diagnostics.push(...sig.diagnostics.slice(avant));
+    } else {
+      // Index systématique (même sans tuile : liste vide) : tout pack
+      // exporté contient tiles.json, source unique de l'univers des tuiles.
+      tilesJson = bati.json;
+      manifest = [
+        ...manifest,
+        { path: "tiles.json", version: "1", size: tailleOctets(tilesJson), sha256: await sha256hex(tilesJson) },
+      ];
+    }
+  }
   if (errors.length) return { ok: false, errors, diagnostics };
   const gameJson = JSON.stringify(game, null, 2);
   const files = await Promise.all(
@@ -1000,7 +1035,7 @@ export async function exportPackFull(
   const withGame = files.some((m) => m.path === "game.json")
     ? files
     : [...files, { path: "game.json", version: game.schemaVersion, size: tailleOctets(gameJson), sha256: await sha256hex(gameJson) }];
-  return { ok: true, errors: [], gameJson, manifest: { files: withGame }, diagnostics };
+  return { ok: true, errors: [], gameJson, manifest: { files: withGame }, tilesJson, diagnostics };
 }
 
 // --- Map/Indoor MCP operations (change studio-map-view) ---

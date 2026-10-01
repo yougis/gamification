@@ -6,39 +6,13 @@ import android.view.ViewGroup
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.geoplay.player.R
-import com.geoplay.shared.model.GameNode
-
-class QueueAdapter(
-    private val queue: List<String>,
-    private val onClick: (String) -> Unit
-) : RecyclerView.Adapter<QueueAdapter.QueueViewHolder>() {
-
-    inner class QueueViewHolder(view: View) : RecyclerView.ViewHolder(view) {
-        val tvNodeId: TextView = view.findViewById(R.id.tvQueueItem)
-        val tvPosition: TextView = view.findViewById(R.id.tvQueuePosition)
-    }
-
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): QueueViewHolder {
-        val view = LayoutInflater.from(parent.context)
-            .inflate(R.layout.item_queue, parent, false)
-        return QueueViewHolder(view)
-    }
-
-    override fun onBindViewHolder(holder: QueueViewHolder, position: Int) {
-        val nodeId = queue[position]
-        holder.tvNodeId.text = nodeId
-        holder.tvPosition.text = "${position + 1}."
-        holder.itemView.setOnClickListener { onClick(nodeId) }
-    }
-
-    override fun getItemCount() = queue.size
-}
 
 // Catalogue local (change player-local-catalog) : jeux installés sur le
 // téléphone, triés du plus récent au plus ancien. Clic = ouverture directe.
 class LocalPacksAdapter(
     private val packs: List<com.geoplay.player.data.PackManager.InstalledPack>,
-    private val onClick: (String) -> Unit
+    private val onClick: (String) -> Unit,
+    private val onLongClick: (String, String) -> Unit = { _, _ -> }
 ) : RecyclerView.Adapter<LocalPacksAdapter.LocalPackViewHolder>() {
 
     inner class LocalPackViewHolder(view: View) : RecyclerView.ViewHolder(view) {
@@ -59,6 +33,7 @@ class LocalPacksAdapter(
             .format(java.util.Date(pack.installedAt))
         holder.tvMeta.text = "v${pack.schemaVersion} · $date"
         holder.itemView.setOnClickListener { onClick(pack.name) }
+        holder.itemView.setOnLongClickListener { onLongClick(pack.name, pack.gameId); true }
     }
 
     override fun getItemCount() = packs.size

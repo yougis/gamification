@@ -1,6 +1,6 @@
 ---
 name: geoplay-offline-pack
-description: Conceit ou controle le pack offline d'un Jeu GeoPlay natif (manifest SHA-256, archive, diff, packs carte, SQLite). A utiliser pour le change 300 et toute question de telechargement, versioning ou stockage terrain.
+description: Conceit ou controle le pack offline d'un Jeu GeoPlay natif (manifest SHA-256, license.json, i18n, tiles.json, zip, diff, quotas). A utiliser pour tout change pack 9xx et toute question de telechargement, versioning ou stockage terrain.
 ---
 
 # Skill : geoplay-offline-pack
@@ -9,15 +9,16 @@ Specialiste du packaging offline GeoPlay natif (iOS + Android, fichiers app + SQ
 
 ## Contrat du pack
 
-- **Manifest** : `{path, version, size, sha256}` par fichier. Le manifest fait foi
-  pour le versioning et l'integrite.
+- **Manifest** : `{path, version, size, sha256}` par fichier (size = octets UTF-8, jamais String.length). Le manifest fait foi
+  pour le versioning et l'integrite. Couvre game.json, i18n/*.json, assets, tuiles, tiles.json, license.json.
+- **Contenu** : game.json + manifest + `tiles.json` (univers z/x/y, strategie, bbox/zooms ; liste vide si pas de tuile, coherence manifest<->index exigee) + `license.json` EdDSA le cas echeant + `.zip` unique transférable (streaming, taille affichee avant generation).
 - **Transport** : archive pre-tuilee telechargee puis dezippee en worker.
 - **Verification** : SHA-256 par fichier. Echec sur un fichier = retelechargement
-  de ce seul fichier, jamais de tout le pack.
+  de ce seul fichier, jamais de tout le pack. Mise a jour differentielle par manifests (nouveaux/modifies copies, absents supprimes, identiques conserves, bascule atomique, progression SQLite preservee).
 - **Diff** : ne retelecharge que les `version` changees. Reprise et background
-  download obligatoires.
+  download obligatoires. Generation auteur interrompue = etat explicite, jamais pack actif implicite.
 - **Lancement** : un pack partiel ou corrompu reste **non lancable**, avec etat
-  explicite (progression, fichier fautif).
+  explicite (progression %, fichier fautif). Catalogue d'erreurs E_* avec action proposee.
 
 ## Carte et donnees
 

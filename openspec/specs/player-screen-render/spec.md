@@ -42,3 +42,41 @@ Tout nœud ouvert SHALL s'ouvrir selon le type de son module (via le registre, j
 - **WHEN** le joueur touche un nœud INFO `UNLOCKED`
 - **THEN** son écran (récit paginé) s'ouvre au lieu de rester sur la liste
 
+### Requirement: Rendu natif Android via le renderer partagé
+
+L'app Android SHALL rendre chaque nœud ouvert avec le renderer partagé (`ScreenRenderer` : zones header/content/footer/overlay, widgets, branding résolu, module du nœud), le tableau HOME (`HomeDashboard`) et la carte (`MapWidget` : marqueurs par état, volet, position). Le rendu SHALL être visuellement équivalent à iOS pour le même jeu et le même état (mêmes zones, mêmes widgets, mêmes états).
+
+#### Scenario: Écran quiz-focus sur Android
+- **WHEN** le joueur ouvre un nœud `UNLOCKED` avec header, content (texte + module QUIZ) et footer
+- **THEN** les trois zones s'affichent avec le quiz interactif, comme sur iOS et dans le simulateur
+
+#### Scenario: Carte avec POI sur Android
+- **GIVEN** un jeu avec 3 POI découverts et une position GPS
+- **WHEN** le joueur ouvre la carte
+- **THEN** fond schématique, 3 marqueurs à leurs états et position s'affichent, la sélection ouvre le volet sans event
+
+### Requirement: Pagination joueur des sous-pages
+
+Le player SHALL afficher les sous-pages une par une : swipe horizontal (±40 px, même seuil que le récit INFO) ET bouton « Suivant » (même avancer), bouton « Précédent » dès la 2e page, compteur `page i/N`, « Terminer » sur la dernière page (complétion normale du nœud). Une seule sous-page SHALL être visible à la fois ; un module ne SHALL jamais partager sa page.
+
+#### Scenario: Parcours paginé d'une étape
+
+- **GIVEN** un nœud ACTIVE de 3 sous-pages (module, image, texte)
+- **WHEN** le joueur swipe puis touche « Suivant »
+- **THEN** il voit les pages 2 puis 3, et « Terminer » sur la 3 complète le nœud
+
+#### Scenario: Étape mono-page inchangée
+
+- **GIVEN** un nœud avec une seule sous-page
+- **WHEN** le joueur ouvre l'étape
+- **THEN** aucun bouton de navigation n'apparaît et la complétion est immédiate comme avant
+
+### Requirement: Progression reflétant l'avancement
+
+Un widget `progress` (`progressType: "steps"`) affiché dans un contenu paginé SHALL refléter `page courante / total` (fraction + libellé). Hors contenu paginé, son comportement SHALL rester inchangé.
+
+#### Scenario: Progress suivant les pages
+
+- **GIVEN** une étape de 4 sous-pages avec un widget `progress` en header, joueur en page 2
+- **WHEN** l'écran se rend
+- **THEN** la progression affiche 2/4

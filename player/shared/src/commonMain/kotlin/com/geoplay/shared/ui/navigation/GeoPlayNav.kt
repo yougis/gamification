@@ -103,10 +103,10 @@ fun GeoPlayApp(
         if (!epreuveEnCours) cartePleinEcran = w
     }
     fun openNode(id: String) {
-        if (onOpenNode != null) {
-            onOpenNode(id)
-            return
-        }
+        // Hook hôte (change player-android-compose) : l'hôte suit l'ouverture
+        // (bookkeeping : étape vue, journal) SANS remplacer la navigation.
+        // La présentation de l'éligible reste interne et inconditionnelle.
+        onOpenNode?.invoke(id)
         // Routage par type via le registre (change parite-player) : tout
         // type s'ouvre, l'inconnu dégrade gracieusement dans l'écran
         // (message, jamais de crash).

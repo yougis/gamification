@@ -49,6 +49,8 @@ try {
   assert(normaliserUrlService("http://localhost:3000/") === "http://localhost:3000", "slash final retiré");
   assert(normaliserUrlService("  http://localhost:3000/publish ") === "http://localhost:3000", "suffixe /publish retiré");
   assert(normaliserUrlService("http://hote:3000/jeux") === "http://hote:3000/jeux", "autre chemin conservé");
+  assert(normaliserUrlService("http://localhost:3000/games") === "http://localhost:3000", "suffixe /games retiré (routes serveur sans préfixe)");
+  assert(normaliserUrlService("http://localhost:3000/games/") === "http://localhost:3000", "suffixe /games + slash retirés");
   const p3 = await publishGame(`${base}/publish`, { gameId: "Fumée", gameJson, manifest, assets: [] });
   assert(p3.code === p1.code, "URL d'endpoint normalisée : même jeu, pas de doublon");
   let explicite = "";

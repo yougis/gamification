@@ -26,7 +26,10 @@ data class PackVerificationResult(
     val corruptedFiles: List<String> = emptyList(),
     // Dossier installé (packs/<nom>) quand l'import a installé un pack ;
     // null si rien n'a été installé (refus, erreur). (change player-local-catalog)
-    val packName: String? = null
+    val packName: String? = null,
+    // Mise à jour refusée par l'auteur à la confirmation (change
+    // pack-zip-diff-tuiles) : ni erreur ni installation, l'ancien pack reste.
+    val miseAJourAnnulee: Boolean = false
 )
 
 /** JSON GeoPlay partagé : clés inconnues ignorées, valeurs contraintes (miroir Studio). */
