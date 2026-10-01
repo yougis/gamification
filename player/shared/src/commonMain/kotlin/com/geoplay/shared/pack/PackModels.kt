@@ -23,7 +23,10 @@ data class PackVerificationResult(
     val errors: List<String> = emptyList(),
     val progressPercent: Float = 0f,
     val missingFiles: List<String> = emptyList(),
-    val corruptedFiles: List<String> = emptyList()
+    val corruptedFiles: List<String> = emptyList(),
+    // Dossier installé (packs/<nom>) quand l'import a installé un pack ;
+    // null si rien n'a été installé (refus, erreur). (change player-local-catalog)
+    val packName: String? = null
 )
 
 /** JSON GeoPlay partagé : clés inconnues ignorées, valeurs contraintes (miroir Studio). */

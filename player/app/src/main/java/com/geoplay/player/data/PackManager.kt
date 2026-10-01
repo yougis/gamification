@@ -106,7 +106,7 @@ class PackManager private constructor(private val context: Context) {
                 copyFiles(tempDir, finalDir)
                 // Le manifest source est deja copie via copyFiles ; pas de re-generation.
 
-                PackVerificationResult(isValid = true, progressPercent = 1f)
+                PackVerificationResult(isValid = true, progressPercent = 1f, packName = finalDir.name)
             } catch (e: Exception) {
                 Log.e("PackManager", "Import failed", e)
                 PackVerificationResult(isValid = false, errors = listOf(e.message ?: "Erreur inconnue"))
@@ -193,9 +193,10 @@ class PackManager private constructor(private val context: Context) {
                 File(tempDir, "game.json").writeText(gameText)
                 // Réutilisation si déjà vérifié : même game.json + même manifest
                 // déjà installés → pas de re-téléchargement des assets.
-                if (findIdenticalPack(gameText, manifest) != null) {
+                val identical = findIdenticalPack(gameText, manifest)
+                if (identical != null) {
                     onProgress?.invoke(1f)
-                    return@withContext PackVerificationResult(isValid = true, progressPercent = 1f)
+                    return@withContext PackVerificationResult(isValid = true, progressPercent = 1f, packName = identical.name)
                 }
                 val assets = manifest.files.filter { it.path != "game.json" }
                 assets.forEachIndexed { i, entry ->
@@ -214,7 +215,7 @@ class PackManager private constructor(private val context: Context) {
                 val finalDir = File(context.filesDir, "packs/${System.currentTimeMillis()}")
                 finalDir.mkdirs()
                 copyFiles(tempDir, finalDir)
-                PackVerificationResult(isValid = true, progressPercent = 1f)
+                PackVerificationResult(isValid = true, progressPercent = 1f, packName = finalDir.name)
             } catch (e: Exception) {
                 Log.e("PackManager", "Catalog import failed", e)
                 PackVerificationResult(isValid = false, errors = listOf(e.message ?: "Import impossible"))
@@ -301,7 +302,7 @@ class PackManager private constructor(private val context: Context) {
                 )
                 saveManifest(manifest, packDir)
                 onProgress?.invoke(1f)
-                PackVerificationResult(isValid = true, progressPercent = 1f)
+                PackVerificationResult(isValid = true, progressPercent = 1f, packName = packDir.name)
             } catch (e: Exception) {
                 Log.e("PackManager", "game.json illisible", e)
                 PackVerificationResult(isValid = false, errors = listOf("Fichier invalide: ${e.message}"))
@@ -428,7 +429,53 @@ class PackManager private constructor(private val context: Context) {
     suspend fun getInstalledPacks(): List<String> {
         return withContext(Dispatchers.IO) {
             val packsDir = File(context.filesDir, "packs")
-            packsDir.listFiles()?.filter { it.isDirectory }?.map { it.name } ?: emptyList()
+            // Tri du plus récent au plus ancien (change player-local-catalog) :
+            // le défaut à froid ouvre le dernier installé, jamais un ordre arbitraire.
+            packsDir.listFiles()?.filter { it.isDirectory }?.sortedByDescending { it.lastModified() }?.map { it.name } ?: emptyList()
+        }
+    }
+
+    // Catalogue local (change player-local-catalog) : métadonnées lues depuis
+    // le game.json installé, triées du plus récent au plus ancien.
+    data class InstalledPack(
+        val name: String,
+        val gameId: String,
+        val schemaVersion: String,
+        val installedAt: Long
+    )
+
+    suspend fun listInstalledPacks(): List<InstalledPack> {
+        return withContext(Dispatchers.IO) {
+            val packsDir = File(context.filesDir, "packs")
+            packsDir.listFiles()
+                ?.filter { it.isDirectory }
+                ?.mapNotNull { dir ->
+                    try {
+                        val gameFile = File(dir, "game.json")
+                        if (!gameFile.isFile) return@mapNotNull null
+                        val game = json.decodeFromString(Game.serializer(), gameFile.readText())
+                        InstalledPack(dir.name, game.gameId, game.schemaVersion, dir.lastModified())
+                    } catch (e: Exception) {
+                        Log.w("PackManager", "pack illisible: ${dir.name}", e)
+                        null
+                    }
+                }
+                ?.sortedByDescending { it.installedAt } ?: emptyList()
+        }
+    }
+
+    // Re-vérification à l'ouverture depuis le catalogue local : même contrôle
+    // SHA-256 que l'import ; pack altéré = refus avec fichier nommé, jamais lancé.
+    suspend fun verifyInstalledPack(packName: String): PackVerificationResult {
+        return withContext(Dispatchers.IO) {
+            val packDir = File(context.filesDir, "packs/$packName")
+            val manifest = loadManifest(packDir)
+                ?: return@withContext PackVerificationResult(
+                    isValid = false,
+                    errors = listOf("Manifest manquant: manifest.json"),
+                    missingFiles = listOf("manifest.json")
+                )
+            verifyFiles(manifest, packDir, null)
         }
     }
 

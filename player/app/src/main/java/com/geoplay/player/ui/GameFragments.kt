@@ -157,9 +157,13 @@ class GameFragment : Fragment() {
             val loaded = withContext(Dispatchers.IO) {
                 try {
                     val packManager = PackManager.getInstance(requireContext())
-                    val packs = packManager.getInstalledPacks()
-                    val first = packs.firstOrNull()?.let { packManager.loadPack(it) }
-                    first ?: loadReferencePack()
+                    // Pack demandé en argument (change player-local-catalog) :
+                    // après import ou depuis le catalogue local, on ouvre CE
+                    // pack. Défaut à froid : le plus récent, sinon référence.
+                    val wanted = arguments?.getString("packName")
+                    val named = wanted?.let { packManager.loadPack(it) }
+                    named ?: packManager.getInstalledPacks().firstOrNull()?.let { packManager.loadPack(it) }
+                        ?: loadReferencePack()
                 } catch (e: Exception) {
                     loadReferencePack()
                 }
@@ -539,6 +543,8 @@ class ImportFragment : Fragment() {
             pickFile()
         }
 
+        binding.rvLocalPacks.layoutManager = androidx.recyclerview.widget.LinearLayoutManager(requireContext())
+
         // Catalogue des jeux (change studio-game-catalog) : URL persistée,
         // code à 4 chiffres, même vérification manifest à l'arrivée.
         val prefs = requireContext().getSharedPreferences("geoplay", android.content.Context.MODE_PRIVATE)
@@ -576,6 +582,49 @@ class ImportFragment : Fragment() {
             binding.etImportUrl.setText(pendingUrl)
             importFromUrl(pendingUrl)
             requireActivity().intent?.removeExtra("pending_import_url")
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        refreshLocalCatalog()
+    }
+
+    // Catalogue local (change player-local-catalog) : jeux installés sur le
+    // téléphone, plus récent d'abord. Ouverture = re-vérification SHA-256
+    // puis navigation avec l'identifiant (jamais firstOrNull).
+    private fun refreshLocalCatalog() {
+        lifecycleScope.launch {
+            val packs = withContext(Dispatchers.IO) {
+                packManager.listInstalledPacks()
+            }
+            binding.tvLocalEmpty.visibility = if (packs.isEmpty()) View.VISIBLE else View.GONE
+            binding.rvLocalPacks.adapter = LocalPacksAdapter(packs) { packName ->
+                openLocalPack(packName)
+            }
+        }
+    }
+
+    private fun openLocalPack(packName: String) {
+        lifecycleScope.launch {
+            binding.progressBar.visibility = View.VISIBLE
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    packManager.verifyInstalledPack(packName)
+                }
+                if (result.isValid) {
+                    val args = android.os.Bundle().apply { putString("packName", packName) }
+                    findNavController().navigate(R.id.action_importFragment_to_gameFragment, args)
+                } else {
+                    val detail = result.errors.joinToString(" ; ")
+                    Toast.makeText(requireContext(), "Pack refuse : $detail", Toast.LENGTH_LONG).show()
+                    refreshLocalCatalog()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(requireContext(), "Erreur : " + e.message, Toast.LENGTH_LONG).show()
+            } finally {
+                binding.progressBar.visibility = View.GONE
+            }
         }
     }
 
@@ -686,7 +735,12 @@ class ImportFragment : Fragment() {
     private fun showVerification(result: com.geoplay.shared.pack.PackVerificationResult) {
         if (result.isValid) {
             Toast.makeText(requireContext(), "Pack verifie : jeu demarrable offline", Toast.LENGTH_SHORT).show()
-            findNavController().navigate(R.id.action_importFragment_to_gameFragment)
+            // Ouvre le pack installé (change player-local-catalog), jamais un
+            // autre : l'identifiant voyage en argument de navigation.
+            val args = android.os.Bundle().apply {
+                result.packName?.let { putString("packName", it) }
+            }
+            findNavController().navigate(R.id.action_importFragment_to_gameFragment, args)
         } else {
             // Gating explicite : progression % + fichier fautif nomme (offline-pack).
             val pct = (result.progressPercent * 100).toInt()

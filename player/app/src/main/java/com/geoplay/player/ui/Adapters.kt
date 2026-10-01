@@ -34,6 +34,36 @@ class QueueAdapter(
     override fun getItemCount() = queue.size
 }
 
+// Catalogue local (change player-local-catalog) : jeux installés sur le
+// téléphone, triés du plus récent au plus ancien. Clic = ouverture directe.
+class LocalPacksAdapter(
+    private val packs: List<com.geoplay.player.data.PackManager.InstalledPack>,
+    private val onClick: (String) -> Unit
+) : RecyclerView.Adapter<LocalPacksAdapter.LocalPackViewHolder>() {
+
+    inner class LocalPackViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+        val tvGameId: TextView = view.findViewById(R.id.tvPackGameId)
+        val tvMeta: TextView = view.findViewById(R.id.tvPackMeta)
+    }
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): LocalPackViewHolder {
+        val view = LayoutInflater.from(parent.context)
+            .inflate(R.layout.item_pack, parent, false)
+        return LocalPackViewHolder(view)
+    }
+
+    override fun onBindViewHolder(holder: LocalPackViewHolder, position: Int) {
+        val pack = packs[position]
+        holder.tvGameId.text = pack.gameId
+        val date = java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", java.util.Locale.getDefault())
+            .format(java.util.Date(pack.installedAt))
+        holder.tvMeta.text = "v${pack.schemaVersion} · $date"
+        holder.itemView.setOnClickListener { onClick(pack.name) }
+    }
+
+    override fun getItemCount() = packs.size
+}
+
 class PolygonAdapter(
     private val polygons: List<PolygonItem>
 ) : RecyclerView.Adapter<PolygonAdapter.PolygonViewHolder>() {
